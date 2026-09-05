@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Module: sing-box (VLESS+Reality + Hysteria2)
+# Module: sing-box binary + Reality/HY2 secrets (users applied by vpn-users / vpn-core)
 # shellcheck disable=SC2154
 
 module_sing_box_install() {
@@ -8,7 +8,7 @@ module_sing_box_install() {
 
   pkg_install curl tar jq openssl
 
-  mkdir -p "${conf_dir}" /var/lib/sing-box
+  mkdir -p "${conf_dir}" /var/lib/sing-box /etc/sing-box/certs
 
   local tag url tmp
   tag="$(curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)"
@@ -21,12 +21,7 @@ module_sing_box_install() {
   install -m 755 "${tmp}/sing-box-${tag#v}-linux-${arch}/sing-box" "${bin_dir}/sing-box"
   rm -rf "${tmp}"
 
-  local uuid short_id private_key public_key hy2_pass sni
-  uuid="$(read_secret singbox_uuid || true)"
-  if [[ -z "${uuid}" ]]; then
-    uuid="$( "${bin_dir}/sing-box" generate uuid 2>/dev/null || random_uuid )"
-    write_secret singbox_uuid "${uuid}"
-  fi
+  local short_id private_key public_key hy2_pass sni
   short_id="$(read_secret singbox_short_id || true)"
   if [[ -z "${short_id}" ]]; then
     short_id="$(random_hex 4)"
@@ -54,7 +49,6 @@ module_sing_box_install() {
   local vless_port="${SINGBOX_VLESS_PORT:-443}"
   local hy2_port="${SINGBOX_HY2_PORT:-8443}"
 
-  mkdir -p /etc/sing-box/certs
   if [[ ! -f /etc/sing-box/certs/hy2.crt ]]; then
     openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
       -keyout /etc/sing-box/certs/hy2.key -out /etc/sing-box/certs/hy2.crt \
@@ -62,6 +56,9 @@ module_sing_box_install() {
     chmod 600 /etc/sing-box/certs/hy2.key
   fi
 
+  # Minimal bootstrap config until vpn-users seeds operator and applies full config
+  local boot_uuid
+  boot_uuid="$("${bin_dir}/sing-box" generate uuid 2>/dev/null || random_uuid)"
   cat >"${conf_dir}/config.json" <<EOF
 {
   "log": { "level": "info", "timestamp": true },
@@ -71,9 +68,7 @@ module_sing_box_install() {
       "tag": "vless-reality",
       "listen": "::",
       "listen_port": ${vless_port},
-      "users": [
-        { "uuid": "${uuid}", "flow": "xtls-rprx-vision" }
-      ],
+      "users": [ { "uuid": "${boot_uuid}", "flow": "xtls-rprx-vision" } ],
       "tls": {
         "enabled": true,
         "server_name": "${sni}",
@@ -100,9 +95,7 @@ module_sing_box_install() {
       "masquerade": "https://${sni}"
     }
   ],
-  "outbounds": [
-    { "type": "direct", "tag": "direct" }
-  ]
+  "outbounds": [ { "type": "direct", "tag": "direct" } ]
 }
 EOF
   chmod 600 "${conf_dir}/config.json"
@@ -130,8 +123,11 @@ EOF
   firewall_allow_tcp "${vless_port}" "sing-box-vless"
   firewall_allow_udp "${hy2_port}" "sing-box-hy2"
 
-  info "sing-box up. UUID=${uuid} Reality pubkey=${public_key} HY2 password in ${FRESHVPS_ETC}/secrets/singbox_hy2_password"
-  info "Client Reality short_id=${short_id} SNI=${sni} server=${PUBLIC_IP:-<ip>}"
+  # Persist IP for later link generation
+  [[ -n "${PUBLIC_IP:-}" ]] && printf '%s\n' "${PUBLIC_IP}" >"${FRESHVPS_ETC}/public_ip"
+
+  info "sing-box binary + secrets ready (multi-user applied by vpn-users module)"
+  info "Reality pubkey=${public_key} short_id=${short_id} SNI=${sni}"
 }
 
 module_sing_box_uninstall() {

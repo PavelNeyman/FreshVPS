@@ -7,7 +7,6 @@ module_hardening_install() {
   pkg_install ufw fail2ban unattended-upgrades apt-listchanges needrestart \
     curl ca-certificates openssh-server
 
-  # BBR
   if ! sysctl net.ipv4.tcp_congestion_control 2>/dev/null | grep -q bbr; then
     cat >/etc/sysctl.d/99-freshvps-bbr.conf <<'EOF'
 net.core.default_qdisc=fq
@@ -19,7 +18,6 @@ EOF
     info "BBR already enabled"
   fi
 
-  # SSH: keys preferred; keep password auth as-is if already configured
   local sshd=/etc/ssh/sshd_config
   if [[ -f "${sshd}" ]]; then
     cp -a "${sshd}" "${sshd}.freshvps.bak.$(date +%s)" || true
@@ -40,10 +38,8 @@ EOF
     info "SSH hardened (password auth disabled; root keys only)"
   fi
 
-  # fail2ban
   systemctl enable --now fail2ban
 
-  # unattended-upgrades
   cat >/etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
@@ -51,12 +47,15 @@ APT::Periodic::AutocleanInterval "7";
 EOF
   dpkg-reconfigure -f noninteractive unattended-upgrades 2>/dev/null || true
 
-  # UFW baseline
   ufw --force reset >/dev/null 2>&1 || true
   ufw default deny incoming
   ufw default allow outgoing
   ufw allow "${SSH_PORT:-22}/tcp" comment 'SSH'
-  # Other module ports will be opened by their modules after enable
   ufw --force enable
   info "UFW enabled; SSH ${SSH_PORT:-22}/tcp allowed"
+}
+
+module_hardening_uninstall() {
+  # Intentionally non-destructive: do not disable UFW/SSH hardening automatically.
+  info "hardening uninstall is a no-op (SSH/UFW/fail2ban left in place for safety)"
 }

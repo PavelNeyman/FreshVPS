@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# freshvps-vpn — operator CLI (source of truth for VPN users)
+set -euo pipefail
+
+ROOT="${FRESHVPS_ROOT:-}"
+if [[ -z "${ROOT}" ]]; then
+  if [[ -f /opt/freshvps/lib/vpn-core.sh ]]; then
+    ROOT=/opt/freshvps
+  elif [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/vpn-core.sh" ]]; then
+    ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  else
+    echo "Cannot find FreshVPS root" >&2
+    exit 1
+  fi
+fi
+
+# shellcheck source=/dev/null
+source "${ROOT}/lib/common.sh" 2>/dev/null || true
+# shellcheck source=/dev/null
+source "${ROOT}/lib/vpn-core.sh"
+
+usage() {
+  cat <<EOF
+freshvps-vpn — manage VLESS users (operator only)
+
+  freshvps-vpn add <name> [note]
+  freshvps-vpn list
+  freshvps-vpn link <name>
+  freshvps-vpn disable <name>
+  freshvps-vpn enable <name>
+  freshvps-vpn revoke <name>
+  freshvps-vpn apply
+  freshvps-vpn session [hours]   # mint API session token (default 72h)
+EOF
+}
+
+cmd="${1:-}"
+shift || true
+
+case "${cmd}" in
+  add)
+    name="${1:?name}"; note="${2:-}"
+    vpn_add_user "${name}" "${note}"
+    echo "Link:"
+    cat "${VPN_CLIENTS_DIR}/${name}/link.txt"
+    echo "Artifacts: ${VPN_CLIENTS_DIR}/${name}/"
+    ;;
+  list)
+    vpn_list_users
+    ;;
+  link)
+    name="${1:?name}"
+    cat "${VPN_CLIENTS_DIR}/${name}/link.txt"
+    ;;
+  disable)
+    vpn_set_enabled "${1:?name}" false
+    echo "disabled ${1}"
+    ;;
+  enable)
+    vpn_set_enabled "${1:?name}" true
+    echo "enabled ${1}"
+    ;;
+  revoke)
+    vpn_revoke_user "${1:?name}"
+    echo "revoked ${1}"
+    ;;
+  apply)
+    vpn_apply_config
+    echo "config applied"
+    ;;
+  session)
+    hours="${1:-72}"
+    tok="$(openssl rand -hex 32)"
+    exp="$(( $(date +%s) + hours * 3600 ))"
+    mkdir -p /etc/freshvps/sessions
+    chmod 700 /etc/freshvps/sessions
+    printf '%s\n' "${exp}" >"/etc/freshvps/sessions/${tok}"
+    chmod 600 "/etc/freshvps/sessions/${tok}"
+    echo "${tok}"
+    echo "expires_unix=${exp} hours=${hours}" >&2
+    ;;
+  -h|--help|"")
+    usage
+    ;;
+  *)
+    echo "unknown command: ${cmd}" >&2
+    usage
+    exit 1
+    ;;
+esac

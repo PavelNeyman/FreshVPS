@@ -8,42 +8,43 @@ Modular Debian VPS bootstrap: hardening, sing-box (VLESS+Reality+Hysteria2), Ope
 
 ## Phases
 
-### Phase 0 — Foundation — Done
-
-### Phase 1 — Core modules — Done
-
-### Phase 2 — Integration — Done
+### Phase 0–2 — Foundation, modules, integration — Done
 
 ### Phase 3 — Polish
 
 | ID | Task | Status |
 |----|------|--------|
-| P3.1 | Non-interactive config file example | Done |
-| P3.2 | Uninstall / disable hooks per module | Done (`uninstall.sh`) |
-| P3.3 | CHANGELOG.md | Done |
+| P3.1–P3.3, P3.5–P3.7 | uninstall, docs, OpenSOHO Docker, Beszel, TG scaffold | Done |
 | P3.4 | Smoke-test on real Debian VPS | **Waiting on owner VPS** |
-| P3.5 | Telegram bot (`/status` `/vpn`) | Done (minimal long-poll) |
-| P3.6 | OpenSOHO Docker-first + binary fallback | Done |
-| P3.7 | Beszel agent enable script after Hub UI | Done |
-| P3.8 | Multi-user VPN key issue/revoke in bot | Pending |
-| P3.9 | Fix bugs found in smoke-test | Pending |
+| P3.9 | Fix bugs from smoke-test | Pending |
 
-## Deferred (not v1)
+### Phase 4 — Multi-user VPN (operator-only)
 
-- Port knocking
-- AdGuard Home / Blocky UI
-- Parental profiles
-- Reverse proxy / TLS front
-- Mesh (Headscale etc.)
+Design: [docs/VPN-USERS.md](VPN-USERS.md)
+
+| ID | Task | Status |
+|----|------|--------|
+| P4.1 | Registry + `freshvps-vpn` CLI (add/list/disable/revoke/link) | Pending |
+| P4.2 | sing-box multi-UUID render + validate + restart | Pending |
+| P4.3 | DNS via Blocky for VPN clients | Pending |
+| P4.4 | QR/link artifacts under `/etc/freshvps/clients/` | Pending |
+| P4.5 | Telegram admin commands over CLI | Pending |
+| P4.6 | VPN-only API + session tokens | Pending |
+| P4.7 | Shortcuts doc: Face ID gate + local token file + QR | Pending |
+
+**Agreed security for API/Shortcuts:** VPN-only · session token · Face ID gate on Shortcut · token in local file (not master in Shortcut body).
+
+## Deferred
+
+- Port knocking, AdGuard/Blocky UI, parental, reverse proxy, mesh
+- Native iOS Keychain helper app
+- Full web admin UI
 
 ## Next
 
-1. **Smoke-test on owner VPS** (`docs/SMOKE.md`)
-2. Fix install bugs from real run
-3. Optional: multi-client UUID management in Telegram bot
+1. Smoke-test on owner VPS
+2. Phase 4 implementation (can start after or in parallel with P3.4 if owner prefers)
 
 ## Notes
 
-- Target: Debian 12/13, root or passwordless sudo.
-- Secrets never in git; generated on host under `/etc/freshvps/`.
-- Prefer official upstream binaries + systemd / Docker.
+- Secrets never in git; `/etc/freshvps/` on host only.

@@ -8,7 +8,7 @@
 - Only the operator issues access.
 - Users never talk to Telegram; operator forwards link/QR.
 - Automation: registry → sing-box → Blocky DNS path → reload → artifacts.
-- Surfaces: **CLI**, **Telegram**, **API + Shortcuts**.
+- Surfaces: **CLI**, **Telegram**, **API** (+ optional **Shortcuts** built on device — see [SHORTCUT-IOS.md](SHORTCUT-IOS.md)).
 
 ## On-disk layout
 
@@ -21,7 +21,6 @@
 | `/etc/freshvps/READY.txt` | Post-install operator summary |
 | `/usr/local/bin/freshvps-vpn` | CLI |
 | `/opt/freshvps-api/server.py` | API |
-| `/opt/freshvps/shortcuts/` | Optional exported `.shortcut` |
 
 ## CLI
 
@@ -39,15 +38,14 @@ Install seeds user **`operator`** automatically.
 
 ## Telegram (operator chat only)
 
-`/vpn_add` `/vpn_list` `/vpn_link` `/vpn_disable` `/vpn_enable` `/vpn_revoke` `/session` `/status` `/ready` `/shortcut`
+`/vpn_add` `/vpn_list` `/vpn_link` `/vpn_disable` `/vpn_enable` `/vpn_revoke` `/session` `/status` `/ready`
 
 ## API + Shortcuts
-
-See [SHORTCUT-IOS.md](SHORTCUT-IOS.md).
 
 - Default bind: `127.0.0.1:8787`
 - Auth: `Authorization: Bearer <session>`
 - Session: `freshvps-vpn session` or `/session`
+- How to build Shortcut: [SHORTCUT-IOS.md](SHORTCUT-IOS.md) (no server-side `.shortcut` packaging)
 
 ## DNS
 
@@ -55,4 +53,4 @@ See [SHORTCUT-IOS.md](SHORTCUT-IOS.md).
 
 ## Non-goals
 
-OpenWrt onboarding, public registration, full web UI, native Keychain app.
+OpenWrt onboarding, public registration, full web UI, native Keychain app, VPS hosting of Apple Shortcut binaries.

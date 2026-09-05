@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# freshvps-vpn — operator CLI (source of truth for VPN users)
+# freshvps-vpn — operator CLI
 set -euo pipefail
 
 ROOT="${FRESHVPS_ROOT:-}"
@@ -26,12 +26,10 @@ freshvps-vpn — manage VLESS users (operator only)
   freshvps-vpn add <name> [note]
   freshvps-vpn list
   freshvps-vpn link <name>
-  freshvps-vpn disable <name>
-  freshvps-vpn enable <name>
-  freshvps-vpn revoke <name>
+  freshvps-vpn disable|enable|revoke <name>
   freshvps-vpn apply
   freshvps-vpn session [hours]
-  freshvps-vpn api-bind localhost|detect|<ip>
+  freshvps-vpn api-bind localhost|detect|<ip> [--ufw]
 EOF
 }
 
@@ -46,29 +44,12 @@ case "${cmd}" in
     cat "${VPN_CLIENTS_DIR}/${name}/link.txt"
     echo "Artifacts: ${VPN_CLIENTS_DIR}/${name}/"
     ;;
-  list)
-    vpn_list_users
-    ;;
-  link)
-    name="${1:?name}"
-    cat "${VPN_CLIENTS_DIR}/${name}/link.txt"
-    ;;
-  disable)
-    vpn_set_enabled "${1:?name}" false
-    echo "disabled ${1}"
-    ;;
-  enable)
-    vpn_set_enabled "${1:?name}" true
-    echo "enabled ${1}"
-    ;;
-  revoke)
-    vpn_revoke_user "${1:?name}"
-    echo "revoked ${1}"
-    ;;
-  apply)
-    vpn_apply_config
-    echo "config applied"
-    ;;
+  list) vpn_list_users ;;
+  link) cat "${VPN_CLIENTS_DIR}/${1:?name}/link.txt" ;;
+  disable) vpn_set_enabled "${1:?name}" false; echo "disabled ${1}" ;;
+  enable) vpn_set_enabled "${1:?name}" true; echo "enabled ${1}" ;;
+  revoke) vpn_revoke_user "${1:?name}"; echo "revoked ${1}" ;;
+  apply) vpn_apply_config; echo "config applied" ;;
   session)
     hours="${1:-72}"
     tok="$(openssl rand -hex 32)"
@@ -85,14 +66,8 @@ case "${cmd}" in
       echo "API module not installed" >&2
       exit 1
     fi
-    /opt/freshvps-api/rebind.sh "${1:-localhost}"
+    /opt/freshvps-api/rebind.sh "${1:-localhost}" "${2:-}"
     ;;
-  -h|--help|"")
-    usage
-    ;;
-  *)
-    echo "unknown command: ${cmd}" >&2
-    usage
-    exit 1
-    ;;
+  -h|--help|"") usage ;;
+  *) echo "unknown: ${cmd}" >&2; usage; exit 1 ;;
 esac

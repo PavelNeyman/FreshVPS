@@ -51,7 +51,6 @@ EOF
 
   cat >/opt/freshvps-telegram/bot.sh <<'EOF'
 #!/usr/bin/env bash
-# Operator-only long-poll bot
 set -euo pipefail
 TOKEN_FILE=/etc/freshvps/secrets/telegram_bot_token
 CHAT_FILE=/etc/freshvps/secrets/telegram_admin_id
@@ -79,9 +78,9 @@ HELP='FreshVPS operator bot
 /vpn_disable <name>
 /vpn_enable <name>
 /vpn_revoke <name>
-/session [hours] — API session token for Shortcuts
-/shortcut — how to import Admin Shortcut
-/ready — path to install summary'
+/session [hours] — API token for Shortcuts
+/ready — install summary
+Shortcuts: build once on device — repo docs/SHORTCUT-IOS.md'
 
 while true; do
   resp="$(curl -fsS "${API}/getUpdates?timeout=30&offset=${OFFSET}" || true)"
@@ -123,11 +122,7 @@ while true; do
       /session)
         hours="${2:-72}"
         tok="$(freshvps-vpn session "${hours}" 2>/dev/null | head -1)"
-        send "${chat}" "Session (${hours}h) — store on iPhone local file only:\n${tok}"
-        ;;
-      /shortcut)
-        send "${chat}" "See docs/SHORTCUT-IOS.md on the server repo. After VPN is up: open import URL from /opt/freshvps/shortcuts/IMPORT.txt if present, or build once on iOS following that doc."
-        [[ -f /opt/freshvps/shortcuts/IMPORT.txt ]] && send "${chat}" "$(cat /opt/freshvps/shortcuts/IMPORT.txt)"
+        send "${chat}" "Session (${hours}h) — local file on phone only:\n${tok}"
         ;;
       /ready)
         [[ -f /etc/freshvps/READY.txt ]] && send "${chat}" "$(head -c 3500 /etc/freshvps/READY.txt)" || send "${chat}" "no READY.txt yet"

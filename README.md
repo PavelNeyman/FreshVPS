@@ -1,27 +1,55 @@
 # FreshVPS
 
-Автоматическое развёртывание чистой Debian VPS под персональные задачи.
+Modular bootstrap for a fresh **Debian** VPS: answer a few questions, get a hardened system with VPN, DNS filtering, OpenWrt management, monitoring, Telegram control, and backups.
 
-## Цели (WIP)
+**Version:** see [VERSION](VERSION)  
+**Rules for contributors/agents:** [AGENTS.md](AGENTS.md)  
+**Plan:** [docs/ROADMAP.md](docs/ROADMAP.md)
 
-- **VPN**: VLESS + Reality (Xray-core / sing-box)
-- **Управление роутерами**: OpenWISP (для парка OpenWrt-устройств)
-- Базовая hardening, firewall, обновления
-- Модульная архитектура скрипта: выбираешь что ставить
+## v1 stack
 
-## Статус
+| Component | Role |
+|-----------|------|
+| Hardening | SSH, fail2ban, firewall, unattended-upgrades, BBR |
+| **sing-box** | VLESS + Reality + Hysteria2 |
+| **OpenSOHO** | Central management of OpenWrt routers |
+| **Blocky** | DNS + ad/tracker blocking (hybrid with routers) |
+| **Uptime Kuma** | Uptime / HTTP checks + alerts |
+| **Beszel** | Resource metrics |
+| Telegram bot | Keys, status, notifications |
+| Backups | restic (VPS + OpenWrt configs) |
 
-Репозиторий только что создан. Архитектура и скрипт в разработке.
+## Requirements
 
-## Как пользоваться (будет)
+- Fresh Debian 12 or 13
+- Root (or sudo)
+- Public IPv4 (recommended)
+
+## Quick start
 
 ```bash
-# На свежей Debian 12/13
-curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/install.sh | bash
+# On the VPS
+git clone https://github.com/PavelNeyman/FreshVPS.git
+cd FreshVPS
+sudo bash install.sh
 ```
 
-Или клонировать и запускать локально.
+Non-interactive (optional config file):
 
-## Лицензия
+```bash
+sudo bash install.sh --config /path/to/freshvps.conf
+```
+
+## Layout
+
+```
+install.sh          # entrypoint
+lib/                # shared helpers
+modules/            # one module per concern
+configs/            # templates (no secrets)
+docs/               # ROADMAP, INSTALL, SECURITY
+```
+
+## License
 
 TBD

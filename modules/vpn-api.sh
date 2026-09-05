@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Module: VPN-only admin API (127.0.0.1 + optional VPN bind)
+# Module: admin API (default 127.0.0.1; rebind via freshvps-vpn api-bind)
 # shellcheck disable=SC2154
 
 module_vpn_api_install() {
@@ -11,17 +11,18 @@ module_vpn_api_install() {
   mkdir -p /opt/freshvps-api /etc/freshvps/sessions
   chmod 700 /etc/freshvps/sessions
 
-  # Master token for minting is separate; sessions via CLI
   if [[ ! -f "${FRESHVPS_ETC}/secrets/api_master_token" ]]; then
     write_secret api_master_token "$(openssl rand -hex 32)"
   fi
+  printf '%s\n' "${bind}" >"${FRESHVPS_ETC}/api_bind"
+  printf '%s\n' "${port}" >"${FRESHVPS_ETC}/api_port"
 
   cat >/opt/freshvps-api/server.py <<'PY'
 #!/usr/bin/env python3
-"""FreshVPS admin API — session auth, localhost/VPN bind only."""
+"""FreshVPS admin API — session auth only."""
 import json, os, subprocess, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 ETC = "/etc/freshvps"
 SESS = os.path.join(ETC, "sessions")
@@ -75,7 +76,7 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/health":
-            return self._json(200, {"ok": True})
+            return self._json(200, {"ok": True, "bind": BIND, "port": PORT})
         if not self._auth():
             return self._json(401, {"error": "unauthorized"})
         if u.path == "/vpn/users":
@@ -104,23 +105,10 @@ class H(BaseHTTPRequestHandler):
             if not os.path.isfile(path):
                 return self._json(404, {"error": "no link"})
             return self._json(200, {"link": open(path).read().strip()})
-        if u.path == "/admin/shortcut":
-            # serve template if present
-            p = "/opt/freshvps/shortcuts/FreshVPS-Admin.shortcut"
-            if not os.path.isfile(p):
-                return self._json(404, {"error": "template missing — see docs/SHORTCUT-IOS.md"})
-            data = open(p, "rb").read()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Disposition", "attachment; filename=FreshVPS-Admin.shortcut")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-            return
         if u.path == "/admin/client-config":
             return self._json(200, {
                 "api_base": f"http://{BIND}:{PORT}",
-                "note": "Use only over operator VPN; store session token in local file"
+                "note": "Session in Authorization Bearer; prefer SSH tunnel or VPN bind"
             })
         self._json(404, {"error": "not found"})
 
@@ -166,9 +154,41 @@ if __name__ == "__main__":
 PY
   chmod 755 /opt/freshvps-api/server.py
 
+  cat >/opt/freshvps-api/rebind.sh <<'EOF'
+#!/usr/bin/env bash
+# Rebind admin API. Usage: rebind.sh <ip|localhost|detect>
+set -euo pipefail
+PORT="$(cat /etc/freshvps/api_port 2>/dev/null || echo 8787)"
+arg="${1:-localhost}"
+case "${arg}" in
+  localhost|127.0.0.1) BIND=127.0.0.1 ;;
+  detect)
+    # Prefer non-primary global IPv4 (e.g. VPN/tun) if present; else localhost
+    BIND="$(ip -4 -o addr show scope global 2>/dev/null | awk '!/docker|br-|veth/ {print $4}' | cut -d/ -f1 | tail -n +2 | head -1 || true)"
+    [[ -n "${BIND}" ]] || BIND=127.0.0.1
+    ;;
+  *) BIND="${arg}" ;;
+esac
+echo "${BIND}" >/etc/freshvps/api_bind
+mkdir -p /etc/systemd/system/freshvps-api.service.d
+cat >/etc/systemd/system/freshvps-api.service.d/bind.conf <<EON
+[Service]
+Environment=VPN_API_BIND=${BIND}
+Environment=VPN_API_PORT=${PORT}
+EON
+systemctl daemon-reload
+systemctl restart freshvps-api
+echo "API listening on ${BIND}:${PORT}"
+if [[ "${BIND}" != "127.0.0.1" ]] && command -v ufw >/dev/null 2>&1; then
+  ufw allow "${PORT}/tcp" comment 'freshvps-api' || true
+  echo "Opened UFW ${PORT}/tcp — restrict further if this is a public IP"
+fi
+EOF
+  chmod 700 /opt/freshvps-api/rebind.sh
+
   cat >/etc/systemd/system/freshvps-api.service <<EOF
 [Unit]
-Description=FreshVPS admin API (VPN/localhost only)
+Description=FreshVPS admin API
 After=network-online.target
 
 [Service]
@@ -184,13 +204,13 @@ WantedBy=multi-user.target
 EOF
 
   systemd_enable_start freshvps-api
-  # Do not open WAN; bind defaults to 127.0.0.1 — access via SSH tunnel or VPN IP if bind changed
-  info "API on ${bind}:${port} — mint session: freshvps-vpn session 72"
-  info "Shortcuts: Face ID → read token file → Authorization: Bearer <session>"
+  info "API on ${bind}:${port} — session: freshvps-vpn session 72"
+  info "Rebind: freshvps-vpn api-bind localhost|detect|<ip>"
 }
 
 module_vpn_api_uninstall() {
   systemctl disable --now freshvps-api 2>/dev/null || true
   rm -f /etc/systemd/system/freshvps-api.service
+  rm -rf /etc/systemd/system/freshvps-api.service.d
   systemctl daemon-reload 2>/dev/null || true
 }

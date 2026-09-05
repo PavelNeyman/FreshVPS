@@ -60,3 +60,10 @@ EOF
   systemctl enable --now freshvps-backup.timer
   info "restic repo ${repo}; password in ${FRESHVPS_ETC}/secrets/restic_password; daily timer enabled"
 }
+
+module_backup_uninstall() {
+  systemctl disable --now freshvps-backup.timer 2>/dev/null || true
+  rm -f /etc/systemd/system/freshvps-backup.timer /etc/systemd/system/freshvps-backup.service
+  systemctl daemon-reload 2>/dev/null || true
+  info "Backup timer removed (restic repo data not deleted)"
+}

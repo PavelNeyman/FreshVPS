@@ -1,5 +1,5 @@
-# FreshVPS non-interactive config (source as bash)
-# sudo bash install.sh --config configs/freshvps.conf.example --non-interactive
+# FreshVPS non-interactive config
+# sudo bash install.sh --config /root/freshvps.conf --non-interactive
 
 PUBLIC_IP=
 SSH_PORT=22
@@ -7,6 +7,8 @@ SSH_PORT=22
 ENABLE_HARDENING=1
 ENABLE_SINGBOX=1
 ENABLE_BLOCKY=1
+ENABLE_VPN_USERS=1
+ENABLE_VPN_API=1
 ENABLE_OPENSOHO=1
 ENABLE_KUMA=1
 ENABLE_BESZEL=1
@@ -21,10 +23,10 @@ BLOCKY_DNS_PORT=53
 OPENSOHO_HTTP_PORT=8090
 KUMA_PORT=3001
 BESZEL_PORT=8091
+VPN_API_PORT=8787
+VPN_API_BIND=127.0.0.1
 
-# Optional — leave empty to configure later under /etc/freshvps/secrets/
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ADMIN_ID=
 
-# restic local repo path (default /var/backups/freshvps/repo)
 BACKUP_REPO=

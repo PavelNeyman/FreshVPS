@@ -48,7 +48,6 @@ vpn_vless_link() {
   sid="$(vpn_secret singbox_short_id)"
   sni="$(vpn_sni)"
   port="$(vpn_vless_port)"
-  # vless://uuid@host:port?encryption=none&flow=xtls-rprx-vision&security=reality&sni=&fp=chrome&pbk=&sid=&type=tcp#name
   printf 'vless://%s@%s:%s?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp#%s\n' \
     "${uuid}" "${ip}" "${port}" "${sni}" "${pub}" "${sid}" "${name}"
 }
@@ -67,13 +66,9 @@ vpn_write_artifacts() {
   cat >"${dir}/README.txt" <<EOF
 FreshVPS client: ${name}
 Import link.txt or qr.png into v2rayN / Streisand / Hiddify / Shadowrocket.
-DNS is applied on the server (Blocky) while connected — no phone DNS setup required.
+Prefer remote/server DNS in the client so queries go through the tunnel to Blocky on the VPS.
 EOF
   chmod 600 "${dir}/README.txt"
-}
-
-vpn_users_json() {
-  cat "${VPN_USERS_FILE}"
 }
 
 vpn_user_exists() {
@@ -134,15 +129,25 @@ vpn_list_users() {
 }
 
 vpn_build_users_array() {
-  # JSON array of {uuid, flow, name} for enabled users
-  jq -c '[.users[] | select(.enabled==true) | {uuid:.uuid, flow:"xtls-rprx-vision", name:.name}]' "${VPN_USERS_FILE}"
+  # only fields sing-box VLESS users require
+  local arr
+  arr="$(jq -c '[.users[] | select(.enabled==true) | {uuid:.uuid, flow:"xtls-rprx-vision"}]' "${VPN_USERS_FILE}")"
+  if [[ "${arr}" == "[]" ]]; then
+    arr="[{\"uuid\":\"$(cat /proc/sys/kernel/random/uuid)\",\"flow\":\"xtls-rprx-vision\"}]"
+  fi
+  echo "${arr}"
+}
+
+vpn_try_check() {
+  local conf="$1"
+  [[ -x "${SINGBOX_BIN}" ]] || return 0
+  "${SINGBOX_BIN}" check -c "${conf}" >/dev/null 2>&1
 }
 
 vpn_apply_config() {
   vpn_ensure_dirs
-  local private_key public_key short_id hy2_pass sni vless_port hy2_port users_json
+  local private_key short_id hy2_pass sni vless_port hy2_port users_json
   private_key="$(vpn_secret singbox_reality_private)"
-  public_key="$(vpn_secret singbox_reality_public)"
   short_id="$(vpn_secret singbox_short_id)"
   hy2_pass="$(vpn_secret singbox_hy2_password)"
   sni="$(vpn_sni)"
@@ -155,15 +160,11 @@ vpn_apply_config() {
     return 1
   fi
 
-  # If no users yet, keep a placeholder disabled-friendly empty array — sing-box needs at least structure
-  if [[ "${users_json}" == "[]" ]]; then
-    # inject temporary operator-less empty: some versions require >=1 user; create ephemeral no-op disabled by empty listen? 
-    # Use a random uuid not distributed
-    users_json="[{\"uuid\":\"$(cat /proc/sys/kernel/random/uuid)\",\"flow\":\"xtls-rprx-vision\",\"name\":\"_reserved\"}]"
-  fi
-
   mkdir -p /usr/local/etc/sing-box /etc/sing-box/certs
+  local work
+  work="$(mktemp -d)"
 
+  # Variant A: DNS → Blocky + sniff + dns route (preferred)
   jq -n \
     --argjson users "${users_json}" \
     --arg priv "${private_key}" \
@@ -176,11 +177,12 @@ vpn_apply_config() {
       log: {level:"info", timestamp:true},
       dns: {
         servers: [
-          {tag:"blocky", address:"127.0.0.1", detour:"direct"},
+          {tag:"blocky", address:"127.0.0.1", address_resolver:"local", detour:"direct"},
           {tag:"local", address:"local", detour:"direct"}
         ],
-        strategy: "ipv4_only",
-        final: "blocky"
+        rules: [{outbound:"any", server:"blocky"}],
+        final: "blocky",
+        strategy: "ipv4_only"
       },
       inbounds: [
         {
@@ -200,14 +202,14 @@ vpn_apply_config() {
             }
           },
           sniff: true,
-          sniffer: true
+          sniff_override_destination: true
         },
         {
           type: "hysteria2",
           tag: "hy2",
           listen: "::",
           listen_port: $hport,
-          users: (if $hy2 != "" then [{password:$hy2}] else [] end),
+          users: (if ($hy2|length) > 0 then [{password:$hy2}] else [] end),
           tls: {
             enabled: true,
             alpn: ["h3"],
@@ -228,29 +230,37 @@ vpn_apply_config() {
         final: "direct",
         auto_detect_interface: true
       }
-    }' >"${SINGBOX_CONF}.new"
+    }' >"${work}/a.json"
 
-  # Fix possible wrong keys for sing-box version — sniff field names
-  # Remove sniffer if invalid; keep sniff
-  jq 'walk(if type=="object" then del(.sniffer) else . end)' "${SINGBOX_CONF}.new" >"${SINGBOX_CONF}.new2" 2>/dev/null || cp "${SINGBOX_CONF}.new" "${SINGBOX_CONF}.new2"
+  # Variant B: simpler DNS servers list (no dns rules)
+  jq 'del(.dns.rules) | .dns.servers = [{tag:"blocky",address:"127.0.0.1",detour:"direct"}]' \
+    "${work}/a.json" >"${work}/b.json" 2>/dev/null || cp "${work}/a.json" "${work}/b.json"
 
-  if [[ -x "${SINGBOX_BIN}" ]]; then
-    if ! "${SINGBOX_BIN}" check -c "${SINGBOX_CONF}.new2" 2>/dev/null; then
-      # fallback simpler config without dns route if check fails
-      jq 'del(.dns) | del(.route) | del(.outbounds[1])' "${SINGBOX_CONF}.new2" >"${SINGBOX_CONF}.new3" || cp "${SINGBOX_CONF}.new2" "${SINGBOX_CONF}.new3"
-      if ! "${SINGBOX_BIN}" check -c "${SINGBOX_CONF}.new3" 2>/dev/null; then
-        echo "sing-box config validation failed" >&2
-        return 1
-      fi
-      mv "${SINGBOX_CONF}.new3" "${SINGBOX_CONF}"
-    else
-      mv "${SINGBOX_CONF}.new2" "${SINGBOX_CONF}"
+  # Variant C: no DNS block — still valid multi-user VPN
+  jq 'del(.dns) | .outbounds = [{type:"direct",tag:"direct"}] | del(.route) | del(.inbounds[0].sniff_override_destination)' \
+    "${work}/a.json" >"${work}/c.json" 2>/dev/null || true
+
+  local chosen=""
+  for v in a b c; do
+    if vpn_try_check "${work}/${v}.json"; then
+      chosen="${work}/${v}.json"
+      break
     fi
-  else
-    mv "${SINGBOX_CONF}.new2" "${SINGBOX_CONF}"
+  done
+
+  if [[ -z "${chosen}" ]]; then
+    # last resort: write C without check if binary missing
+    if [[ ! -x "${SINGBOX_BIN}" ]]; then
+      chosen="${work}/c.json"
+    else
+      echo "sing-box config validation failed for all variants" >&2
+      rm -rf "${work}"
+      return 1
+    fi
   fi
-  chmod 600 "${SINGBOX_CONF}"
-  rm -f "${SINGBOX_CONF}.new" "${SINGBOX_CONF}.new2" "${SINGBOX_CONF}.new3" 2>/dev/null || true
+
+  install -m 600 "${chosen}" "${SINGBOX_CONF}"
+  rm -rf "${work}"
 
   if systemctl is-enabled sing-box >/dev/null 2>&1 || systemctl is-active sing-box >/dev/null 2>&1; then
     systemctl restart sing-box

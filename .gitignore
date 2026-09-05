@@ -1,0 +1,26 @@
+# Secrets and local state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!configs/**/*.example*
+id_rsa*
+*_private*
+
+# Generated on host (should never be committed)
+/etc/freshvps/
+state/
+*.state
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Logs and temp
+*.log
+tmp/
+.tmp/

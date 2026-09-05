@@ -14,7 +14,7 @@ module_backup_install() {
   local repo="${BACKUP_REPO:-/var/backups/freshvps/repo}"
   export RESTIC_PASSWORD_FILE="${FRESHVPS_ETC}/secrets/restic_password"
 
-  if [[ ! -d "${repo}/data" ]] && [[ ! -f "${repo}/config" ]]; then
+  if [[ ! -f "${repo}/config" ]]; then
     restic init --repo "${repo}" || true
   fi
 
@@ -22,34 +22,14 @@ module_backup_install() {
 #!/usr/bin/env bash
 set -euo pipefail
 export RESTIC_PASSWORD_FILE=${FRESHVPS_ETC}/secrets/restic_password
-REPO="${repo}"
-restic -r ""${REPO}"" backup \
-  /etc/freshvps \
-  /usr/local/etc/sing-box \
-  /etc/blocky \
-  /opt/opensoho \
-  /opt/uptime-kuma/data \
-  /opt/beszel/hub-data \
-  --exclude-caches || true
-restic -r ""${REPO}"" forget --keep-daily 7 --keep-weekly 4 --prune || true
-EOF
-  # fix accidental quotes in heredoc
-  sed -i 's/restic -r ""\(.*\)""/restic -r "\1"/g' /opt/freshvps-backup/backup.sh 2>/dev/null || true
-  chmod 700 /opt/freshvps-backup/backup.sh
-
-  # Cleaner rewrite of backup script
-  cat >/opt/freshvps-backup/backup.sh <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-export RESTIC_PASSWORD_FILE=${FRESHVPS_ETC}/secrets/restic_password
 REPO=${repo}
-restic -r "\${REPO}" backup \
-  /etc/freshvps \
-  /usr/local/etc/sing-box \
-  /etc/blocky \
-  /opt/opensoho \
-  /opt/uptime-kuma/data \
-  /opt/beszel/hub-data \
+restic -r "\${REPO}" backup \\
+  /etc/freshvps \\
+  /usr/local/etc/sing-box \\
+  /etc/blocky \\
+  /opt/opensoho \\
+  /opt/uptime-kuma/data \\
+  /opt/beszel/hub-data \\
   --exclude-caches || true
 restic -r "\${REPO}" forget --keep-daily 7 --keep-weekly 4 --prune || true
 EOF

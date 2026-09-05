@@ -30,7 +30,8 @@ freshvps-vpn — manage VLESS users (operator only)
   freshvps-vpn enable <name>
   freshvps-vpn revoke <name>
   freshvps-vpn apply
-  freshvps-vpn session [hours]   # mint API session token (default 72h)
+  freshvps-vpn session [hours]
+  freshvps-vpn api-bind localhost|detect|<ip>
 EOF
 }
 
@@ -78,6 +79,13 @@ case "${cmd}" in
     chmod 600 "/etc/freshvps/sessions/${tok}"
     echo "${tok}"
     echo "expires_unix=${exp} hours=${hours}" >&2
+    ;;
+  api-bind)
+    if [[ ! -x /opt/freshvps-api/rebind.sh ]]; then
+      echo "API module not installed" >&2
+      exit 1
+    fi
+    /opt/freshvps-api/rebind.sh "${1:-localhost}"
     ;;
   -h|--help|"")
     usage

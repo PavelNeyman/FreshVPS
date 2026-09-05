@@ -1,66 +1,58 @@
-# Multi-user VPN & admin control (design)
+# Multi-user VPN & admin control
 
-> Status: **Agreed** — implementation pending (after core install smoke-test).
-> Scope: people/devices connecting **to the VPS** (not OpenWrt).
+> Status: **Implemented in tree** (smoke-test pending on real VPS).
+> Scope: people/devices → **VPS** only (not OpenWrt).
 
 ## Goals
 
-- Only the operator issues access (no end-user self-service).
-- Users never talk to Telegram; they only receive a link/QR via any channel the operator chooses.
-- Maximum automation: registry, sing-box config, DNS via Blocky inside the tunnel, service reload, client artifacts.
-- Admin surfaces: **CLI** (source of truth), **Telegram** (operator-only panel), **API + Apple Shortcuts** (when on VPN).
+- Only the operator issues access.
+- Users never talk to Telegram; operator forwards link/QR.
+- Automation: registry → sing-box → Blocky DNS path → reload → artifacts.
+- Surfaces: **CLI**, **Telegram**, **API + Shortcuts**.
 
-## User model
+## On-disk layout
 
-| Role | Actions |
+| Path | Purpose |
 |------|---------|
-| Operator | add / list / disable / enable / revoke / export link+QR |
-| End user | import QR or `vless://` into a client; no bot, no API |
+| `/etc/freshvps/vpn-users.json` | Registry |
+| `/etc/freshvps/clients/<name>/link.txt` | `vless://` |
+| `/etc/freshvps/clients/<name>/qr.png` | QR |
+| `/etc/freshvps/sessions/<token>` | API session expiry unix |
+| `/etc/freshvps/READY.txt` | Post-install operator summary |
+| `/usr/local/bin/freshvps-vpn` | CLI |
+| `/opt/freshvps-api/server.py` | API |
+| `/opt/freshvps/shortcuts/` | Optional exported `.shortcut` |
 
-- **VLESS + Reality**: one UUID per user (primary).
-- **Hysteria2**: optional shared or later per-user; not required for multi-user v1.
-- Registry: `/etc/freshvps/vpn-users.json`
-- Artifacts: `/etc/freshvps/clients/<name>/` (`link.txt`, `qr.png`)
+## CLI
 
-## DNS (Blocky)
+```bash
+freshvps-vpn add alice "phone"
+freshvps-vpn list
+freshvps-vpn link alice
+freshvps-vpn disable alice
+freshvps-vpn enable alice
+freshvps-vpn revoke alice
+freshvps-vpn session 72
+```
 
-VPN clients must resolve through Blocky on the VPS (server-side DNS / hijack in sing-box), so ad/tracker filtering applies without manual DNS on the phone.
+Install seeds user **`operator`** automatically.
 
-Prefer Blocky on localhost (or VPN-only), not a public open resolver.
+## Telegram (operator chat only)
 
-## Admin channels
+`/vpn_add` `/vpn_list` `/vpn_link` `/vpn_disable` `/vpn_enable` `/vpn_revoke` `/session` `/status` `/ready` `/shortcut`
 
-| Channel | When |
-|---------|------|
-| `freshvps-vpn` CLI | SSH; automation; source of truth |
-| Telegram bot | Operator chat id only; same operations as CLI |
-| HTTP API | Only reachable **from the operator VPN**; used by Shortcuts |
+## API + Shortcuts
 
-If VPN is down: API/Shortcuts unavailable by design → use Telegram or CLI.
+See [SHORTCUT-IOS.md](SHORTCUT-IOS.md).
 
-## API + Shortcuts security (agreed)
+- Default bind: `127.0.0.1:8787`
+- Auth: `Authorization: Bearer <session>`
+- Session: `freshvps-vpn session` or `/session`
 
-1. **VPN-only**: API bind on VPN interface / not exposed on public WAN.
-2. **Session token**: short-lived session issued via CLI or Telegram; **master token never** embedded in a Shortcut.
-3. **Face ID gate**: Shortcut starts with system Authenticate (Face ID / passcode) before any network call.
-4. **Token file**: session (or current token) stored in a **local** file on iPhone (prefer On My iPhone, not iCloud); Shortcut reads file after Face ID.
+## DNS
 
-Optional later: native Keychain helper app — **not** required for v1.
+`vpn_apply_config` points sing-box DNS at Blocky `127.0.0.1` when validation succeeds.
 
-### Suggested API shape (implementation)
+## Non-goals
 
-- `Authorization: Bearer <session>`
-- `POST /vpn/users` — create
-- `GET /vpn/users` — list
-- `POST /vpn/users/{name}/disable|enable`
-- `DELETE /vpn/users/{name}`
-- `GET /vpn/users/{name}/qr` — `image/png`
-- `POST /auth/session` — only from already-authenticated operator path (or CLI-minted)
-
-All mutating ops call the same core as CLI (generate UUID → write registry → render sing-box → validate → restart → write QR).
-
-## Explicit non-goals (this doc)
-
-- OpenWrt / OpenSOHO user onboarding
-- Public registration or invite codes for strangers
-- Full web admin UI (optional later; same VPN-only rules)
+OpenWrt onboarding, public registration, full web UI, native Keychain app.

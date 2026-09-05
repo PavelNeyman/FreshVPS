@@ -32,3 +32,10 @@ EOF
   firewall_allow_tcp "${port}" "uptime-kuma"
   info "Uptime Kuma: http://${PUBLIC_IP:-SERVER}:${port} — complete setup in browser"
 }
+
+module_kuma_uninstall() {
+  if [[ -f /opt/uptime-kuma/docker-compose.yml ]]; then
+    (cd /opt/uptime-kuma && docker compose down) 2>/dev/null || true
+  fi
+  info "Uptime Kuma stopped (data left under /opt/uptime-kuma/data)"
+}

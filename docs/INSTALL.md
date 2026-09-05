@@ -1,10 +1,12 @@
 # FreshVPS installation
 
+Produces a **ready-to-use** system: VPN with operator profile + QR, Blocky, monitoring, operator CLI/Telegram/API.
+
 ## Requirements
 
 - Debian 12 or 13 (fresh VPS recommended)
-- Root access
-- Outbound HTTPS to GitHub / Docker Hub / ghcr.io
+- Root
+- Outbound HTTPS (GitHub, Docker Hub, ghcr.io)
 
 ## Interactive
 
@@ -14,81 +16,78 @@ cd FreshVPS
 sudo bash install.sh
 ```
 
-Optional: `apt-get install -y whiptail` for dialog UI.
+Optional: `apt-get install -y whiptail`.
 
 ## Non-interactive
 
 ```bash
 cp configs/freshvps.conf.example /root/freshvps.conf
-# edit values (PUBLIC_IP, TELEGRAM_*, ports)
+# set PUBLIC_IP, TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_ID
 sudo bash install.sh --config /root/freshvps.conf --non-interactive
 ```
 
 ## After install
 
+Read **`/etc/freshvps/READY.txt`** (also printed at the end of install).
+
 | Path | Purpose |
 |------|---------|
-| `/etc/freshvps/secrets/` | UUID, Reality keys, passwords, Telegram token |
-| `/var/lib/freshvps/` | Module done markers |
-| `/var/log/freshvps.log` | Install log |
-| `/usr/local/etc/sing-box/config.json` | VPN config |
-| `/etc/blocky/config.yml` | DNS |
-| `http://IP:3001` | Uptime Kuma setup |
-| `http://IP:8091` | Beszel hub |
-| `http://IP:8090` | OpenSOHO |
+| `/etc/freshvps/READY.txt` | Operator summary |
+| `/etc/freshvps/clients/operator/` | Your VLESS link + QR |
+| `/etc/freshvps/vpn-users.json` | User registry |
+| `/etc/freshvps/secrets/` | Reality keys, HY2, Telegram, … |
+| `/usr/local/bin/freshvps-vpn` | User management CLI |
 
-### VPN clients
+### VPN users
 
 ```bash
-sudo /opt/freshvps-telegram/vpn-export.sh
-# or
-sudo cat /etc/freshvps/secrets/singbox_uuid
-sudo cat /etc/freshvps/secrets/singbox_reality_public
-sudo cat /etc/freshvps/secrets/singbox_short_id
-sudo cat /etc/freshvps/secrets/singbox_hy2_password
+freshvps-vpn add alice "phone"
+freshvps-vpn list
+freshvps-vpn link alice
+freshvps-vpn disable alice
+freshvps-vpn revoke alice
+freshvps-vpn session 72
 ```
 
-Ports: **443** VLESS+Reality, **8443** Hysteria2.
+Ports: **443** VLESS+Reality, **8443** Hysteria2 (shared password in secrets).
 
-### OpenWrt / OpenSOHO
+In the client, prefer **remote/server DNS** so queries use Blocky on the VPS.
 
-1. Shared secret: `/etc/freshvps/secrets/opensoho_shared_secret`
-2. On router: `openwisp-config` + `openwisp-monitoring`
-3. Server URL: `http://VPS_IP:8090` (no trailing slash)
-4. Admin user: `docker exec -it opensoho ./opensoho superuser upsert EMAIL PASS` (Docker install)
+### Telegram (operator only)
 
-### Beszel agent
+`/status` `/vpn_add` `/vpn_list` `/vpn_link` `/vpn_disable` `/vpn_enable` `/vpn_revoke` `/session` `/ready`
 
-1. Open hub UI, create account, Add System → copy KEY + TOKEN
-2. `export BESZEL_KEY='...' BESZEL_TOKEN='...'`
-3. `sudo bash /opt/beszel/enable-agent.sh`
+### Admin API (optional Shortcuts)
 
-### Telegram
-
-Bot commands (admin chat only): `/status` `/vpn` `/help`
+Default: `127.0.0.1:8787`.
 
 ```bash
-sudo systemctl status freshvps-telegram-bot
-/opt/freshvps-telegram/notify.sh "test"
+freshvps-vpn session 72
+# SSH tunnel: ssh -L 8787:127.0.0.1:8787 user@VPS
+# or rebind: freshvps-vpn api-bind detect   # careful if IP is public
 ```
+
+Shortcut build: [SHORTCUT-IOS.md](SHORTCUT-IOS.md).
+
+### OpenSOHO
+
+1. Secret: `/etc/freshvps/secrets/opensoho_shared_secret`
+2. Router: `openwisp-config` + monitoring → `http://VPS_IP:8090`
+3. Admin: `docker exec -it opensoho ./opensoho superuser upsert EMAIL PASS`
+
+### Beszel
+
+Hub UI → KEY/TOKEN → `sudo bash /opt/beszel/enable-agent.sh`
 
 ### Backups
 
 ```bash
 sudo /opt/freshvps-backup/backup.sh
-systemctl list-timers freshvps-backup.timer
 ```
 
-## Uninstall modules
+## Uninstall
 
 ```bash
-sudo bash uninstall.sh              # all service modules
-sudo bash uninstall.sh sing-box kuma # selected
+sudo bash uninstall.sh
 sudo bash uninstall.sh --purge-secrets
 ```
-
-Hardening (SSH/UFW) is not rolled back automatically.
-
-## Re-run
-
-Markers: `/var/lib/freshvps/modules/*.done`. Remove a marker to re-run that module path.

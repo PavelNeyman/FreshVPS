@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# FreshVPS uninstall / disable hooks
 set -euo pipefail
 
 FRESHVPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,16 +11,9 @@ MODULES=()
 
 usage() {
   cat <<EOF
-FreshVPS uninstall
+Usage: sudo bash uninstall.sh [--purge-secrets] [module ...]
 
-Usage: sudo bash uninstall.sh [options] [module ...]
-
-  module            One of: hardening sing-box blocky opensoho kuma beszel telegram backup
-                    If omitted, uninstalls all known modules (except hardening packages).
-  --purge-secrets   Also remove /etc/freshvps/secrets (destructive)
-  -h, --help        Help
-
-Does not purge system packages from hardening (fail2ban/ufw) unless you remove them manually.
+Modules: hardening sing-box blocky vpn-users vpn-api opensoho kuma beszel telegram backup
 EOF
 }
 
@@ -34,7 +26,7 @@ parse_args() {
     esac
   done
   if [[ ${#MODULES[@]} -eq 0 ]]; then
-    MODULES=(sing-box blocky opensoho kuma beszel telegram backup)
+    MODULES=(vpn-api vpn-users sing-box blocky opensoho kuma beszel telegram backup)
   fi
 }
 

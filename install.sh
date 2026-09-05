@@ -161,6 +161,7 @@ write_ready_summary() {
     echo "CLI: freshvps-vpn add|list|link|disable|enable|revoke|session"
     echo "TG:  /vpn_add /vpn_list /vpn_link /session /status /ready"
     echo "API: 127.0.0.1:${VPN_API_PORT} (session via freshvps-vpn session)"
+    echo "Shortcuts: build on device — docs/SHORTCUT-IOS.md"
     echo
     echo "=== Services ==="
     echo "Blocky DNS: 127.0.0.1:53 (VPN clients use server DNS)"
@@ -170,14 +171,12 @@ write_ready_summary() {
     echo
     echo "Secrets dir: ${FRESHVPS_ETC}/secrets"
     echo "Log: ${FRESHVPS_LOG}"
-    echo "Docs: SHORTCUT-IOS.md VPN-USERS.md INSTALL.md"
   } >"${f}"
   chmod 600 "${f}"
   info "Wrote ${f}"
   if [[ -x /opt/freshvps-telegram/notify.sh ]]; then
     /opt/freshvps-telegram/notify.sh "FreshVPS READY on ${PUBLIC_IP}. Operator link in /etc/freshvps/READY.txt"
   fi
-  # print to console
   cat "${f}"
 }
 
@@ -204,7 +203,6 @@ main() {
   [[ "${ENABLE_HARDENING}" -eq 1 ]] && run_module hardening
   [[ "${ENABLE_SINGBOX}" -eq 1 ]] && run_module sing-box
   [[ "${ENABLE_BLOCKY}" -eq 1 ]] && run_module blocky
-  # users after sing-box + blocky so apply can route DNS
   [[ "${ENABLE_VPN_USERS}" -eq 1 && "${ENABLE_SINGBOX}" -eq 1 ]] && run_module vpn-users
   [[ "${ENABLE_VPN_API}" -eq 1 ]] && run_module vpn-api
   [[ "${ENABLE_OPENSOHO}" -eq 1 ]] && run_module opensoho
@@ -212,11 +210,6 @@ main() {
   [[ "${ENABLE_BESZEL}" -eq 1 ]] && run_module beszel
   [[ "${ENABLE_TELEGRAM}" -eq 1 ]] && run_module telegram
   [[ "${ENABLE_BACKUP}" -eq 1 ]] && run_module backup
-
-  mkdir -p /opt/freshvps/shortcuts
-  if [[ ! -f /opt/freshvps/shortcuts/README ]]; then
-    echo "Place exported FreshVPS-Admin.shortcut here. See docs/SHORTCUT-IOS.md" >/opt/freshvps/shortcuts/README
-  fi
 
   write_ready_summary
   info "FreshVPS install finished — system is ready for use"

@@ -38,7 +38,6 @@ module_sing_box_install() {
     write_secret singbox_hy2_password "${hy2_pass}"
   fi
 
-  # Reality keypair
   if [[ ! -f "${FRESHVPS_ETC}/secrets/singbox_reality_private" ]]; then
     local kp
     kp="$( "${bin_dir}/sing-box" generate reality-keypair )"
@@ -55,7 +54,6 @@ module_sing_box_install() {
   local vless_port="${SINGBOX_VLESS_PORT:-443}"
   local hy2_port="${SINGBOX_HY2_PORT:-8443}"
 
-  # Self-signed cert for Hysteria2
   mkdir -p /etc/sing-box/certs
   if [[ ! -f /etc/sing-box/certs/hy2.crt ]]; then
     openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
@@ -134,4 +132,11 @@ EOF
 
   info "sing-box up. UUID=${uuid} Reality pubkey=${public_key} HY2 password in ${FRESHVPS_ETC}/secrets/singbox_hy2_password"
   info "Client Reality short_id=${short_id} SNI=${sni} server=${PUBLIC_IP:-<ip>}"
+}
+
+module_sing_box_uninstall() {
+  systemctl disable --now sing-box 2>/dev/null || true
+  rm -f /etc/systemd/system/sing-box.service
+  systemctl daemon-reload 2>/dev/null || true
+  info "sing-box stopped (config left under /usr/local/etc/sing-box)"
 }

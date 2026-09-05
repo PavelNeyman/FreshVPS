@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FreshVPS installer entrypoint
+# FreshVPS installer — produce a ready-to-use system, not bare defaults
 set -euo pipefail
 
 FRESHVPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,10 +9,11 @@ source "${FRESHVPS_ROOT}/lib/common.sh"
 
 VERSION="$(cat "${FRESHVPS_ROOT}/VERSION" 2>/dev/null || echo 0.0.0)"
 
-# Defaults (overridden by config / TUI)
 ENABLE_HARDENING=1
 ENABLE_SINGBOX=1
 ENABLE_BLOCKY=1
+ENABLE_VPN_USERS=1
+ENABLE_VPN_API=1
 ENABLE_OPENSOHO=1
 ENABLE_KUMA=1
 ENABLE_BESZEL=1
@@ -27,6 +28,8 @@ BLOCKY_DNS_PORT=53
 OPENSOHO_HTTP_PORT=8090
 KUMA_PORT=3001
 BESZEL_PORT=8091
+VPN_API_PORT=8787
+VPN_API_BIND=127.0.0.1
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_ADMIN_ID=""
 BACKUP_REPO=""
@@ -35,20 +38,18 @@ NONINTERACTIVE=0
 
 usage() {
   cat <<EOF
-FreshVPS ${VERSION} — modular Debian VPS bootstrap
+FreshVPS ${VERSION} — ready-to-use Debian VPS bootstrap
 
 Usage: sudo bash install.sh [options]
-
-  --config FILE     Load settings from FILE (key=value)
-  --non-interactive Do not prompt (requires --config or defaults)
-  -h, --help        Show this help
+  --config FILE
+  --non-interactive
+  -h, --help
 EOF
 }
 
 load_config() {
   local f="$1"
   [[ -f "${f}" ]] || die "Config not found: ${f}"
-  # shellcheck disable=SC1090
   set -a
   # shellcheck source=/dev/null
   source "${f}"
@@ -106,20 +107,23 @@ collect_settings() {
 
   PUBLIC_IP="${PUBLIC_IP:-$(detect_public_ip)}"
   PUBLIC_IP="$(prompt_value "Public IPv4 of this VPS" "${PUBLIC_IP}")"
+  [[ -n "${PUBLIC_IP}" ]] || die "PUBLIC_IP required for ready-to-use client links"
 
   if [[ "${NONINTERACTIVE}" -eq 0 ]]; then
-    prompt_yes_no "Install hardening (SSH, fail2ban, firewall, BBR)?" y && ENABLE_HARDENING=1 || ENABLE_HARDENING=0
-    prompt_yes_no "Install sing-box (VLESS+Reality + Hysteria2)?" y && ENABLE_SINGBOX=1 || ENABLE_SINGBOX=0
-    prompt_yes_no "Install Blocky (DNS filtering)?" y && ENABLE_BLOCKY=1 || ENABLE_BLOCKY=0
-    prompt_yes_no "Install OpenSOHO (OpenWrt management)?" y && ENABLE_OPENSOHO=1 || ENABLE_OPENSOHO=0
-    prompt_yes_no "Install Uptime Kuma?" y && ENABLE_KUMA=1 || ENABLE_KUMA=0
-    prompt_yes_no "Install Beszel?" y && ENABLE_BESZEL=1 || ENABLE_BESZEL=0
-    prompt_yes_no "Install Telegram bot helpers?" y && ENABLE_TELEGRAM=1 || ENABLE_TELEGRAM=0
-    prompt_yes_no "Install restic backup scaffolding?" y && ENABLE_BACKUP=1 || ENABLE_BACKUP=0
+    prompt_yes_no "Hardening?" y && ENABLE_HARDENING=1 || ENABLE_HARDENING=0
+    prompt_yes_no "sing-box VPN?" y && ENABLE_SINGBOX=1 || ENABLE_SINGBOX=0
+    prompt_yes_no "Blocky DNS?" y && ENABLE_BLOCKY=1 || ENABLE_BLOCKY=0
+    prompt_yes_no "Multi-user VPN CLI + operator profile?" y && ENABLE_VPN_USERS=1 || ENABLE_VPN_USERS=0
+    prompt_yes_no "Admin API for Shortcuts (localhost)?" y && ENABLE_VPN_API=1 || ENABLE_VPN_API=0
+    prompt_yes_no "OpenSOHO?" y && ENABLE_OPENSOHO=1 || ENABLE_OPENSOHO=0
+    prompt_yes_no "Uptime Kuma?" y && ENABLE_KUMA=1 || ENABLE_KUMA=0
+    prompt_yes_no "Beszel?" y && ENABLE_BESZEL=1 || ENABLE_BESZEL=0
+    prompt_yes_no "Telegram operator bot?" y && ENABLE_TELEGRAM=1 || ENABLE_TELEGRAM=0
+    prompt_yes_no "restic backups?" y && ENABLE_BACKUP=1 || ENABLE_BACKUP=0
   fi
 
   if [[ "${ENABLE_TELEGRAM}" -eq 1 ]]; then
-    TELEGRAM_BOT_TOKEN="$(prompt_value "Telegram bot token (empty to skip runtime config)" "${TELEGRAM_BOT_TOKEN}")"
+    TELEGRAM_BOT_TOKEN="$(prompt_value "Telegram bot token" "${TELEGRAM_BOT_TOKEN}")"
     TELEGRAM_ADMIN_ID="$(prompt_value "Telegram admin chat id" "${TELEGRAM_ADMIN_ID}")"
   fi
 }
@@ -136,6 +140,47 @@ run_module() {
   info "=== Done: ${name} ==="
 }
 
+write_ready_summary() {
+  local f="${FRESHVPS_ETC}/READY.txt"
+  {
+    echo "FreshVPS ${VERSION} READY — $(date -Iseconds)"
+    echo "Host: $(hostname)  IP: ${PUBLIC_IP}"
+    echo
+    echo "=== VPN (your operator profile) ==="
+    if [[ -f /etc/freshvps/clients/operator/link.txt ]]; then
+      cat /etc/freshvps/clients/operator/link.txt
+      echo "QR: /etc/freshvps/clients/operator/qr.png"
+    else
+      echo "(run: freshvps-vpn add operator)"
+    fi
+    echo
+    echo "HY2 password: $(read_secret singbox_hy2_password 2>/dev/null || echo n/a) port ${SINGBOX_HY2_PORT}"
+    echo "Reality public key: $(read_secret singbox_reality_public 2>/dev/null || echo n/a)"
+    echo
+    echo "=== Manage users ==="
+    echo "CLI: freshvps-vpn add|list|link|disable|enable|revoke|session"
+    echo "TG:  /vpn_add /vpn_list /vpn_link /session /status /ready"
+    echo "API: 127.0.0.1:${VPN_API_PORT} (session via freshvps-vpn session)"
+    echo
+    echo "=== Services ==="
+    echo "Blocky DNS: 127.0.0.1:53 (VPN clients use server DNS)"
+    echo "Kuma:  http://${PUBLIC_IP}:${KUMA_PORT}"
+    echo "Beszel: http://${PUBLIC_IP}:${BESZEL_PORT}"
+    echo "OpenSOHO: http://${PUBLIC_IP}:${OPENSOHO_HTTP_PORT}"
+    echo
+    echo "Secrets dir: ${FRESHVPS_ETC}/secrets"
+    echo "Log: ${FRESHVPS_LOG}"
+    echo "Docs: SHORTCUT-IOS.md VPN-USERS.md INSTALL.md"
+  } >"${f}"
+  chmod 600 "${f}"
+  info "Wrote ${f}"
+  if [[ -x /opt/freshvps-telegram/notify.sh ]]; then
+    /opt/freshvps-telegram/notify.sh "FreshVPS READY on ${PUBLIC_IP}. Operator link in /etc/freshvps/READY.txt"
+  fi
+  # print to console
+  cat "${f}"
+}
+
 main() {
   parse_args "$@"
   require_root
@@ -143,31 +188,38 @@ main() {
   ensure_dirs
   touch "${FRESHVPS_LOG}"
 
-  info "FreshVPS ${VERSION} starting"
+  info "FreshVPS ${VERSION} starting (ready-to-use mode)"
   collect_settings
 
-  # Export for modules
   export PUBLIC_IP SSH_PORT
-  export SINGBOX_VLESS_PORT SINGBOX_HY2_PORT
+  export SINGBOX_VLESS_PORT SINGBOX_HY2_PORT SINGBOX_REALITY_SNI
   export BLOCKY_DNS_PORT OPENSOHO_HTTP_PORT KUMA_PORT BESZEL_PORT
+  export VPN_API_PORT VPN_API_BIND
   export TELEGRAM_BOT_TOKEN TELEGRAM_ADMIN_ID BACKUP_REPO
-  export ENABLE_HARDENING ENABLE_SINGBOX ENABLE_BLOCKY ENABLE_OPENSOHO
-  export ENABLE_KUMA ENABLE_BESZEL ENABLE_TELEGRAM ENABLE_BACKUP
+
+  printf '%s\n' "${PUBLIC_IP}" >"${FRESHVPS_ETC}/public_ip"
 
   pkg_install ca-certificates curl wget openssl jq tar gzip coreutils
 
   [[ "${ENABLE_HARDENING}" -eq 1 ]] && run_module hardening
   [[ "${ENABLE_SINGBOX}" -eq 1 ]] && run_module sing-box
   [[ "${ENABLE_BLOCKY}" -eq 1 ]] && run_module blocky
+  # users after sing-box + blocky so apply can route DNS
+  [[ "${ENABLE_VPN_USERS}" -eq 1 && "${ENABLE_SINGBOX}" -eq 1 ]] && run_module vpn-users
+  [[ "${ENABLE_VPN_API}" -eq 1 ]] && run_module vpn-api
   [[ "${ENABLE_OPENSOHO}" -eq 1 ]] && run_module opensoho
   [[ "${ENABLE_KUMA}" -eq 1 ]] && run_module kuma
   [[ "${ENABLE_BESZEL}" -eq 1 ]] && run_module beszel
   [[ "${ENABLE_TELEGRAM}" -eq 1 ]] && run_module telegram
   [[ "${ENABLE_BACKUP}" -eq 1 ]] && run_module backup
 
-  info "FreshVPS install finished. State: ${FRESHVPS_STATE_DIR}"
-  info "Secrets (if any): ${FRESHVPS_ETC}/secrets"
-  info "Log: ${FRESHVPS_LOG}"
+  mkdir -p /opt/freshvps/shortcuts
+  if [[ ! -f /opt/freshvps/shortcuts/README ]]; then
+    echo "Place exported FreshVPS-Admin.shortcut here. See docs/SHORTCUT-IOS.md" >/opt/freshvps/shortcuts/README
+  fi
+
+  write_ready_summary
+  info "FreshVPS install finished — system is ready for use"
 }
 
 main "$@"

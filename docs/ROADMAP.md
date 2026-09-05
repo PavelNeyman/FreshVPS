@@ -2,49 +2,38 @@
 
 > Living plan. Agents follow **Next** and AGENTS.md.
 
-## Goal (v1)
+## Product bar
 
-Modular Debian VPS bootstrap: hardening, sing-box (VLESS+Reality+Hysteria2), OpenSOHO, Blocky, Uptime Kuma, Beszel, Telegram bot, backups.
+Install must leave a **ready-to-use** system: services running, operator VPN profile + QR, DNS via Blocky for clients, admin CLI/TG/API wired — not empty default configs.
 
-## Phases
+## Phases 0–3
 
-### Phase 0–2 — Foundation, modules, integration — Done
+Installer skeleton, modules, uninstall, docs — largely done. Smoke-test still needs owner VPS.
 
-### Phase 3 — Polish
+## Phase 4 — Multi-user VPN + operator automation
 
-| ID | Task | Status |
-|----|------|--------|
-| P3.1–P3.3, P3.5–P3.7 | uninstall, docs, OpenSOHO Docker, Beszel, TG scaffold | Done |
-| P3.4 | Smoke-test on real Debian VPS | **Waiting on owner VPS** |
-| P3.9 | Fix bugs from smoke-test | Pending |
-
-### Phase 4 — Multi-user VPN (operator-only)
-
-Design: [docs/VPN-USERS.md](VPN-USERS.md)
+Design: [VPN-USERS.md](VPN-USERS.md) · Shortcut: [SHORTCUT-IOS.md](SHORTCUT-IOS.md)
 
 | ID | Task | Status |
 |----|------|--------|
-| P4.1 | Registry + `freshvps-vpn` CLI (add/list/disable/revoke/link) | Pending |
-| P4.2 | sing-box multi-UUID render + validate + restart | Pending |
-| P4.3 | DNS via Blocky for VPN clients | Pending |
-| P4.4 | QR/link artifacts under `/etc/freshvps/clients/` | Pending |
-| P4.5 | Telegram admin commands over CLI | Pending |
-| P4.6 | VPN-only API + session tokens | Pending |
-| P4.7 | Shortcuts doc: Face ID gate + local token file + QR | Pending |
-
-**Agreed security for API/Shortcuts:** VPN-only · session token · Face ID gate on Shortcut · token in local file (not master in Shortcut body).
-
-## Deferred
-
-- Port knocking, AdGuard/Blocky UI, parental, reverse proxy, mesh
-- Native iOS Keychain helper app
-- Full web admin UI
+| P4.1 | `lib/vpn-core.sh` + `freshvps-vpn` CLI | Done |
+| P4.2 | Multi-UUID render + restart | Done |
+| P4.3 | DNS via Blocky in sing-box route | Done (best-effort validate) |
+| P4.4 | QR/link under `/etc/freshvps/clients/` | Done |
+| P4.5 | Telegram operator commands | Done |
+| P4.6 | VPN/localhost API + sessions | Done |
+| P4.7 | SHORTCUT-IOS.md | Done |
+| P4.8 | Shortcut file host dir + `/shortcut` | Done (template upload by operator) |
+| P4.9 | `READY.txt` end-of-install summary | Done |
+| P4.10 | Smoke-test + fix apply/DNS edge cases | Pending VPS |
+| P4.11 | API bind on VPN interface helper | Pending |
 
 ## Next
 
-1. Smoke-test on owner VPS
-2. Phase 4 implementation (can start after or in parallel with P3.4 if owner prefers)
+1. Owner VPS smoke-test
+2. Tighten sing-box DNS route for installed sing-box version
+3. Optional: serve `.shortcut` over VPN bind
 
-## Notes
+## Deferred
 
-- Secrets never in git; `/etc/freshvps/` on host only.
+Port knocking, public web admin, native iOS Keychain app, OpenWrt user flows

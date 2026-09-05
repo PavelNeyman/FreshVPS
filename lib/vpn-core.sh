@@ -129,7 +129,6 @@ vpn_list_users() {
 }
 
 vpn_build_users_array() {
-  # only fields sing-box VLESS users require
   local arr
   arr="$(jq -c '[.users[] | select(.enabled==true) | {uuid:.uuid, flow:"xtls-rprx-vision"}]' "${VPN_USERS_FILE}")"
   if [[ "${arr}" == "[]" ]]; then
@@ -164,7 +163,6 @@ vpn_apply_config() {
   local work
   work="$(mktemp -d)"
 
-  # Variant A: DNS → Blocky + sniff + dns route (preferred)
   jq -n \
     --argjson users "${users_json}" \
     --arg priv "${private_key}" \
@@ -232,26 +230,25 @@ vpn_apply_config() {
       }
     }' >"${work}/a.json"
 
-  # Variant B: simpler DNS servers list (no dns rules)
   jq 'del(.dns.rules) | .dns.servers = [{tag:"blocky",address:"127.0.0.1",detour:"direct"}]' \
     "${work}/a.json" >"${work}/b.json" 2>/dev/null || cp "${work}/a.json" "${work}/b.json"
 
-  # Variant C: no DNS block — still valid multi-user VPN
   jq 'del(.dns) | .outbounds = [{type:"direct",tag:"direct"}] | del(.route) | del(.inbounds[0].sniff_override_destination)' \
     "${work}/a.json" >"${work}/c.json" 2>/dev/null || true
 
-  local chosen=""
+  local chosen="" variant=""
   for v in a b c; do
     if vpn_try_check "${work}/${v}.json"; then
       chosen="${work}/${v}.json"
+      variant="${v}"
       break
     fi
   done
 
   if [[ -z "${chosen}" ]]; then
-    # last resort: write C without check if binary missing
     if [[ ! -x "${SINGBOX_BIN}" ]]; then
       chosen="${work}/c.json"
+      variant="c-nocheck"
     else
       echo "sing-box config validation failed for all variants" >&2
       rm -rf "${work}"
@@ -260,11 +257,13 @@ vpn_apply_config() {
   fi
 
   install -m 600 "${chosen}" "${SINGBOX_CONF}"
+  printf '%s\n' "${variant}" >"${FRESHVPS_ETC}/singbox-config-variant"
   rm -rf "${work}"
 
   if systemctl is-enabled sing-box >/dev/null 2>&1 || systemctl is-active sing-box >/dev/null 2>&1; then
     systemctl restart sing-box
   fi
+  echo "sing-box config variant=${variant}" >&2
 }
 
 vpn_seed_operator() {

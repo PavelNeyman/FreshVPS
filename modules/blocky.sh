@@ -109,7 +109,8 @@ EOF
   systemd_enable_start blocky
   firewall_allow_tcp 53 "blocky-dns"
   firewall_allow_udp 53 "blocky-dns"
-  firewall_allow_tcp 4000 "blocky-api"
+  # API localhost/VPN only
+  # firewall_allow_tcp 4000 "blocky-api"
 
   printf 'nameserver 127.0.0.1\noptions edns0\n' >/etc/resolv.conf
   info "Blocky listening on :53 (API :4000). Lists: HaGeZi multi + tif + fake"

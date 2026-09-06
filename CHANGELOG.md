@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.3 — 2026-09-06
+
+### Fixed
+- sing-box **1.14** config generation (new DNS server format, route rule actions, default_domain_resolver)
+
+### Changed
+- OpenSOHO / Uptime Kuma / Beszel bind to **127.0.0.1** (SSH tunnel for admin access)
+- Blocky API port no longer opened in UFW by default
+
+
 ## 0.2.2 — 2026-09-06
 
 ### Added

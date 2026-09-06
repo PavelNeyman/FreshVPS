@@ -23,13 +23,14 @@ services:
     volumes:
       - ${dir}/data:/app/data
     ports:
-      - "${port}:3001"
+      - "127.0.0.1:${port}:3001"
     security_opt:
       - no-new-privileges:true
 EOF
 
   (cd "${dir}" && docker compose up -d)
-  firewall_allow_tcp "${port}" "uptime-kuma"
+  # panels: localhost only
+  # firewall_allow_tcp "${port}" "uptime-kuma"
   info "Uptime Kuma: http://${PUBLIC_IP:-SERVER}:${port} — complete setup in browser"
 }
 

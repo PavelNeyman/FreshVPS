@@ -36,13 +36,14 @@ services:
     environment:
       OPENSOHO_SHARED_SECRET: "${secret}"
     ports:
-      - "${port}:8090"
+      - "127.0.0.1:${port}:8090"
     volumes:
       - /var/lib/opensoho:/data
 EOF
 
   if (cd "${dir}" && docker compose pull && docker compose up -d); then
-    firewall_allow_tcp "${port}" "opensoho"
+    # panels: localhost only — access via SSH tunnel
+  # firewall_allow_tcp "${port}" "opensoho"
     info "OpenSOHO (Docker) on :${port}"
     info "Shared secret: ${FRESHVPS_ETC}/secrets/opensoho_shared_secret"
     info "Create admin: docker exec -it opensoho ./opensoho superuser upsert EMAIL PASS"
@@ -98,7 +99,8 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
     systemd_enable_start opensoho
-    firewall_allow_tcp "${port}" "opensoho"
+    # panels: localhost only — access via SSH tunnel
+  # firewall_allow_tcp "${port}" "opensoho"
     info "OpenSOHO binary service on :${port}"
     return 0
   fi

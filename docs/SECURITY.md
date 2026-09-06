@@ -31,3 +31,6 @@
 2. Store restic password offline; test restore
 3. Keep OpenSOHO shared secret long and only on trusted routers
 4. Review UFW after install: `ufw status numbered`
+
+## Admin UIs
+OpenSOHO / Kuma / Beszel listen on 127.0.0.1 only; use SSH tunnel or access from the VPS itself.

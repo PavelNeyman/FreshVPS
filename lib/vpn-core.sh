@@ -143,6 +143,7 @@ vpn_try_check() {
   "${SINGBOX_BIN}" check -c "${conf}" >/dev/null 2>&1
 }
 
+# --- patched vpn_apply_config for sing-box 1.14 ---
 vpn_apply_config() {
   vpn_ensure_dirs
   local private_key short_id hy2_pass sni vless_port hy2_port users_json
@@ -155,7 +156,7 @@ vpn_apply_config() {
   users_json="$(vpn_build_users_array)"
 
   if [[ -z "${private_key}" || -z "${short_id}" ]]; then
-    echo "Reality secrets missing — run sing-box module first" >&2
+    echo "Reality secrets missing" >&2
     return 1
   fi
 
@@ -175,10 +176,9 @@ vpn_apply_config() {
       log: {level:"info", timestamp:true},
       dns: {
         servers: [
-          {tag:"blocky", address:"127.0.0.1", address_resolver:"local", detour:"direct"},
-          {tag:"local", address:"local", detour:"direct"}
+          {type:"udp", tag:"blocky", server:"127.0.0.1"},
+          {type:"local", tag:"local"}
         ],
-        rules: [{outbound:"any", server:"blocky"}],
         final: "blocky",
         strategy: "ipv4_only"
       },
@@ -198,9 +198,7 @@ vpn_apply_config() {
               private_key: $priv,
               short_id: [$sid]
             }
-          },
-          sniff: true,
-          sniff_override_destination: true
+          }
         },
         {
           type: "hysteria2",
@@ -217,23 +215,22 @@ vpn_apply_config() {
           masquerade: ("https://" + $sni)
         }
       ],
-      outbounds: [
-        {type:"direct", tag:"direct"},
-        {type:"dns", tag:"dns-out"}
-      ],
+      outbounds: [ {type:"direct", tag:"direct"} ],
       route: {
         rules: [
-          {protocol:"dns", outbound:"dns-out"}
+          {action:"sniff"},
+          {protocol:"dns", action:"hijack-dns"}
         ],
         final: "direct",
-        auto_detect_interface: true
+        auto_detect_interface: true,
+        default_domain_resolver: "blocky"
       }
     }' >"${work}/a.json"
 
-  jq 'del(.dns.rules) | .dns.servers = [{tag:"blocky",address:"127.0.0.1",detour:"direct"}]' \
+  jq 'del(.dns) | .route.default_domain_resolver="local" | .dns={servers:[{type:"local",tag:"local"}],final:"local"}' \
     "${work}/a.json" >"${work}/b.json" 2>/dev/null || cp "${work}/a.json" "${work}/b.json"
 
-  jq 'del(.dns) | .outbounds = [{type:"direct",tag:"direct"}] | del(.route) | del(.inbounds[0].sniff_override_destination)' \
+  jq 'del(.dns) | .route={final:"direct",auto_detect_interface:true}' \
     "${work}/a.json" >"${work}/c.json" 2>/dev/null || true
 
   local chosen="" variant=""
@@ -246,14 +243,9 @@ vpn_apply_config() {
   done
 
   if [[ -z "${chosen}" ]]; then
-    if [[ ! -x "${SINGBOX_BIN}" ]]; then
-      chosen="${work}/c.json"
-      variant="c-nocheck"
-    else
-      echo "sing-box config validation failed for all variants" >&2
-      rm -rf "${work}"
-      return 1
-    fi
+    echo "sing-box config validation failed for all variants" >&2
+    rm -rf "${work}"
+    return 1
   fi
 
   install -m 600 "${chosen}" "${SINGBOX_CONF}"
@@ -265,7 +257,6 @@ vpn_apply_config() {
   fi
   echo "sing-box config variant=${variant}" >&2
 }
-
 vpn_seed_operator() {
   vpn_ensure_dirs
   if ! vpn_user_exists "operator"; then

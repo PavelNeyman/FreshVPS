@@ -28,7 +28,7 @@ services:
     environment:
       APP_URL: http://${PUBLIC_IP:-localhost}:${port}
     ports:
-      - "${port}:8090"
+      - "127.0.0.1:${port}:8090"
     volumes:
       - ${dir}/hub-data:/beszel_data
       - ${dir}/socket:/beszel_socket
@@ -81,7 +81,8 @@ EOF
     info "Beszel hub on :${port}. Complete UI setup, then ${dir}/enable-agent.sh"
   fi
 
-  firewall_allow_tcp "${port}" "beszel-hub"
+  # panels: localhost only
+  # firewall_allow_tcp "${port}" "beszel-hub"
 }
 
 module_beszel_uninstall() {

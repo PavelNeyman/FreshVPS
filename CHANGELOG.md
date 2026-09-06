@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.4 — 2026-09-06
+
+### Added
+- OpenSOHO: auto-create admin via `superuser upsert`; credentials in secrets + READY
+- Beszel: auto-create admin the same way; agent still needs KEY/TOKEN from Hub UI once
+- Kuma: document first-browser admin + SEED-MONITORS.md (no stable CLI for setup)
+
+### Changed
+- OpenSOHO Docker: `--dir /data` so PocketBase data persists on host volume
+- READY.txt: panel URLs as localhost + SSH tunnel; print admin emails from secrets
+
+
 ## 0.2.3 — 2026-09-06
 
 ### Fixed

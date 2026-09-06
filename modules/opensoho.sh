@@ -23,16 +23,16 @@ module_opensoho_install() {
     systemctl enable --now docker
   fi
 
-  # Official-style image name (fixed after v0.7.x)
   local image="${OPENSOHO_IMAGE:-ghcr.io/opensoho/opensoho:latest}"
 
+  # Persist PocketBase data under /data (host: /var/lib/opensoho)
   cat >"${dir}/docker-compose.yml" <<EOF
 services:
   opensoho:
     image: ${image}
     container_name: opensoho
     restart: unless-stopped
-    command: ["serve", "--http", "0.0.0.0:8090"]
+    command: ["serve", "--http", "0.0.0.0:8090", "--dir", "/data"]
     environment:
       OPENSOHO_SHARED_SECRET: "${secret}"
     ports:
@@ -42,12 +42,10 @@ services:
 EOF
 
   if (cd "${dir}" && docker compose pull && docker compose up -d); then
-    # panels: localhost only — access via SSH tunnel
-  # firewall_allow_tcp "${port}" "opensoho"
-    info "OpenSOHO (Docker) on :${port}"
+    _opensoho_bootstrap_admin
+    info "OpenSOHO (Docker) on 127.0.0.1:${port} (SSH tunnel)"
     info "Shared secret: ${FRESHVPS_ETC}/secrets/opensoho_shared_secret"
-    info "Create admin: docker exec -it opensoho ./opensoho superuser upsert EMAIL PASS"
-    info "OpenWrt URL: http://${PUBLIC_IP:-SERVER}:${port} (no trailing slash)"
+    info "Admin: ${FRESHVPS_ETC}/secrets/opensoho_admin_email + opensoho_admin_password"
     return 0
   fi
 
@@ -91,7 +89,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/var/lib/opensoho
 Environment=OPENSOHO_SHARED_SECRET=${secret}
-ExecStart=${dir}/opensoho serve --http 0.0.0.0:${port}
+ExecStart=${dir}/opensoho serve --http 127.0.0.1:${port} --dir /var/lib/opensoho
 Restart=on-failure
 RestartSec=5
 
@@ -99,9 +97,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
     systemd_enable_start opensoho
-    # panels: localhost only — access via SSH tunnel
-  # firewall_allow_tcp "${port}" "opensoho"
-    info "OpenSOHO binary service on :${port}"
+    info "OpenSOHO binary service on 127.0.0.1:${port}"
     return 0
   fi
 
@@ -112,6 +108,31 @@ Docs: https://opensoho.github.io/docs
 Image: ${image}
 EOF
   warn "OpenSOHO not started — see ${dir}/README.freshvps"
+}
+
+# Create or update superuser; store credentials under secrets/
+_opensoho_bootstrap_admin() {
+  local email pass i
+  email="${OPENSOHO_ADMIN_EMAIL:-$(read_secret opensoho_admin_email || true)}"
+  pass="${OPENSOHO_ADMIN_PASSWORD:-$(read_secret opensoho_admin_password || true)}"
+  if [[ -z "${email}" ]]; then
+    email="admin@freshvps.local"
+  fi
+  if [[ -z "${pass}" ]]; then
+    pass="$(random_hex 16)"
+  fi
+
+  # Wait for container + PocketBase
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if docker exec opensoho /ko-app/opensoho superuser upsert "${email}" "${pass}" --dir /data >/dev/null 2>&1; then
+      write_secret opensoho_admin_email "${email}"
+      write_secret opensoho_admin_password "${pass}"
+      info "OpenSOHO admin ready: ${email} (password in secrets/opensoho_admin_password)"
+      return 0
+    fi
+    sleep 2
+  done
+  warn "OpenSOHO admin bootstrap failed — run: docker exec opensoho /ko-app/opensoho superuser upsert EMAIL PASS --dir /data"
 }
 
 module_opensoho_uninstall() {

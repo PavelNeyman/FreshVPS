@@ -34,3 +34,7 @@
 
 ## Admin UIs
 OpenSOHO / Kuma / Beszel listen on 127.0.0.1 only; use SSH tunnel or access from the VPS itself.
+
+## Panel admin credentials
+
+OpenSOHO and Beszel admin email/password are generated at install time and stored under `/etc/freshvps/secrets/` (`opensoho_admin_*`, `beszel_admin_*`). Uptime Kuma admin is created once in the browser.

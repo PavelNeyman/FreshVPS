@@ -163,11 +163,12 @@ write_ready_summary() {
     echo "API: 127.0.0.1:${VPN_API_PORT} (session via freshvps-vpn session)"
     echo "Shortcuts: build on device — docs/SHORTCUT-IOS.md"
     echo
-    echo "=== Services ==="
+    echo "=== Services (panels: localhost only) ==="
     echo "Blocky DNS: 127.0.0.1:53 (VPN clients use server DNS)"
-    echo "Kuma:  http://${PUBLIC_IP}:${KUMA_PORT}"
-    echo "Beszel: http://${PUBLIC_IP}:${BESZEL_PORT}"
-    echo "OpenSOHO: http://${PUBLIC_IP}:${OPENSOHO_HTTP_PORT}"
+    echo "Access panels: ssh -L 8090:127.0.0.1:8090 -L 3001:127.0.0.1:3001 -L 8091:127.0.0.1:8091 root@${PUBLIC_IP}"
+    echo "OpenSOHO: http://127.0.0.1:${OPENSOHO_HTTP_PORT}  admin: $(read_secret opensoho_admin_email 2>/dev/null || echo n/a) / secrets/opensoho_admin_password"
+    echo "Kuma:     http://127.0.0.1:${KUMA_PORT}  (create admin once in browser)"
+    echo "Beszel:   http://127.0.0.1:${BESZEL_PORT}  admin: $(read_secret beszel_admin_email 2>/dev/null || echo n/a) / secrets/beszel_admin_password"
     echo
     echo "Secrets dir: ${FRESHVPS_ETC}/secrets"
     echo "Log: ${FRESHVPS_LOG}"

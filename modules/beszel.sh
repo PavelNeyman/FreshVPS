@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Module: Beszel hub + local agent scaffold
-# Agent KEY/TOKEN must be set after first login in Hub UI (or env BESZEL_KEY / BESZEL_TOKEN).
+# Admin is created via CLI. Agent KEY/TOKEN still need one Hub UI step (or env).
 # shellcheck disable=SC2154
 
 module_beszel_install() {
@@ -26,7 +26,7 @@ services:
     container_name: beszel
     restart: unless-stopped
     environment:
-      APP_URL: http://${PUBLIC_IP:-localhost}:${port}
+      APP_URL: http://127.0.0.1:${port}
     ports:
       - "127.0.0.1:${port}:8090"
     volumes:
@@ -52,16 +52,11 @@ services:
 EOF
 
   (cd "${dir}" && docker compose up -d beszel)
+  _beszel_bootstrap_admin
 
-  if [[ -n "${key}" && -n "${token}" ]]; then
-    write_secret beszel_key "${key}"
-    write_secret beszel_token "${token}"
-    (cd "${dir}" && docker compose --profile agent up -d) || true
-    info "Beszel hub + agent started"
-  else
-    cat >"${dir}/enable-agent.sh" <<EOF
+  cat >"${dir}/enable-agent.sh" <<EOF
 #!/usr/bin/env bash
-# After creating admin in Hub UI: Add System → copy KEY and TOKEN, then:
+# After Hub UI → Add System: copy KEY and TOKEN, then:
 #   export BESZEL_KEY='...'
 #   export BESZEL_TOKEN='...'
 #   sudo bash /opt/beszel/enable-agent.sh
@@ -75,14 +70,41 @@ cd /opt/beszel
 sed -i "s|KEY: \".*\"|KEY: \"\${KEY}\"|" docker-compose.yml
 sed -i "s|TOKEN: \".*\"|TOKEN: \"\${TOKEN}\"|" docker-compose.yml
 docker compose --profile agent up -d
-echo "Agent started. In Hub UI use Host: /beszel_socket/beszel.sock if using socket mode."
+echo "Agent started."
 EOF
-    chmod 700 "${dir}/enable-agent.sh"
-    info "Beszel hub on :${port}. Complete UI setup, then ${dir}/enable-agent.sh"
+  chmod 700 "${dir}/enable-agent.sh"
+
+  if [[ -n "${key}" && -n "${token}" ]]; then
+    write_secret beszel_key "${key}"
+    write_secret beszel_token "${token}"
+    (cd "${dir}" && docker compose --profile agent up -d) || true
+    info "Beszel hub + agent started on 127.0.0.1:${port}"
+  else
+    info "Beszel hub on 127.0.0.1:${port}. Admin in secrets. Then Add System + enable-agent.sh"
+  fi
+}
+
+_beszel_bootstrap_admin() {
+  local email pass i
+  email="${BESZEL_ADMIN_EMAIL:-$(read_secret beszel_admin_email || true)}"
+  pass="${BESZEL_ADMIN_PASSWORD:-$(read_secret beszel_admin_password || true)}"
+  if [[ -z "${email}" ]]; then
+    email="admin@freshvps.local"
+  fi
+  if [[ -z "${pass}" ]]; then
+    pass="$(random_hex 16)"
   fi
 
-  # panels: localhost only
-  # firewall_allow_tcp "${port}" "beszel-hub"
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if docker exec beszel /beszel superuser upsert "${email}" "${pass}" --dir /beszel_data >/dev/null 2>&1; then
+      write_secret beszel_admin_email "${email}"
+      write_secret beszel_admin_password "${pass}"
+      info "Beszel admin ready: ${email} (password in secrets/beszel_admin_password)"
+      return 0
+    fi
+    sleep 2
+  done
+  warn "Beszel admin bootstrap failed — run: docker exec beszel /beszel superuser upsert EMAIL PASS --dir /beszel_data"
 }
 
 module_beszel_uninstall() {

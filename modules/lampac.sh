@@ -24,6 +24,8 @@ module_lampac_install() {
   fi
   write_secret lampac_root_password "${pass}"
   printf "%s" "${pass}" >"${dir}/config/passwd"
+  chown -R 1000:1000 "${dir}/config" "${dir}/cache" "${dir}/database" 2>/dev/null || true
+  chmod 644 "${dir}/config/passwd" "${dir}/config/init.conf" 2>/dev/null || true
   chmod 600 "${dir}/config/passwd"
 
   # Light profile: lowMemoryMode, no Chromium/Playwright, skip heavy modules.
@@ -102,7 +104,7 @@ services:
     shm_size: 128mb
     mem_limit: ${LAMPAC_MEM_LIMIT:-1536m}
     volumes:
-      - ${dir}/config/passwd:/lampac/passwd:ro
+      - ${dir}/config/passwd:/lampac/passwd
       - ${dir}/config/init.conf:/lampac/init.conf
       - ${dir}/cache:/lampac/cache
       - ${dir}/database:/lampac/database

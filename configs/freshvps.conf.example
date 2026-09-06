@@ -30,3 +30,17 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_ADMIN_ID=
 
 BACKUP_REPO=
+
+# --- Panel admin credentials (optional) ---
+# Leave empty to auto-generate a random password and save it under /etc/freshvps/secrets/
+# Format:
+#   OPENSOHO_ADMIN_EMAIL=admin@example.com
+#   OPENSOHO_ADMIN_PASSWORD=YourLongPasswordHere
+#   BESZEL_ADMIN_EMAIL=admin@example.com
+#   BESZEL_ADMIN_PASSWORD=YourLongPasswordHere
+# Email: normal address (used as login). Password: any non-empty string (prefer 16+ chars).
+# Uptime Kuma has no CLI setup — create the first user once in the browser.
+OPENSOHO_ADMIN_EMAIL=
+OPENSOHO_ADMIN_PASSWORD=
+BESZEL_ADMIN_EMAIL=
+BESZEL_ADMIN_PASSWORD=

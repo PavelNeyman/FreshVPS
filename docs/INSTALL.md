@@ -91,3 +91,15 @@ sudo /opt/freshvps-backup/backup.sh
 sudo bash uninstall.sh
 sudo bash uninstall.sh --purge-secrets
 ```
+
+## Admin panels (localhost only)
+
+OpenSOHO, Uptime Kuma and Beszel bind to **127.0.0.1** (not exposed publicly).
+
+```bash
+ssh -L 8090:127.0.0.1:8090 -L 3001:127.0.0.1:3001 -L 8091:127.0.0.1:8091 root@VPS_IP
+```
+
+- OpenSOHO: http://127.0.0.1:8090
+- Uptime Kuma: http://127.0.0.1:3001
+- Beszel: http://127.0.0.1:8091

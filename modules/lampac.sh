@@ -26,7 +26,6 @@ module_lampac_install() {
   printf "%s" "${pass}" >"${dir}/config/passwd"
   chown -R 1000:1000 "${dir}/config" "${dir}/cache" "${dir}/database" 2>/dev/null || true
   chmod 644 "${dir}/config/passwd" "${dir}/config/init.conf" 2>/dev/null || true
-  chmod 600 "${dir}/config/passwd"
 
   # Light profile: lowMemoryMode, no Chromium/Playwright, skip heavy modules.
   # Online stays on. JacRed + TorrServer enabled for torrent path.

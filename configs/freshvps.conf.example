@@ -44,3 +44,10 @@ OPENSOHO_ADMIN_EMAIL=
 OPENSOHO_ADMIN_PASSWORD=
 BESZEL_ADMIN_EMAIL=
 BESZEL_ADMIN_PASSWORD=
+
+# --- Lampac NextGen (Lampa backend, optional) ---
+# 0 = skip, 1 = install light profile (lowMemoryMode, no Chromium)
+ENABLE_LAMPAC=0
+LAMPAC_PORT=9118
+# LAMPAC_ROOT_PASSWORD=
+# LAMPAC_MEM_LIMIT=1536m

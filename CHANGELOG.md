@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5 — 2026-09-06
+
+### Added
+- Optional Lampac NextGen module (ENABLE_LAMPAC): light profile, localhost, TorrServer/JacRed
+
+
 ## 0.2.4 — 2026-09-06
 
 ### Added

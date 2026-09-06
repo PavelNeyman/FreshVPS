@@ -19,6 +19,7 @@ ENABLE_KUMA=1
 ENABLE_BESZEL=1
 ENABLE_TELEGRAM=1
 ENABLE_BACKUP=1
+ENABLE_LAMPAC=0
 
 PUBLIC_IP=""
 SSH_PORT=22
@@ -169,6 +170,7 @@ write_ready_summary() {
     echo "OpenSOHO: http://127.0.0.1:${OPENSOHO_HTTP_PORT}  admin: $(read_secret opensoho_admin_email 2>/dev/null || echo n/a) / secrets/opensoho_admin_password"
     echo "Kuma:     http://127.0.0.1:${KUMA_PORT}  (create admin once in browser)"
     echo "Beszel:   http://127.0.0.1:${BESZEL_PORT}  admin: $(read_secret beszel_admin_email 2>/dev/null || echo n/a) / secrets/beszel_admin_password"
+    [[ "${ENABLE_LAMPAC:-0}" -eq 1 ]] && echo "Lampac:   http://127.0.0.1:${LAMPAC_PORT:-9118}  rootpwd: secrets/lampac_root_password"
     echo
     echo "Secrets dir: ${FRESHVPS_ETC}/secrets"
     echo "Log: ${FRESHVPS_LOG}"
@@ -209,6 +211,7 @@ main() {
   [[ "${ENABLE_OPENSOHO}" -eq 1 ]] && run_module opensoho
   [[ "${ENABLE_KUMA}" -eq 1 ]] && run_module kuma
   [[ "${ENABLE_BESZEL}" -eq 1 ]] && run_module beszel
+  [[ "${ENABLE_LAMPAC}" -eq 1 ]] && run_module lampac
   [[ "${ENABLE_TELEGRAM}" -eq 1 ]] && run_module telegram
   [[ "${ENABLE_BACKUP}" -eq 1 ]] && run_module backup
 

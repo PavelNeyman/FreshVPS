@@ -11,6 +11,8 @@
 7. Import subscription on a phone; traffic works.
 8. `freshvps-vpn add smoke1 test && freshvps-vpn revoke smoke1`.
 9. API: `freshvps-vpn session 1` + curl `127.0.0.1:8787`.
-10. Telegram `/status` `/ready` (Go binary if built).
-11. Panels via SSH tunnel; UFW sane; backup script OK.
+10. Telegram `/status` `/ready` (if bot enabled).
+11. Panels via SSH tunnel; UFW sane; backup script present.
 12. Reboot; services return.
+
+Automated host slice: `sudo freshvps-smoke` / `freshvps-doctor`.

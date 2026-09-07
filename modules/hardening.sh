@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# Module: hardening (idempotent)
+# Module: hardening (idempotent + SSH key preflight)
 # shellcheck disable=SC2154
+
+_ssh_has_authorized_keys() {
+  local f
+  for f in /root/.ssh/authorized_keys /home/*/.ssh/authorized_keys; do
+    if [[ -f "${f}" ]] && grep -qE '^(ssh-|ecdsa-)' "${f}" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 module_hardening_install() {
   info "Installing base hardening packages"
@@ -19,33 +29,39 @@ EOF
   fi
 
   local sshd=/etc/ssh/sshd_config
+  local allow_pw="${FRESHVPS_ALLOW_PASSWORD_SSH:-0}"
   if [[ -f "${sshd}" ]]; then
-    # Only rewrite if not already desired (avoid churn / needless reload)
-    local need_ssh=0
-    grep -qE '^PasswordAuthentication[[:space:]]+no' "${sshd}" || need_ssh=1
-    grep -qE '^PermitRootLogin[[:space:]]+prohibit-password' "${sshd}" || need_ssh=1
-    grep -qE '^PubkeyAuthentication[[:space:]]+yes' "${sshd}" || need_ssh=1
-    if [[ "${need_ssh}" -eq 1 ]]; then
-      cp -a "${sshd}" "${sshd}.freshvps.bak.$(date +%s)" || true
-      if grep -qE '^#?PasswordAuthentication' "${sshd}"; then
-        sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' "${sshd}" || true
-      else
-        echo 'PasswordAuthentication no' >>"${sshd}"
-      fi
-      if grep -qE '^#?PermitRootLogin' "${sshd}"; then
-        sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' "${sshd}" || true
-      else
-        echo 'PermitRootLogin prohibit-password' >>"${sshd}"
-      fi
-      if grep -qE '^#?PubkeyAuthentication' "${sshd}"; then
-        sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' "${sshd}" || true
-      else
-        echo 'PubkeyAuthentication yes' >>"${sshd}"
-      fi
-      systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
-      info "SSH hardened (password auth disabled; root keys only)"
+    if [[ "${allow_pw}" != "1" ]] && ! _ssh_has_authorized_keys; then
+      warn "No SSH authorized_keys found — NOT disabling PasswordAuthentication (lockout risk)"
+      warn "Add a key, then: FRESHVPS_FORCE_MODULES=hardening bash install.sh --upgrade"
+      warn "Or set FRESHVPS_ALLOW_PASSWORD_SSH=1 to force policy anyway"
     else
-      info "SSH already hardened — skip"
+      local need_ssh=0
+      grep -qE '^PasswordAuthentication[[:space:]]+no' "${sshd}" || need_ssh=1
+      grep -qE '^PermitRootLogin[[:space:]]+prohibit-password' "${sshd}" || need_ssh=1
+      grep -qE '^PubkeyAuthentication[[:space:]]+yes' "${sshd}" || need_ssh=1
+      if [[ "${need_ssh}" -eq 1 ]]; then
+        cp -a "${sshd}" "${sshd}.freshvps.bak.$(date +%s)" || true
+        if grep -qE '^#?PasswordAuthentication' "${sshd}"; then
+          sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' "${sshd}" || true
+        else
+          echo 'PasswordAuthentication no' >>"${sshd}"
+        fi
+        if grep -qE '^#?PermitRootLogin' "${sshd}"; then
+          sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' "${sshd}" || true
+        else
+          echo 'PermitRootLogin prohibit-password' >>"${sshd}"
+        fi
+        if grep -qE '^#?PubkeyAuthentication' "${sshd}"; then
+          sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' "${sshd}" || true
+        else
+          echo 'PubkeyAuthentication yes' >>"${sshd}"
+        fi
+        systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+        info "SSH hardened (password auth disabled; keys only)"
+      else
+        info "SSH already hardened — skip"
+      fi
     fi
   fi
 
@@ -60,11 +76,10 @@ EOF
     dpkg-reconfigure -f noninteractive unattended-upgrades 2>/dev/null || true
   fi
 
-  # UFW: never --force reset on re-run (would drop live rules / lock out)
   if command -v ufw >/dev/null 2>&1; then
     if ufw status 2>/dev/null | grep -qi 'Status: active'; then
       ufw allow "${SSH_PORT:-22}/tcp" comment 'SSH' >/dev/null 2>&1 || true
-      info "UFW already active — ensure SSH ${SSH_PORT:-22}/tcp allowed, no reset"
+      info "UFW already active — ensure SSH allowed, no reset"
     else
       ufw default deny incoming
       ufw default allow outgoing
@@ -76,5 +91,5 @@ EOF
 }
 
 module_hardening_uninstall() {
-  info "hardening uninstall is a no-op (SSH/UFW/fail2ban left in place for safety)"
+  info "hardening uninstall is a no-op"
 }

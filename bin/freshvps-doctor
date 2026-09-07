@@ -15,17 +15,13 @@ warn_check() {
 }
 
 echo "FreshVPS doctor — $(hostname) $(date -Iseconds)"
-if [[ -f /var/lib/freshvps/installed_version ]]; then
-  echo "INFO installed_version=$(cat /var/lib/freshvps/installed_version)"
-fi
-if [[ -f /etc/freshvps/install.conf ]]; then
-  echo "INFO install.conf present"
-fi
+[[ -f /var/lib/freshvps/installed_version ]] && echo "INFO installed_version=$(cat /var/lib/freshvps/installed_version)"
+[[ -f /etc/freshvps/install.conf ]] && echo "INFO install.conf present"
 if [[ -f /etc/freshvps/singbox-config-variant ]]; then
   v="$(cat /etc/freshvps/singbox-config-variant)"
   echo "INFO sing-box config variant=${v}"
   if [[ "${v}" != "a" ]]; then
-    echo "WARN preferred DNS/route variant is 'a'; got '${v}' — clients may not use Blocky"
+    echo "WARN preferred DNS/route variant is 'a'; got '${v}'"
     warnn=$((warnn+1))
   fi
 fi
@@ -38,9 +34,22 @@ check "vpn-users.json" test -f /etc/freshvps/vpn-users.json
 check "operator subscription" test -f /etc/freshvps/clients/operator/subscription.txt
 check "freshvps-vpn" command -v freshvps-vpn
 check "freshvps-tests" command -v freshvps-tests
+check "smoke-host" test -x /opt/freshvps/scripts/smoke-host.sh
 check "sing-box binary" test -x /usr/local/bin/sing-box
 check "sing-box unit" systemctl is-active sing-box
 check "sing-box config" /usr/local/bin/sing-box check -c /usr/local/etc/sing-box/config.json
+
+if systemctl is-active --quiet sing-box 2>/dev/null && [[ -f /etc/freshvps/vpn-users.json ]]; then
+  n="$(jq '[.users[] | select(.enabled==true)] | length' /etc/freshvps/vpn-users.json 2>/dev/null || echo 0)"
+  if [[ "${n}" -eq 0 ]]; then
+    echo "FAIL enabled VPN users (0) — sing-box has nobody to accept"
+    fail=$((fail+1))
+  else
+    echo "OK   enabled VPN users (${n})"
+    ok=$((ok+1))
+  fi
+fi
+
 check "blocky unit" systemctl is-active blocky
 check "dns localhost" dig +time=2 +tries=1 @127.0.0.1 example.com +short
 
@@ -55,11 +64,7 @@ fi
 
 if systemctl list-unit-files 2>/dev/null | grep -q freshvps-api; then
   warn_check "api unit" systemctl is-active freshvps-api
-fi
-if systemctl list-unit-files 2>/dev/null | grep -q freshvps-telegram-bot; then
-  if [[ -f /etc/freshvps/secrets/telegram_bot_token ]]; then
-    warn_check "telegram bot" systemctl is-active freshvps-telegram-bot
-  fi
+  warn_check "api health" curl -fsS --max-time 2 http://127.0.0.1:8787/health
 fi
 
 echo

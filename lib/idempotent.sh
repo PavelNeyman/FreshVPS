@@ -4,8 +4,6 @@
 
 : "${FRESHVPS_FORCE:=0}"
 : "${FRESHVPS_UPGRADE:=0}"
-
-# Comma-separated module names to force, or "all"
 : "${FRESHVPS_FORCE_MODULES:=}"
 
 module_force_requested() {
@@ -16,7 +14,6 @@ module_force_requested() {
   return 1
 }
 
-# Record installed package version of FreshVPS tree
 write_installed_version() {
   local v="${1:-}"
   mkdir -p "${FRESHVPS_STATE_DIR}"
@@ -25,79 +22,46 @@ write_installed_version() {
 }
 
 read_installed_version() {
-  if [[ -f "${FRESHVPS_STATE_DIR}/installed_version" ]]; then
-    cat "${FRESHVPS_STATE_DIR}/installed_version"
-  fi
+  [[ -f "${FRESHVPS_STATE_DIR}/installed_version" ]] && cat "${FRESHVPS_STATE_DIR}/installed_version"
 }
 
-# Generic: unit active?
-unit_active() {
-  systemctl is-active --quiet "$1" 2>/dev/null
-}
-
-# Generic: docker container running?
+unit_active() { systemctl is-active --quiet "$1" 2>/dev/null; }
 container_running() {
   command -v docker >/dev/null 2>&1 || return 1
   docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -qi true
 }
 
-# Return 0 = healthy / skip install body
 module_default_healthy() {
   local name="$1"
   is_done "${name}" || return 1
   case "${name}" in
-    hardening)
-      unit_active fail2ban && command -v ufw >/dev/null
-      ;;
+    hardening) unit_active fail2ban && command -v ufw >/dev/null ;;
     sing-box)
       unit_active sing-box && [[ -x /usr/local/bin/sing-box ]] \
         && /usr/local/bin/sing-box check -c /usr/local/etc/sing-box/config.json >/dev/null 2>&1
       ;;
-    blocky)
-      unit_active blocky && [[ -x /usr/local/bin/blocky ]]
-      ;;
-    vpn-users)
-      [[ -x /usr/local/bin/freshvps-vpn ]] && [[ -f /etc/freshvps/vpn-users.json ]]
-      ;;
-    vpn-api)
-      unit_active freshvps-api 2>/dev/null || return 1
-      ;;
-    opensoho)
-      container_running opensoho || unit_active opensoho
-      ;;
-    kuma)
-      container_running uptime-kuma
-      ;;
-    beszel)
-      container_running beszel
-      ;;
-    lampac)
-      container_running lampac
-      ;;
-    telegram)
-      unit_active freshvps-telegram-bot 2>/dev/null || return 1
-      ;;
-    backup)
-      [[ -x /opt/freshvps-backup/backup.sh ]] || [[ -x /opt/freshvps/backup/backup.sh ]]
-      ;;
-    *)
-      is_done "${name}"
-      ;;
+    blocky) unit_active blocky && [[ -x /usr/local/bin/blocky ]] ;;
+    vpn-users) [[ -x /usr/local/bin/freshvps-vpn ]] && [[ -f /etc/freshvps/vpn-users.json ]] ;;
+    vpn-api) unit_active freshvps-api 2>/dev/null || return 1 ;;
+    opensoho) container_running opensoho || unit_active opensoho ;;
+    kuma) container_running uptime-kuma ;;
+    beszel) container_running beszel ;;
+    lampac) container_running lampac ;;
+    telegram) unit_active freshvps-telegram-bot 2>/dev/null || return 1 ;;
+    backup) [[ -x /opt/freshvps-backup/backup.sh ]] || [[ -x /opt/freshvps/backup/backup.sh ]] ;;
+    vps-tests) [[ -x /usr/local/bin/freshvps-tests ]] && [[ -f /opt/freshvps/scripts/vps-tests.sh ]] ;;
+    *) is_done "${name}" ;;
   esac
 }
 
-# run_module_idempotent NAME
-# Calls module_${name}_install only if not healthy or forced.
 run_module_idempotent() {
   local name="$1"
   local script="${FRESHVPS_ROOT}/modules/${name}.sh"
   [[ -f "${script}" ]] || die "Module missing: ${script}"
-
   if ! module_force_requested "${name}" && module_default_healthy "${name}"; then
-    info "=== Skip ${name} (already healthy; use --force or --force-module ${name}) ==="
+    info "=== Skip ${name} (already healthy) ==="
     return 0
   fi
-
   info "=== Module: ${name} ==="
   # shellcheck source=/dev/null
   source "${script}"

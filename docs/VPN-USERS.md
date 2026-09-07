@@ -1,56 +1,32 @@
-# Multi-user VPN & admin control
+# VPN users (English)
 
-> Status: **Implemented in tree** (smoke-test pending on real VPS).
-> Scope: people/devices → **VPS** only (not OpenWrt).
+Operator-only control plane. Users never self-register.
 
-## Goals
+## Protocols per user
 
-- Only the operator issues access.
-- Users never talk to Telegram; operator forwards link/QR.
-- Automation: registry → sing-box → Blocky DNS path → reload → artifacts.
-- Surfaces: **CLI**, **Telegram**, **API** (+ optional **Shortcuts** built on device — see [SHORTCUT-IOS.md](SHORTCUT-IOS.md)).
+| Artifact | Content |
+|----------|---------|
+| `link-vless.txt` / `qr.png` | VLESS + Reality |
+| `link-hy2.txt` | Hysteria2 (own password) |
+| `subscription.txt` | **Both** lines (recommended handoff) |
+| `subscription.b64` | Base64 of subscription |
+| `link.txt` | Same as VLESS (compat) |
 
-## On-disk layout
-
-| Path | Purpose |
-|------|---------|
-| `/etc/freshvps/vpn-users.json` | Registry |
-| `/etc/freshvps/clients/<name>/link.txt` | `vless://` |
-| `/etc/freshvps/clients/<name>/qr.png` | QR |
-| `/etc/freshvps/sessions/<token>` | API session expiry unix |
-| `/etc/freshvps/READY.txt` | Post-install operator summary |
-| `/usr/local/bin/freshvps-vpn` | CLI |
-| `/opt/freshvps-api/server.py` | API |
+There is **no** single standard URI that carries VLESS and HY2 together. Apps that support multi-line / subscription import should use `subscription.txt`.
 
 ## CLI
 
 ```bash
 freshvps-vpn add alice "phone"
 freshvps-vpn list
-freshvps-vpn link alice
-freshvps-vpn disable alice
-freshvps-vpn enable alice
-freshvps-vpn revoke alice
+freshvps-vpn link alice          # prints VLESS by default
+cat /etc/freshvps/clients/alice/subscription.txt
+freshvps-vpn disable|enable|revoke alice
 freshvps-vpn session 72
 ```
 
-Install seeds user **`operator`** automatically.
+## Telegram / API
 
-## Telegram (operator chat only)
+Same operations via Go bot or localhost API + session token. Prefer VPN or SSH tunnel for API.
 
-`/vpn_add` `/vpn_list` `/vpn_link` `/vpn_disable` `/vpn_enable` `/vpn_revoke` `/session` `/status` `/ready`
-
-## API + Shortcuts
-
-- Default bind: `127.0.0.1:8787`
-- Auth: `Authorization: Bearer <session>`
-- Session: `freshvps-vpn session` or `/session`
-- How to build Shortcut: [SHORTCUT-IOS.md](SHORTCUT-IOS.md) (no server-side `.shortcut` packaging)
-
-## DNS
-
-`vpn_apply_config` points sing-box DNS at Blocky `127.0.0.1` when validation succeeds.
-
-## Non-goals
-
-OpenWrt onboarding, public registration, full web UI, native Keychain app, VPS hosting of Apple Shortcut binaries.
+See also: [ru/VPN-USERS.md](ru/VPN-USERS.md)

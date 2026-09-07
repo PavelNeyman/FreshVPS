@@ -1,5 +1,7 @@
 # AI test plan (on VPS with SSH access)
 
+**RU:** [ru/TEST-PLAN-AI.md](ru/TEST-PLAN-AI.md)
+
 Run **after** owner provides SSH to a clean/reinstalled Debian VPS. No physical clients, no Telegram UI, no Wi-Fi feel.
 
 ## Preconditions

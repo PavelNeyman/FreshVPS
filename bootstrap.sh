@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # FreshVPS bootstrap — no git required.
 #
-#   curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh | sudo bash
-#   curl -fsSL .../bootstrap.sh | sudo bash -s -- --upgrade
-#   curl -fsSL .../bootstrap.sh | bash -s -- --mode plan --keep
+# Prefer:
+#   curl -fsSL .../bootstrap.sh -o /tmp/fv.sh && sudo bash /tmp/fv.sh
+# Also works:
+#   curl -fsSL .../bootstrap.sh | sudo bash
 #
 set -euo pipefail
 
@@ -59,11 +60,28 @@ detect_mode() {
     Darwin) echo plan ;;
     Linux)
       if [[ -f /etc/openwrt_release ]] || grep -qi openwrt /etc/os-release 2>/dev/null; then echo openwrt
-      else echo vps
+      elif [[ -f /etc/debian_version ]]; then echo vps
+      else
+        echo "[bootstrap] Linux without Debian/OpenWrt — use --mode explicitly" >&2
+        exit 1
       fi
       ;;
     *) echo "Unsupported OS" >&2; exit 1 ;;
   esac
+}
+
+# If we were started via curl|bash, $0 is not a real file — materialize once.
+ensure_real_script() {
+  local self="${BASH_SOURCE[0]:-$0}"
+  if [[ -f "${self}" && -r "${self}" && "${self}" != "-" && "${self}" != "bash" ]]; then
+    echo "${self}"
+    return
+  fi
+  local copy
+  copy="$(mktemp /tmp/freshvps-bootstrap.XXXXXX)"
+  cat >"${copy}"
+  chmod 700 "${copy}"
+  echo "${copy}"
 }
 
 fetch_tree() {
@@ -86,7 +104,7 @@ fetch_tree() {
 }
 
 main() {
-  local mode work root
+  local mode work root script_path
   mode="$(detect_mode)"
   echo "[bootstrap] mode=${mode}"
 
@@ -98,16 +116,18 @@ main() {
     work="${FRESHVPS_DIR:-$(mktemp -d /tmp/freshvps-plan.XXXXXX)}"
     root="$(fetch_tree "${work}")"
     echo "[bootstrap] plan tree: ${root}"
-    if [[ -x "${root}/scripts/plan.sh" ]]; then
+    if [[ -f "${root}/scripts/plan.sh" ]]; then
       bash "${root}/scripts/plan.sh" "${root}"
     else
-      echo "Edit configs under ${root}; deploy with SSH keys (docs/BOOTSTRAP.md)"
+      echo "Tree at ${root} — see docs/BOOTSTRAP.md"
     fi
     exit 0
   fi
 
   if [[ "$(id -u)" -ne 0 ]]; then
-    exec sudo -E bash "$0" --mode "${mode}" ${KEEP:+--keep} "${EXTRA[@]+"${EXTRA[@]}"}"
+    echo "[bootstrap] need root for mode=${mode}"
+    echo "  curl -fsSL .../bootstrap.sh -o /tmp/fv.sh && sudo bash /tmp/fv.sh --mode ${mode} ..."
+    exit 1
   fi
 
   work="${FRESHVPS_DIR:-$(mktemp -d /tmp/freshvps.XXXXXX)}"

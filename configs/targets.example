@@ -1,0 +1,7 @@
+# FreshVPS plan targets — one device per line
+# Format: kind|ssh_host|site_conf_or_empty
+# kind: vps | openwrt
+#
+# vps|root@203.0.113.10|
+# openwrt|root@192.168.1.1|/home/you/.freshvps/plan/sites/site1/site.conf
+# openwrt|root@10.9.9.1|/home/you/.freshvps/plan/sites/site2/site.conf

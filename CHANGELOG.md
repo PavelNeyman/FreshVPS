@@ -1,11 +1,14 @@
 # Changelog
 
-## 0.3.2 — 2026-09-07
+## 0.3.3 — 2026-09-07
 
-- `bootstrap.sh` — install via curl, no git required
-- `compose/panels.yml` — optional panels with Docker profiles
-- `lib/tui.sh` — portable TUI (whiptail/dialog/osascript/plain)
-- docs BOOTSTRAP EN/RU (SSH keys, plan mode)
+- Idempotent module runner (`lib/idempotent.sh`); skip healthy modules
+- `--upgrade` / `--force` / `--force-module`
+- Hardening: **no UFW reset** on re-run
+- `docs/UPGRADE.md`; bootstrap `--upgrade`
+- `scripts/plan.sh` control-plane skeleton
+- `modules/panels.sh` compose helper
 
-## 0.3.1 — doc parity, edge vless_parse
-## 0.3.0 — multi-user HY2, Go bot, OpenWrt detect, CI
+## 0.3.2 — bootstrap + compose panels + portable TUI
+## 0.3.1 — docs parity, edge parse
+## 0.3.0 — multi-user HY2, Go bot, CI

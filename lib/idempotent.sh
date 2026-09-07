@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Idempotent install helpers — safe re-run / upgrade
+# Idempotent install helpers
 # shellcheck disable=SC2034
 
 : "${FRESHVPS_FORCE:=0}"
@@ -35,6 +35,7 @@ module_default_healthy() {
   local name="$1"
   is_done "${name}" || return 1
   case "${name}" in
+    host-tools) [[ -x /usr/local/bin/freshvps-doctor ]] && [[ -x /opt/freshvps/scripts/smoke-host.sh ]] ;;
     hardening) unit_active fail2ban && command -v ufw >/dev/null ;;
     sing-box)
       unit_active sing-box && [[ -x /usr/local/bin/sing-box ]] \

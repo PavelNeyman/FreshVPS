@@ -67,9 +67,7 @@ pick_action_menu() {
 }
 
 collect_settings() {
-  if [[ "${DO_UPGRADE}" -eq 1 ]]; then
-    load_install_conf_if_present
-  fi
+  if [[ "${DO_UPGRADE}" -eq 1 ]]; then load_install_conf_if_present; fi
   if [[ -z "${CONFIG_FILE}" && "${DO_UPGRADE}" -eq 1 && -f /root/freshvps.conf ]]; then
     CONFIG_FILE=/root/freshvps.conf
   fi
@@ -98,6 +96,10 @@ collect_settings() {
     prompt_yes_no "Lampac?" n && ENABLE_LAMPAC=1 || ENABLE_LAMPAC=0
   fi
 
+  if [[ "${ENABLE_SINGBOX}" -eq 1 && "${ENABLE_VPN_USERS}" -eq 0 ]]; then
+    warn "sing-box without vpn-users → empty users (VPN will accept nobody)"
+  fi
+
   if [[ "${ENABLE_TELEGRAM}" -eq 1 && "${NONINTERACTIVE}" -eq 0 && "${DO_UPGRADE}" -eq 0 ]]; then
     TELEGRAM_BOT_TOKEN="$(prompt_value "Telegram bot token" "${TELEGRAM_BOT_TOKEN}")"
     TELEGRAM_ADMIN_ID="$(prompt_value "Telegram admin chat id" "${TELEGRAM_ADMIN_ID}")"
@@ -111,12 +113,13 @@ write_ready_summary() {
     echo "Host: $(hostname)  IP: ${PUBLIC_IP}"
     [[ -f /etc/freshvps/singbox-config-variant ]] && echo "sing-box variant: $(cat /etc/freshvps/singbox-config-variant)"
     echo
+    echo "NOTE: HY2 client links use insecure=1 (self-signed cert). Prefer VLESS+Reality when possible."
+    echo
     if [[ -f /etc/freshvps/clients/operator/subscription.txt ]]; then
       cat /etc/freshvps/clients/operator/subscription.txt
     fi
     echo
-    echo "CLI: freshvps-vpn | freshvps-doctor | freshvps-tests"
-    echo "Smoke: sudo bash /path/to/repo/scripts/smoke-host.sh  OR after install tree kept"
+    echo "CLI: freshvps-vpn | freshvps-doctor | freshvps-smoke | freshvps-tests"
   } >"${f}"
   chmod 600 "${f}"
   cat "${f}"
@@ -155,10 +158,8 @@ main() {
   pkg_install ca-certificates curl wget openssl jq tar gzip coreutils
   mkdir -p /opt/freshvps/compose
   [[ -f "${FRESHVPS_ROOT}/compose/panels.yml" ]] && install -m 644 "${FRESHVPS_ROOT}/compose/panels.yml" /opt/freshvps/compose/panels.yml
-  # ship lib for runtime CLI
-  mkdir -p /opt/freshvps/lib
-  install -m 644 "${FRESHVPS_ROOT}/lib/"*.sh /opt/freshvps/lib/ 2>/dev/null || true
 
+  run_module_idempotent host-tools
   [[ "${ENABLE_HARDENING}" -eq 1 ]] && run_module_idempotent hardening
   [[ "${ENABLE_SINGBOX}" -eq 1 ]] && run_module_idempotent sing-box
   [[ "${ENABLE_BLOCKY}" -eq 1 ]] && run_module_idempotent blocky
@@ -171,13 +172,15 @@ main() {
   [[ "${ENABLE_TELEGRAM}" -eq 1 ]] && run_module_idempotent telegram
   [[ "${ENABLE_BACKUP}" -eq 1 ]] && run_module_idempotent backup
   run_module_idempotent vps-tests
+  # refresh host tools after vpn-users (CLI binary)
+  run_module_idempotent host-tools
 
   write_install_conf
   write_installed_version "${VERSION}"
   write_ready_summary
-  if [[ -x "${FRESHVPS_ROOT}/scripts/smoke-host.sh" ]]; then
-    info "Running smoke-host…"
-    bash "${FRESHVPS_ROOT}/scripts/smoke-host.sh" || warn "smoke-host reported failures — check doctor"
+  if [[ -x /opt/freshvps/scripts/smoke-host.sh ]]; then
+    info "Running freshvps-smoke…"
+    bash /opt/freshvps/scripts/smoke-host.sh || warn "smoke reported failures — run freshvps-doctor"
   fi
   info "Finished — ${VERSION}"
 

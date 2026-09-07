@@ -7,7 +7,8 @@ Project assumes **greenfield** installs (recreate VPS if needed). No legacy migr
 ## Re-run / upgrade
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh | sudo bash -s -- --upgrade
+curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh -o /tmp/fv.sh
+sudo bash /tmp/fv.sh --upgrade
 ```
 
 - Healthy modules **skipped** (`lib/idempotent.sh`)
@@ -30,5 +31,5 @@ Password auth is disabled only if `authorized_keys` exists (or `FRESHVPS_ALLOW_P
 
 ```bash
 sudo freshvps-doctor
-sudo bash scripts/smoke-host.sh   # if tree still on disk
+sudo freshvps-smoke
 ```

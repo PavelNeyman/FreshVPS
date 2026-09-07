@@ -4,6 +4,8 @@
 
 GitHub builds the repo `tar.gz` on the fly (no Actions required).
 
+> **Private repository:** `raw.githubusercontent.com` and unauthenticated `codeload` return **404**. Either make the repo public, or download with a PAT / copy the tree to the VPS (`git clone` with credentials, or `scp` a tarball).
+
 ## VPS (Debian)
 
 **Preferred** (avoids curl|bash quirks):

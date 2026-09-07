@@ -14,6 +14,11 @@ warn_check() {
   else echo "WARN ${name}"; warnn=$((warnn+1)); fi
 }
 
+_container_running() {
+  local c="$1"
+  docker inspect -f '{{.State.Running}}' "${c}" 2>/dev/null | grep -qi true
+}
+
 echo "FreshVPS doctor — $(hostname) $(date -Iseconds)"
 [[ -f /var/lib/freshvps/installed_version ]] && echo "INFO installed_version=$(cat /var/lib/freshvps/installed_version)"
 [[ -f /etc/freshvps/install.conf ]] && echo "INFO install.conf present"
@@ -55,9 +60,9 @@ check "dns localhost" dig +time=2 +tries=1 @127.0.0.1 example.com +short
 
 if command -v docker >/dev/null 2>&1; then
   warn_check "compose panels.yml" test -f /opt/freshvps/compose/panels.yml
-  for c in opensoho uptime-kuma beszel; do
+  for c in opensoho uptime-kuma beszel lampac; do
     if docker inspect "${c}" >/dev/null 2>&1; then
-      if docker inspect -f '{{.State.Running}}' "${c}" 2>/dev/null | grep -qi true; then
+      if _container_running "${c}"; then
         echo "OK   container ${c}"
         ok=$((ok+1))
       else

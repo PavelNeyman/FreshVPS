@@ -1,31 +1,25 @@
 # Установка FreshVPS (русский)
 
-Готовая система: VPN (VLESS+HY2), Blocky, панели на localhost, CLI/Telegram.
+**EN:** [../INSTALL.md](../INSTALL.md)
 
-## VPS (Debian)
+Готовая система: multi-user VPN (**VLESS+Reality** + **Hysteria2**), Blocky, мониторинг, CLI / Telegram (Go) / API.
 
-```bash
-git clone https://github.com/PavelNeyman/FreshVPS.git
-cd FreshVPS
-sudo bash install.sh
-# /etc/freshvps/READY.txt
-sudo freshvps-doctor
-```
+## Требования
 
-Неинтерактивно: `sudo bash install.sh --config configs/freshvps.conf.example --non-interactive`
+- Debian 12/13, root, исходящий HTTPS
 
-## OpenWrt (на роутере)
+## Роли
 
-```bash
-scp -r openwrt root@ROUTER:/root/freshvps-openwrt
-ssh root@ROUTER
-cd /root/freshvps-openwrt
-cp site.conf.example site.conf   # пароль Wi-Fi, LAN; WAN_DEVICE=auto или eth0.2
-sh install-openwrt.sh
-```
+| Роль | Команда |
+|------|---------|
+| VPS | `sudo bash install.sh` |
+| Edge SBC | `sudo bash install.sh --role edge-client` |
+| OpenWrt | `openwrt/` на роутере, `sh install-openwrt.sh` |
 
-## Edge SBC
+## После установки
 
-`sudo bash install.sh --role edge-client --config configs/edge-client.conf.example`
+`/etc/freshvps/READY.txt` · пользователи: `freshvps-vpn add …` · выдача: **`subscription.txt`** (VLESS+HY2).
 
-Английская версия: [../INSTALL.md](../INSTALL.md)
+Порты: **443** VLESS, **8443** HY2. Панели только localhost + SSH-туннель.
+
+Lampac — только `ENABLE_LAMPAC=1`.

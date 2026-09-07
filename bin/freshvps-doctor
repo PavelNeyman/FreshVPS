@@ -57,7 +57,14 @@ if command -v docker >/dev/null 2>&1; then
   warn_check "compose panels.yml" test -f /opt/freshvps/compose/panels.yml
   for c in opensoho uptime-kuma beszel; do
     if docker inspect "${c}" >/dev/null 2>&1; then
-      warn_check "container ${c}" docker inspect -f '{{.State.Running}}' "${c}" | grep -qi true
+      # Avoid bare `|` after warn_check (breaks under set -o pipefail)
+      if docker inspect -f '{{.State.Running}}' "${c}" 2>/dev/null | grep -qi true; then
+        echo "OK   container ${c}"
+        ok=$((ok+1))
+      else
+        echo "WARN container ${c}"
+        warnn=$((warnn+1))
+      fi
     fi
   done
 fi

@@ -1,33 +1,20 @@
-# Security notes — FreshVPS (English)
+# Security notes
 
-**RU:** [ru/SECURITY.md](ru/SECURITY.md)
+## SSH
 
-## Principles
-
-- Single operator; no multi-tenant isolation claims
-- Secrets only under `/etc/freshvps/secrets` (mode 600/700)
-- Never commit tokens, keys, client UUIDs, or real Wi‑Fi passwords
-
-## Default posture
-
-- SSH: public key; root `prohibit-password`
-- fail2ban; UFW deny incoming by default
-- unattended-upgrades; BBR
+Password authentication is disabled **only** when `authorized_keys` is present (or `FRESHVPS_ALLOW_PASSWORD_SSH=1`).
 
 ## VPN
 
-- Multi-user **VLESS+Reality** and **Hysteria2** (per-user HY2 password)
-- Hand out `subscription.txt`, not a shared global HY2 password
-- HY2 uses local self-signed TLS (`insecure=1` in generated links)
-- Rotate Reality keys if leaked
+- **VLESS + Reality** — preferred client path.
+- **Hysteria2** uses a **self-signed** certificate; client links set `insecure=1` for convenience. Treat as weaker authenticity than Reality. Prefer VLESS when possible.
 
-## DNS / panels
+## Admin API
 
-- Blocky on 53; prefer not exposing DNS to the whole Internet
-- OpenSOHO / Kuma / Beszel / API bind **127.0.0.1** — SSH tunnel
+- Default bind `127.0.0.1`.
+- Auth: **Bearer session** from `freshvps-vpn session [hours]` only (no master token).
+- Prefer SSH tunnel or access only over your VPN.
 
-## Recommendations
+## VPS tests
 
-1. Offline restic password; test restore
-2. Long OpenSOHO shared secret on trusted routers only
-3. `ufw status numbered` after install
+`freshvps-tests` may pipe third-party scripts; use on evaluation VPS or accept the trust model.

@@ -10,25 +10,16 @@ module_edge_client_install() {
 
   # shellcheck source=/dev/null
   source "${FRESHVPS_ROOT}/lib/vless-parse.sh"
+  # shellcheck source=/dev/null
+  source "${FRESHVPS_ROOT}/lib/install-singbox.sh"
 
   local conf_dir=/usr/local/etc/sing-box
   local bin_dir=/usr/local/bin
   local edge_etc="${FRESHVPS_ETC}/edge"
-  mkdir -p "${conf_dir}" "${edge_etc}" /var/lib/sing-box
+  mkdir -p "${conf_dir}" "${edge_etc}" /var/lib/sing-box "${FRESHVPS_STATE_DIR}"
 
   pkg_install curl tar jq openssl iptables iproute2 ca-certificates
-
-  local arch tag url tmp
-  arch="$(arch_go)"
-  tag="$(curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)"
-  [[ -n "${tag}" && "${tag}" != null ]] || die "Cannot resolve sing-box release"
-  url="https://github.com/SagerNet/sing-box/releases/download/${tag}/sing-box-${tag#v}-linux-${arch}.tar.gz"
-  tmp="$(mktemp -d)"
-  info "Downloading sing-box ${tag} (${arch})"
-  curl -fsSL "${url}" -o "${tmp}/sb.tgz"
-  tar -xzf "${tmp}/sb.tgz" -C "${tmp}"
-  install -m 755 "${tmp}/sing-box-${tag#v}-linux-${arch}/sing-box" "${bin_dir}/sing-box"
-  rm -rf "${tmp}"
+  install_singbox_binary "${bin_dir}"
 
   local vless_url="${EDGE_UPSTREAM_VLESS:-}"
   if [[ -z "${vless_url}" && -f "${edge_etc}/upstream.vless" ]]; then

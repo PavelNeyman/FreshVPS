@@ -1,18 +1,19 @@
 # FreshVPS Roadmap
 
-## Product bar
+## Done (through 0.3.5)
 
-Ready-to-use VPS + optional OpenWrt/edge. Operator VPN with VLESS+HY2 subscription.
+- Multi-user VLESS + HY2 + subscription
+- Bootstrap without git, portable TUI, idempotent upgrade
+- Unified `compose/panels.yml` for OpenSOHO/Kuma/Beszel/Lampac
+- Go Telegram bot, API, doctor, **freshvps-tests**
+- OpenWrt site role + env detect; edge-client; plan.sh SSH deploy
+- Docs EN/RU (INSTALL, UPGRADE, TESTS, BOOTSTRAP, …)
 
-## Done (0.3.0)
+## Next (after owner smoke)
 
-Multi-user HY2, subscription artifacts, env detect OpenWrt, Go Telegram bot, unit tests + CI, AGENTS refresh.
-
-## Next
-
-1. Owner smoke (VPS + Cudy TR1200)
-2. Shared sing-box client templates for edge/OpenWrt
-3. Full EN/RU doc parity
+1. Live VPS + Cudy smoke (`docs/SMOKE.md`, `freshvps-tests --default`)
+2. Harden third-party test trust (optional mirror/pin)
+3. Multi-site plan batch from a targets file
 
 ## Deferred
 

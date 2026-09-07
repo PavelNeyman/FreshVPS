@@ -1,4 +1,6 @@
-# Security notes
+# Security notes (English)
+
+**RU:** [ru/SECURITY.md](ru/SECURITY.md)
 
 ## SSH
 

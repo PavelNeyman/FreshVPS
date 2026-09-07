@@ -172,8 +172,11 @@ main() {
   [[ "${ENABLE_TELEGRAM}" -eq 1 ]] && run_module_idempotent telegram
   [[ "${ENABLE_BACKUP}" -eq 1 ]] && run_module_idempotent backup
   run_module_idempotent vps-tests
-  # refresh host tools after vpn-users (CLI binary)
-  run_module_idempotent host-tools
+  # always refresh CLI/smoke after modules (ignore skip)
+  # shellcheck source=/dev/null
+  source "${FRESHVPS_ROOT}/modules/host-tools.sh"
+  module_host_tools_install
+  mark_done host-tools
 
   write_install_conf
   write_installed_version "${VERSION}"

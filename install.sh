@@ -4,64 +4,34 @@ set -euo pipefail
 
 FRESHVPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export FRESHVPS_ROOT
-# shellcheck source=lib/common.sh
 source "${FRESHVPS_ROOT}/lib/common.sh"
-# shellcheck source=lib/tui.sh
 source "${FRESHVPS_ROOT}/lib/tui.sh"
-# shellcheck source=lib/idempotent.sh
 source "${FRESHVPS_ROOT}/lib/idempotent.sh"
+source "${FRESHVPS_ROOT}/lib/install-conf.sh"
 
 VERSION="$(cat "${FRESHVPS_ROOT}/VERSION" 2>/dev/null || echo 0.0.0)"
 
-ENABLE_HARDENING=1
-ENABLE_SINGBOX=1
-ENABLE_BLOCKY=1
-ENABLE_VPN_USERS=1
-ENABLE_VPN_API=1
-ENABLE_OPENSOHO=1
-ENABLE_KUMA=1
-ENABLE_BESZEL=1
-ENABLE_TELEGRAM=1
-ENABLE_BACKUP=1
-ENABLE_LAMPAC=0
+ENABLE_HARDENING=1 ENABLE_SINGBOX=1 ENABLE_BLOCKY=1 ENABLE_VPN_USERS=1
+ENABLE_VPN_API=1 ENABLE_OPENSOHO=1 ENABLE_KUMA=1 ENABLE_BESZEL=1
+ENABLE_TELEGRAM=1 ENABLE_BACKUP=1 ENABLE_LAMPAC=0
 
-PUBLIC_IP=""
-SSH_PORT=22
-SINGBOX_VLESS_PORT=443
-SINGBOX_HY2_PORT=8443
-BLOCKY_DNS_PORT=53
-OPENSOHO_HTTP_PORT=8090
-KUMA_PORT=3001
-BESZEL_PORT=8091
-VPN_API_PORT=8787
-VPN_API_BIND=127.0.0.1
-TELEGRAM_BOT_TOKEN=""
-TELEGRAM_ADMIN_ID=""
-BACKUP_REPO=""
-CONFIG_FILE=""
-NONINTERACTIVE=0
+PUBLIC_IP="" SSH_PORT=22
+SINGBOX_VLESS_PORT=443 SINGBOX_HY2_PORT=8443
+BLOCKY_DNS_PORT=53 OPENSOHO_HTTP_PORT=8090 KUMA_PORT=3001 BESZEL_PORT=8091
+VPN_API_PORT=8787 VPN_API_BIND=127.0.0.1
+TELEGRAM_BOT_TOKEN="" TELEGRAM_ADMIN_ID="" BACKUP_REPO=""
+CONFIG_FILE="" NONINTERACTIVE=0 ROLE=vps WITH_MIKROTIK=0 DO_UPGRADE=0 ACTION=""
 export NONINTERACTIVE
-ROLE=vps
-WITH_MIKROTIK=0
-DO_UPGRADE=0
-ACTION=""
 
 usage() {
   cat <<EOF
 FreshVPS ${VERSION}
-
   --config FILE | --non-interactive | --upgrade | --force | --force-module NAME
   --role vps|edge-client|openwrt | --with-mikrotik | --tests
-
-CLI tests (after install):  freshvps-tests
 EOF
 }
 
-load_config() {
-  local f="$1"
-  [[ -f "${f}" ]] || die "Config not found: ${f}"
-  set -a; source "${f}"; set +a
-}
+load_config() { [[ -f "$1" ]] || die "Config not found: $1"; set -a; source "$1"; set +a; }
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
@@ -70,9 +40,7 @@ parse_args() {
       --non-interactive) NONINTERACTIVE=1; export NONINTERACTIVE; shift ;;
       --upgrade) DO_UPGRADE=1; FRESHVPS_UPGRADE=1; export FRESHVPS_UPGRADE; ACTION=upgrade; shift ;;
       --force) FRESHVPS_FORCE=1; export FRESHVPS_FORCE; shift ;;
-      --force-module)
-        FRESHVPS_FORCE_MODULES="${FRESHVPS_FORCE_MODULES:+${FRESHVPS_FORCE_MODULES},}$2"
-        export FRESHVPS_FORCE_MODULES; shift 2 ;;
+      --force-module) FRESHVPS_FORCE_MODULES="${FRESHVPS_FORCE_MODULES:+${FRESHVPS_FORCE_MODULES},}$2"; export FRESHVPS_FORCE_MODULES; shift 2 ;;
       --role) ROLE="$2"; shift 2 ;;
       --with-mikrotik) WITH_MIKROTIK=1; shift ;;
       --tests) ACTION=tests; shift ;;
@@ -90,23 +58,18 @@ pick_action_menu() {
   [[ "${NONINTERACTIVE}" -eq 1 ]] && { ACTION=install; return 0; }
   if command -v whiptail >/dev/null 2>&1; then
     ACTION="$(whiptail --title "FreshVPS ${VERSION}" --menu "Choose action" 16 60 5 \
-      install "Install / configure modules" \
-      upgrade "Upgrade / re-run (idempotent)" \
-      tests "VPS tests (network / quality)" \
-      quit "Exit" 3>&1 1>&2 2>&3)" || ACTION=quit
+      install "Install / configure" upgrade "Upgrade (idempotent)" \
+      tests "VPS tests" quit "Exit" 3>&1 1>&2 2>&3)" || ACTION=quit
   else
-    echo "1) install  2) upgrade  3) VPS tests  4) quit"
-    read -r -p "> " n
-    case "${n}" in
-      2) ACTION=upgrade ;;
-      3) ACTION=tests ;;
-      4) ACTION=quit ;;
-      *) ACTION=install ;;
-    esac
+    echo "1) install  2) upgrade  3) tests  4) quit"; read -r -p "> " n
+    case "${n}" in 2) ACTION=upgrade ;; 3) ACTION=tests ;; 4) ACTION=quit ;; *) ACTION=install ;; esac
   fi
 }
 
 collect_settings() {
+  if [[ "${DO_UPGRADE}" -eq 1 ]]; then
+    load_install_conf_if_present
+  fi
   if [[ -z "${CONFIG_FILE}" && "${DO_UPGRADE}" -eq 1 && -f /root/freshvps.conf ]]; then
     CONFIG_FILE=/root/freshvps.conf
   fi
@@ -141,32 +104,25 @@ collect_settings() {
   fi
 }
 
-install_panels_compose() {
-  mkdir -p /opt/freshvps/compose
-  [[ -f "${FRESHVPS_ROOT}/compose/panels.yml" ]] && \
-    install -m 644 "${FRESHVPS_ROOT}/compose/panels.yml" /opt/freshvps/compose/panels.yml
-}
-
 write_ready_summary() {
   local f="${FRESHVPS_ETC}/READY.txt"
   {
     echo "FreshVPS ${VERSION} READY — $(date -Iseconds)"
     echo "Host: $(hostname)  IP: ${PUBLIC_IP}"
+    [[ -f /etc/freshvps/singbox-config-variant ]] && echo "sing-box variant: $(cat /etc/freshvps/singbox-config-variant)"
     echo
     if [[ -f /etc/freshvps/clients/operator/subscription.txt ]]; then
       cat /etc/freshvps/clients/operator/subscription.txt
     fi
     echo
     echo "CLI: freshvps-vpn | freshvps-doctor | freshvps-tests"
-    echo "Tests menu: sudo freshvps-tests   or   sudo bash install.sh --tests"
+    echo "Smoke: sudo bash /path/to/repo/scripts/smoke-host.sh  OR after install tree kept"
   } >"${f}"
   chmod 600 "${f}"
   cat "${f}"
 }
 
 run_tests_action() {
-  # ensure runner present
-  # shellcheck source=/dev/null
   source "${FRESHVPS_ROOT}/modules/vps-tests.sh"
   module_vps_tests_install
   bash /opt/freshvps/scripts/vps-tests.sh
@@ -182,24 +138,12 @@ main() {
   fi
 
   pick_action_menu
-  if [[ "${ACTION}" == "quit" ]]; then exit 0; fi
-  if [[ "${ACTION}" == "tests" ]]; then
-    require_root
-    run_tests_action
-    exit 0
-  fi
-  if [[ "${ACTION}" == "upgrade" ]]; then
-    DO_UPGRADE=1; FRESHVPS_UPGRADE=1; export FRESHVPS_UPGRADE
-  fi
+  [[ "${ACTION}" == "quit" ]] && exit 0
+  if [[ "${ACTION}" == "tests" ]]; then require_root; run_tests_action; exit 0; fi
+  if [[ "${ACTION}" == "upgrade" ]]; then DO_UPGRADE=1; FRESHVPS_UPGRADE=1; export FRESHVPS_UPGRADE; fi
 
-  require_root
-  require_debian
-  ensure_dirs
-  touch "${FRESHVPS_LOG}"
-
-  if [[ "${DO_UPGRADE}" -eq 1 ]]; then
-    NONINTERACTIVE="${NONINTERACTIVE:-1}"; export NONINTERACTIVE
-  fi
+  require_root; require_debian; ensure_dirs; touch "${FRESHVPS_LOG}"
+  [[ "${DO_UPGRADE}" -eq 1 ]] && { NONINTERACTIVE="${NONINTERACTIVE:-1}"; export NONINTERACTIVE; }
 
   info "FreshVPS ${VERSION} action=${ACTION:-install}"
   collect_settings
@@ -209,7 +153,11 @@ main() {
   printf '%s\n' "${PUBLIC_IP}" >"${FRESHVPS_ETC}/public_ip"
 
   pkg_install ca-certificates curl wget openssl jq tar gzip coreutils
-  install_panels_compose
+  mkdir -p /opt/freshvps/compose
+  [[ -f "${FRESHVPS_ROOT}/compose/panels.yml" ]] && install -m 644 "${FRESHVPS_ROOT}/compose/panels.yml" /opt/freshvps/compose/panels.yml
+  # ship lib for runtime CLI
+  mkdir -p /opt/freshvps/lib
+  install -m 644 "${FRESHVPS_ROOT}/lib/"*.sh /opt/freshvps/lib/ 2>/dev/null || true
 
   [[ "${ENABLE_HARDENING}" -eq 1 ]] && run_module_idempotent hardening
   [[ "${ENABLE_SINGBOX}" -eq 1 ]] && run_module_idempotent sing-box
@@ -222,17 +170,19 @@ main() {
   [[ "${ENABLE_LAMPAC}" -eq 1 ]] && run_module_idempotent lampac
   [[ "${ENABLE_TELEGRAM}" -eq 1 ]] && run_module_idempotent telegram
   [[ "${ENABLE_BACKUP}" -eq 1 ]] && run_module_idempotent backup
-  # always install test runner
   run_module_idempotent vps-tests
 
+  write_install_conf
   write_installed_version "${VERSION}"
   write_ready_summary
-  info "Finished — installed_version=${VERSION}"
+  if [[ -x "${FRESHVPS_ROOT}/scripts/smoke-host.sh" ]]; then
+    info "Running smoke-host…"
+    bash "${FRESHVPS_ROOT}/scripts/smoke-host.sh" || warn "smoke-host reported failures — check doctor"
+  fi
+  info "Finished — ${VERSION}"
 
   if [[ "${NONINTERACTIVE}" -eq 0 ]]; then
-    if prompt_yes_no "Run VPS tests now?" n; then
-      run_tests_action
-    fi
+    prompt_yes_no "Run VPS network tests now?" n && run_tests_action || true
   fi
 }
 

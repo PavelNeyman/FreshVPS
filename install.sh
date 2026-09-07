@@ -6,6 +6,8 @@ FRESHVPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export FRESHVPS_ROOT
 # shellcheck source=lib/common.sh
 source "${FRESHVPS_ROOT}/lib/common.sh"
+# shellcheck source=lib/tui.sh
+source "${FRESHVPS_ROOT}/lib/tui.sh"
 
 VERSION="$(cat "${FRESHVPS_ROOT}/VERSION" 2>/dev/null || echo 0.0.0)"
 
@@ -36,6 +38,7 @@ TELEGRAM_ADMIN_ID=""
 BACKUP_REPO=""
 CONFIG_FILE=""
 NONINTERACTIVE=0
+export NONINTERACTIVE
 ROLE=vps
 WITH_MIKROTIK=0
 
@@ -49,6 +52,8 @@ Usage: sudo bash install.sh [options]
   --role vps|edge-client|openwrt
   --with-mikrotik
   -h, --help
+
+Or without git: curl -fsSL .../bootstrap.sh | sudo bash
 EOF
 }
 
@@ -65,7 +70,7 @@ parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --config) CONFIG_FILE="$2"; shift 2 ;;
-      --non-interactive) NONINTERACTIVE=1; shift ;;
+      --non-interactive) NONINTERACTIVE=1; export NONINTERACTIVE; shift ;;
       --role) ROLE="$2"; shift 2 ;;
       --with-mikrotik) WITH_MIKROTIK=1; shift ;;
       -h|--help) usage; exit 0 ;;
@@ -74,38 +79,8 @@ parse_args() {
   done
 }
 
-prompt_yes_no() {
-  local q="$1" default="${2:-y}"
-  if [[ "${NONINTERACTIVE}" -eq 1 ]]; then
-    [[ "${default}" == "y" ]] && return 0 || return 1
-  fi
-  if command -v whiptail >/dev/null 2>&1; then
-    if [[ "${default}" == "y" ]]; then
-      whiptail --yesno "${q}" 10 60 && return 0 || return 1
-    else
-      whiptail --defaultno --yesno "${q}" 10 60 && return 0 || return 1
-    fi
-  fi
-  local a
-  read -r -p "${q} [Y/n] " a || true
-  a="${a:-${default}}"
-  [[ "${a}" =~ ^[Yy] ]]
-}
-
-prompt_value() {
-  local q="$1" default="${2:-}"
-  if [[ "${NONINTERACTIVE}" -eq 1 ]]; then
-    echo "${default}"
-    return
-  fi
-  if command -v whiptail >/dev/null 2>&1; then
-    whiptail --inputbox "${q}" 10 60 "${default}" 3>&1 1>&2 2>&3 || echo "${default}"
-    return
-  fi
-  local a
-  read -r -p "${q} [${default}]: " a || true
-  echo "${a:-${default}}"
-}
+prompt_yes_no() { tui_yesno "$@"; }
+prompt_value() { tui_input "$@"; }
 
 collect_settings() {
   if [[ -n "${CONFIG_FILE}" ]]; then
@@ -122,16 +97,25 @@ collect_settings() {
     prompt_yes_no "Blocky DNS?" y && ENABLE_BLOCKY=1 || ENABLE_BLOCKY=0
     prompt_yes_no "Multi-user VPN CLI + operator profile?" y && ENABLE_VPN_USERS=1 || ENABLE_VPN_USERS=0
     prompt_yes_no "Admin API for Shortcuts (localhost)?" y && ENABLE_VPN_API=1 || ENABLE_VPN_API=0
-    prompt_yes_no "OpenSOHO?" y && ENABLE_OPENSOHO=1 || ENABLE_OPENSOHO=0
+    prompt_yes_no "OpenSOHO (OpenWrt panel)?" y && ENABLE_OPENSOHO=1 || ENABLE_OPENSOHO=0
     prompt_yes_no "Uptime Kuma?" y && ENABLE_KUMA=1 || ENABLE_KUMA=0
     prompt_yes_no "Beszel?" y && ENABLE_BESZEL=1 || ENABLE_BESZEL=0
     prompt_yes_no "Telegram operator bot?" y && ENABLE_TELEGRAM=1 || ENABLE_TELEGRAM=0
     prompt_yes_no "restic backups?" y && ENABLE_BACKUP=1 || ENABLE_BACKUP=0
+    prompt_yes_no "Lampac (optional media)?" n && ENABLE_LAMPAC=1 || ENABLE_LAMPAC=0
   fi
 
   if [[ "${ENABLE_TELEGRAM}" -eq 1 ]]; then
     TELEGRAM_BOT_TOKEN="$(prompt_value "Telegram bot token" "${TELEGRAM_BOT_TOKEN}")"
     TELEGRAM_ADMIN_ID="$(prompt_value "Telegram admin chat id" "${TELEGRAM_ADMIN_ID}")"
+  fi
+}
+
+install_panels_compose() {
+  mkdir -p /opt/freshvps/compose
+  if [[ -f "${FRESHVPS_ROOT}/compose/panels.yml" ]]; then
+    install -m 644 "${FRESHVPS_ROOT}/compose/panels.yml" /opt/freshvps/compose/panels.yml
+    info "Installed /opt/freshvps/compose/panels.yml (profiles: opensoho kuma beszel lampac)"
   fi
 }
 
@@ -153,38 +137,36 @@ write_ready_summary() {
     echo "FreshVPS ${VERSION} READY — $(date -Iseconds)"
     echo "Host: $(hostname)  IP: ${PUBLIC_IP}"
     echo
-    echo "=== VPN (your operator profile) ==="
-    if [[ -f /etc/freshvps/clients/operator/link.txt ]]; then
+    echo "=== VPN (operator) ==="
+    if [[ -f /etc/freshvps/clients/operator/subscription.txt ]]; then
+      cat /etc/freshvps/clients/operator/subscription.txt
+      echo "QR VLESS: /etc/freshvps/clients/operator/qr.png"
+    elif [[ -f /etc/freshvps/clients/operator/link.txt ]]; then
       cat /etc/freshvps/clients/operator/link.txt
-      echo "QR: /etc/freshvps/clients/operator/qr.png"
     else
       echo "(run: freshvps-vpn add operator)"
     fi
     echo
-    echo "HY2 password: $(read_secret singbox_hy2_password 2>/dev/null || echo n/a) port ${SINGBOX_HY2_PORT}"
     echo "Reality public key: $(read_secret singbox_reality_public 2>/dev/null || echo n/a)"
     echo
     echo "=== Manage users ==="
     echo "CLI: freshvps-vpn add|list|link|disable|enable|revoke|session"
     echo "TG:  /vpn_add /vpn_list /vpn_link /session /status /ready"
-    echo "API: 127.0.0.1:${VPN_API_PORT} (session via freshvps-vpn session)"
-    echo "Shortcuts: build on device — docs/SHORTCUT-IOS.md"
+    echo "API: 127.0.0.1:${VPN_API_PORT}"
     echo
-    echo "=== Services (panels: localhost only) ==="
-    echo "Blocky DNS: 127.0.0.1:53 (VPN clients use server DNS)"
-    echo "Access panels: ssh -L 8090:127.0.0.1:8090 -L 3001:127.0.0.1:3001 -L 8091:127.0.0.1:8091 root@${PUBLIC_IP}"
-    echo "OpenSOHO: http://127.0.0.1:${OPENSOHO_HTTP_PORT}  admin: $(read_secret opensoho_admin_email 2>/dev/null || echo n/a) / secrets/opensoho_admin_password"
-    echo "Kuma:     http://127.0.0.1:${KUMA_PORT}  (create admin once in browser)"
-    echo "Beszel:   http://127.0.0.1:${BESZEL_PORT}  admin: $(read_secret beszel_admin_email 2>/dev/null || echo n/a) / secrets/beszel_admin_password"
-    [[ "${ENABLE_LAMPAC:-0}" -eq 1 ]] && echo "Lampac:   http://127.0.0.1:${LAMPAC_PORT:-9118}  rootpwd: secrets/lampac_root_password"
+    echo "=== Panels (localhost + SSH tunnel) ==="
+    echo "Compose definitions: /opt/freshvps/compose/panels.yml"
+    echo "ssh -L 8090:127.0.0.1:8090 -L 3001:127.0.0.1:3001 -L 8091:127.0.0.1:8091 root@${PUBLIC_IP}"
+    [[ "${ENABLE_LAMPAC:-0}" -eq 1 ]] && echo "Lampac: http://127.0.0.1:${LAMPAC_PORT:-9118}"
     echo
-    echo "Secrets dir: ${FRESHVPS_ETC}/secrets"
-    echo "Log: ${FRESHVPS_LOG}"
+    echo "Secrets: ${FRESHVPS_ETC}/secrets"
   } >"${f}"
   chmod 600 "${f}"
   info "Wrote ${f}"
-  if [[ -x /opt/freshvps-telegram/notify.sh ]]; then
-    /opt/freshvps-telegram/notify.sh "FreshVPS READY on ${PUBLIC_IP}. Operator link in /etc/freshvps/READY.txt"
+  if [[ -x /opt/freshvps/runtime/telegram/notify.sh ]]; then
+    /opt/freshvps/runtime/telegram/notify.sh "FreshVPS READY on ${PUBLIC_IP}"
+  elif [[ -x /opt/freshvps-telegram/notify.sh ]]; then
+    /opt/freshvps-telegram/notify.sh "FreshVPS READY on ${PUBLIC_IP}"
   fi
   cat "${f}"
 }
@@ -205,7 +187,7 @@ main() {
   ensure_dirs
   touch "${FRESHVPS_LOG}"
 
-  info "FreshVPS ${VERSION} starting (ready-to-use mode)"
+  info "FreshVPS ${VERSION} starting (TUI backend: $(tui_detect))"
   collect_settings
 
   export PUBLIC_IP SSH_PORT
@@ -213,10 +195,12 @@ main() {
   export BLOCKY_DNS_PORT OPENSOHO_HTTP_PORT KUMA_PORT BESZEL_PORT
   export VPN_API_PORT VPN_API_BIND
   export TELEGRAM_BOT_TOKEN TELEGRAM_ADMIN_ID BACKUP_REPO
+  export ENABLE_LAMPAC
 
   printf '%s\n' "${PUBLIC_IP}" >"${FRESHVPS_ETC}/public_ip"
 
   pkg_install ca-certificates curl wget openssl jq tar gzip coreutils
+  install_panels_compose
 
   [[ "${ENABLE_HARDENING}" -eq 1 ]] && run_module hardening
   [[ "${ENABLE_SINGBOX}" -eq 1 ]] && run_module sing-box

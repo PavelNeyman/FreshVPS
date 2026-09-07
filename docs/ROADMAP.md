@@ -1,20 +1,15 @@
 # FreshVPS Roadmap
 
-## Done (through 0.3.5)
+## Done (0.4.0)
 
-- Multi-user VLESS + HY2 + subscription
-- Bootstrap without git, portable TUI, idempotent upgrade
-- Unified `compose/panels.yml` for OpenSOHO/Kuma/Beszel/Lampac
-- Go Telegram bot, API, doctor, **freshvps-tests**
-- OpenWrt site role + env detect; edge-client; plan.sh SSH deploy
-- Docs EN/RU (INSTALL, UPGRADE, TESTS, BOOTSTRAP, …)
+- Modular VPS: VPN multi-user, Blocky, panels compose, TG, backups
+- Bootstrap, idempotent upgrade, install.conf, SSH preflight
+- OpenWrt / edge roles, plan deploy targets, smoke-host, vps-tests
+- Greenfield only (recreate VPS; no migration toolkit)
 
-## Next (after owner smoke)
+## Next (owner)
 
-1. Live VPS + Cudy smoke (`docs/SMOKE.md`, `freshvps-tests --default`)
-2. Harden third-party test trust (optional mirror/pin)
-3. Multi-site plan batch from a targets file
-
-## Deferred
-
-Port knocking, public web admin, Keychain app
+1. Clean Debian install smoke
+2. Phone import subscription + traffic
+3. OpenWrt site smoke
+4. Optional: pin vps-tests sources / lab flag docs

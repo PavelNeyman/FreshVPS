@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6 — 2026-09-07
+
+### Added
+- **edge-client**: `install-edge.sh` for home SBC (Armbian), no VPS stack
+- MikroTik helper `--with-mikrotik` (policy route via address-list)
+- `configs/edge-client.conf.example`
+
 ## 0.2.5 — 2026-09-06
 
 ### Added

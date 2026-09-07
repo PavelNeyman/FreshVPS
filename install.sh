@@ -36,6 +36,8 @@ TELEGRAM_ADMIN_ID=""
 BACKUP_REPO=""
 CONFIG_FILE=""
 NONINTERACTIVE=0
+ROLE=vps
+WITH_MIKROTIK=0
 
 usage() {
   cat <<EOF
@@ -44,6 +46,8 @@ FreshVPS ${VERSION} — ready-to-use Debian VPS bootstrap
 Usage: sudo bash install.sh [options]
   --config FILE
   --non-interactive
+  --role vps|edge-client
+  --with-mikrotik
   -h, --help
 EOF
 }
@@ -62,6 +66,8 @@ parse_args() {
     case "$1" in
       --config) CONFIG_FILE="$2"; shift 2 ;;
       --non-interactive) NONINTERACTIVE=1; shift ;;
+      --role) ROLE="$2"; shift 2 ;;
+      --with-mikrotik) WITH_MIKROTIK=1; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "Unknown option: $1" ;;
     esac
@@ -185,6 +191,12 @@ write_ready_summary() {
 
 main() {
   parse_args "$@"
+  if [[ "${ROLE}" == "edge-client" ]]; then
+    extra=()
+    [[ -n "${CONFIG_FILE}" ]] && extra+=(--config "${CONFIG_FILE}")
+    [[ "${WITH_MIKROTIK}" -eq 1 ]] && extra+=(--with-mikrotik)
+    exec bash "${FRESHVPS_ROOT}/install-edge.sh" "${extra[@]}"
+  fi
   require_root
   require_debian
   ensure_dirs

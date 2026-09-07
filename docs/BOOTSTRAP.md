@@ -1,4 +1,6 @@
-# Bootstrap
+# Bootstrap (English)
+
+**RU:** [ru/BOOTSTRAP.md](ru/BOOTSTRAP.md)
 
 GitHub builds the repo `tar.gz` on the fly (no Actions required).
 

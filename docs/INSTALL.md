@@ -1,14 +1,23 @@
-# FreshVPS installation
+# FreshVPS installation (English)
 
-Produces a **ready-to-use** system: VPN with operator profile + QR, Blocky, monitoring, operator CLI/Telegram/API.
+**RU:** [ru/INSTALL.md](ru/INSTALL.md)
+
+Produces a **ready-to-use** system: multi-user VPN (VLESS+Reality + Hysteria2), Blocky, monitoring, operator CLI / Telegram (Go) / API.
 
 ## Requirements
 
-- Debian 12 or 13 (fresh VPS recommended)
-- Root
-- Outbound HTTPS (GitHub, Docker Hub, ghcr.io)
+- Debian 12/13 (fresh VPS recommended)
+- Root; outbound HTTPS (GitHub, Docker Hub / mirrors)
 
-## Interactive
+## Roles
+
+| Role | Command |
+|------|---------|
+| VPS (default) | `sudo bash install.sh` |
+| Edge SBC | `sudo bash install.sh --role edge-client` |
+| OpenWrt help | `bash install.sh --role openwrt` then run on router |
+
+## Interactive VPS
 
 ```bash
 git clone https://github.com/PavelNeyman/FreshVPS.git
@@ -22,84 +31,58 @@ Optional: `apt-get install -y whiptail`.
 
 ```bash
 cp configs/freshvps.conf.example /root/freshvps.conf
-# set PUBLIC_IP, TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_ID
+# PUBLIC_IP, TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_ID
 sudo bash install.sh --config /root/freshvps.conf --non-interactive
 ```
 
 ## After install
 
-Read **`/etc/freshvps/READY.txt`** (also printed at the end of install).
+Read **`/etc/freshvps/READY.txt`**.
 
 | Path | Purpose |
 |------|---------|
-| `/etc/freshvps/READY.txt` | Operator summary |
-| `/etc/freshvps/clients/operator/` | Your VLESS link + QR |
-| `/etc/freshvps/vpn-users.json` | User registry |
-| `/etc/freshvps/secrets/` | Reality keys, HY2, Telegram, … |
-| `/usr/local/bin/freshvps-vpn` | User management CLI |
+| `/etc/freshvps/clients/<name>/subscription.txt` | VLESS + HY2 links (handoff) |
+| `/etc/freshvps/clients/<name>/qr.png` | VLESS QR |
+| `/usr/local/bin/freshvps-vpn` | User CLI |
+| `/opt/freshvps/bin/freshvps-tg` | Go Telegram bot binary |
 
 ### VPN users
 
 ```bash
 freshvps-vpn add alice "phone"
+cat /etc/freshvps/clients/alice/subscription.txt
 freshvps-vpn list
-freshvps-vpn link alice
-freshvps-vpn disable alice
-freshvps-vpn revoke alice
 freshvps-vpn session 72
 ```
 
-Ports: **443** VLESS+Reality, **8443** Hysteria2 (shared password in secrets).
+Ports: **443** TCP VLESS+Reality, **8443** UDP Hysteria2 (per-user passwords).
 
-In the client, prefer **remote/server DNS** so queries use Blocky on the VPS.
+Client DNS: prefer **remote/server DNS** (Blocky on VPS).
 
-### Telegram (operator only)
+### Telegram
 
 `/status` `/vpn_add` `/vpn_list` `/vpn_link` `/vpn_disable` `/vpn_enable` `/vpn_revoke` `/session` `/ready`
 
-### Admin API (optional Shortcuts)
+### Admin API
 
-Default: `127.0.0.1:8787`.
+Default `127.0.0.1:8787`. Session via `freshvps-vpn session`. See [SHORTCUT-IOS.md](SHORTCUT-IOS.md).
 
-```bash
-freshvps-vpn session 72
-# SSH tunnel: ssh -L 8787:127.0.0.1:8787 user@VPS
-# or rebind: freshvps-vpn api-bind detect   # careful if IP is public
-```
-
-Shortcut build: [SHORTCUT-IOS.md](SHORTCUT-IOS.md).
-
-### OpenSOHO
-
-1. Secret: `/etc/freshvps/secrets/opensoho_shared_secret`
-2. Router: `openwisp-config` + monitoring → `http://VPS_IP:8090`
-3. Admin: `docker exec -it opensoho ./opensoho superuser upsert EMAIL PASS`
-
-### Beszel
-
-Hub UI → KEY/TOKEN → `sudo bash /opt/beszel/enable-agent.sh`
-
-### Backups
+### OpenWrt (on the router)
 
 ```bash
-sudo /opt/freshvps-backup/backup.sh
+scp -r openwrt root@ROUTER:/root/freshvps-openwrt
+# site.conf: WIFI_PASSWORD, LAN; WAN_DEVICE=auto or eth0.2 (Cudy TR1200)
+sh install-openwrt.sh
 ```
+
+### Panels (localhost)
+
+```bash
+ssh -L 8090:127.0.0.1:8090 -L 3001:127.0.0.1:3001 -L 8091:127.0.0.1:8091 root@VPS
+```
+
+Lampac is **optional** (`ENABLE_LAMPAC=1`).
 
 ## Uninstall
 
-```bash
-sudo bash uninstall.sh
-sudo bash uninstall.sh --purge-secrets
-```
-
-## Admin panels (localhost only)
-
-OpenSOHO, Uptime Kuma and Beszel bind to **127.0.0.1** (not exposed publicly).
-
-```bash
-ssh -L 8090:127.0.0.1:8090 -L 3001:127.0.0.1:3001 -L 8091:127.0.0.1:8091 root@VPS_IP
-```
-
-- OpenSOHO: http://127.0.0.1:8090
-- Uptime Kuma: http://127.0.0.1:3001
-- Beszel: http://127.0.0.1:8091
+`sudo bash uninstall.sh` · `sudo bash uninstall.sh --purge-secrets`

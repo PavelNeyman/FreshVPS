@@ -1,32 +1,62 @@
 #!/usr/bin/env bash
-# Control-plane helper (macOS/Linux laptop) — does not install VPN locally.
-# Usage: bash scripts/plan.sh [TREE_ROOT]
+# Control-plane helper (macOS/Linux) — generate configs + optional SSH deploy
+# Usage:
+#   bash scripts/plan.sh [TREE_ROOT]
+#   bash scripts/plan.sh --deploy-vps user@host
+#   bash scripts/plan.sh --deploy-openwrt root@router /path/to/site.conf
 set -euo pipefail
 
-ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${FRESHVPS_PLAN_OUT:-${HOME}/.freshvps/plan}"
-mkdir -p "${OUT}"
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o BatchMode=yes)
 
+if [[ "${1:-}" == "--deploy-vps" ]]; then
+  host="${2:?user@host}"
+  echo "[plan] deploy VPS bootstrap --upgrade → ${host}"
+  ssh "${SSH_OPTS[@]}" "${host}" 'curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh | sudo bash -s -- --upgrade'
+  exit 0
+fi
+
+if [[ "${1:-}" == "--deploy-openwrt" ]]; then
+  host="${2:?root@router}"
+  conf="${3:?site.conf}"
+  [[ -f "${conf}" ]] || { echo "missing ${conf}"; exit 1; }
+  echo "[plan] deploy OpenWrt tree + site.conf → ${host}"
+  scp "${SSH_OPTS[@]}" -r "${ROOT}/openwrt" "${host}:/root/freshvps-openwrt"
+  scp "${SSH_OPTS[@]}" "${conf}" "${host}:/root/freshvps-openwrt/site.conf"
+  ssh "${SSH_OPTS[@]}" "${host}" 'cd /root/freshvps-openwrt && sh install-openwrt.sh'
+  exit 0
+fi
+
+if [[ -n "${1:-}" && -d "${1}" ]]; then
+  ROOT="$1"
+fi
+
+mkdir -p "${OUT}/sites"
 # shellcheck source=/dev/null
 [[ -f "${ROOT}/lib/tui.sh" ]] && source "${ROOT}/lib/tui.sh"
 
 echo "FreshVPS plan — tree=${ROOT}"
-echo "Output directory: ${OUT}"
-echo
+echo "Output: ${OUT}"
 
-if declare -F tui_input >/dev/null 2>&1; then
-  VPS_HOST="$(tui_input "VPS SSH host (user@host or host)" "${VPS_HOST:-root@}")"
-  SITE_NAME="$(tui_input "OpenWrt site name (folder)" "site1")"
-  LAN_NET="$(tui_input "LAN network prefix (e.g. 10.9.9)" "10.9.9")"
-  WIFI_SSID="$(tui_input "Wi-Fi SSID 2.4" "Site-2G")"
-  WIFI_PASS="$(tui_input "Wi-Fi password" "CHANGE_THIS_PASSWORD")"
-else
-  read -r -p "VPS SSH host: " VPS_HOST
-  read -r -p "Site name: " SITE_NAME
-  read -r -p "LAN prefix: " LAN_NET
-  read -r -p "SSID: " WIFI_SSID
-  read -r -p "Wi-Fi password: " WIFI_PASS
-fi
+inp() {
+  local q="$1" d="${2:-}"
+  if declare -F tui_input >/dev/null 2>&1; then tui_input "${q}" "${d}"
+  else read -r -p "${q} [${d}]: " a; echo "${a:-${d}}"; fi
+}
+
+yesno() {
+  local q="$1"
+  if declare -F tui_yesno >/dev/null 2>&1; then tui_yesno "${q}" n; return $?; fi
+  read -r -p "${q} [y/N] " a; [[ "${a}" =~ ^[Yy] ]]
+}
+
+VPS_HOST="$(inp "VPS SSH host" "${VPS_HOST:-root@}")"
+SITE_NAME="$(inp "OpenWrt site name" "site1")"
+LAN_NET="$(inp "LAN prefix" "10.9.9")"
+WIFI_SSID="$(inp "Wi-Fi SSID 2.4" "Site-2G")"
+WIFI_PASS="$(inp "Wi-Fi password" "CHANGE_THIS_PASSWORD")"
+ROUTER_HOST="$(inp "Router SSH host (empty=skip deploy)" "")"
 
 SITE_DIR="${OUT}/sites/${SITE_NAME}"
 mkdir -p "${SITE_DIR}"
@@ -57,18 +87,24 @@ WIFI_5G_HTMODE='VHT80'
 EOF
 
 cat >"${OUT}/deploy-hints.txt" <<EOF
-# Deploy hints (SSH keys recommended)
+# Auto / manual deploy
 
-# VPS upgrade / install:
-ssh ${VPS_HOST} 'curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh | sudo bash -s -- --upgrade'
+# VPS:
+bash ${ROOT}/scripts/plan.sh --deploy-vps ${VPS_HOST}
 
-# OpenWrt site ${SITE_NAME}:
-# scp -r ${ROOT}/openwrt root@ROUTER:/root/freshvps-openwrt
-# scp ${SITE_DIR}/site.conf root@ROUTER:/root/freshvps-openwrt/site.conf
-# ssh root@ROUTER 'cd /root/freshvps-openwrt && sh install-openwrt.sh'
+# OpenWrt:
+bash ${ROOT}/scripts/plan.sh --deploy-openwrt ${ROUTER_HOST:-root@ROUTER} ${SITE_DIR}/site.conf
 EOF
 
-echo
 echo "Wrote ${SITE_DIR}/site.conf"
 echo "Wrote ${OUT}/deploy-hints.txt"
-echo "Review passwords; deploy with SSH keys (docs/BOOTSTRAP.md, docs/UPGRADE.md)."
+
+if yesno "Deploy VPS upgrade now via SSH (${VPS_HOST})?"; then
+  bash "${ROOT}/scripts/plan.sh" --deploy-vps "${VPS_HOST}" || echo "[plan] VPS deploy failed (keys/BatchMode?)"
+fi
+
+if [[ -n "${ROUTER_HOST}" ]] && yesno "Deploy OpenWrt to ${ROUTER_HOST}?"; then
+  bash "${ROOT}/scripts/plan.sh" --deploy-openwrt "${ROUTER_HOST}" "${SITE_DIR}/site.conf" || echo "[plan] router deploy failed"
+fi
+
+echo "Done."

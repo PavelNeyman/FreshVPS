@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""FreshVPS admin API — session auth only."""
+"""FreshVPS admin API — Bearer session only (freshvps-vpn session)."""
 import json
 import os
+import re
 import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -13,10 +14,15 @@ CLIENTS = os.path.join(ETC, "clients")
 VPN_BIN = "/usr/local/bin/freshvps-vpn"
 BIND = os.environ.get("VPN_API_BIND", "127.0.0.1")
 PORT = int(os.environ.get("VPN_API_PORT", "8787"))
+NAME_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$")
+
+
+def valid_name(name: str) -> bool:
+    return bool(name and NAME_RE.match(name))
 
 
 def valid_session(token: str) -> bool:
-    if not token or "/" in token or ".." in token:
+    if not token or "/" in token or ".." in token or len(token) > 128:
         return False
     path = os.path.join(SESS, token)
     if not os.path.isfile(path):
@@ -33,6 +39,15 @@ def valid_session(token: str) -> bool:
             pass
         return False
     return True
+
+
+def read_client_text(name: str, *candidates: str) -> str | None:
+    for c in candidates:
+        path = os.path.join(CLIENTS, name, c)
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                return f.read().strip()
+    return None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -56,6 +71,8 @@ class Handler(BaseHTTPRequestHandler):
     def _read(self):
         n = int(self.headers.get("Content-Length", 0))
         if n <= 0:
+            return {}
+        if n > 65536:
             return {}
         try:
             return json.loads(self.rfile.read(n).decode() or "{}")
@@ -81,30 +98,45 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"users": users})
         if u.path.startswith("/vpn/users/") and u.path.endswith("/qr"):
             name = u.path.split("/")[3]
-            path = os.path.join(CLIENTS, name, "qr.png")
-            if not os.path.isfile(path):
-                return self._json(404, {"error": "no qr"})
-            with open(path, "rb") as f:
-                data = f.read()
-            self.send_response(200)
-            self.send_header("Content-Type", "image/png")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
-            return
+            if not valid_name(name):
+                return self._json(400, {"error": "bad name"})
+            for fn in ("qr-subscription.png", "qr.png"):
+                path = os.path.join(CLIENTS, name, fn)
+                if os.path.isfile(path):
+                    with open(path, "rb") as f:
+                        data = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/png")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+            return self._json(404, {"error": "no qr"})
         if u.path.startswith("/vpn/users/") and u.path.endswith("/link"):
             name = u.path.split("/")[3]
-            path = os.path.join(CLIENTS, name, "link.txt")
-            if not os.path.isfile(path):
+            if not valid_name(name):
+                return self._json(400, {"error": "bad name"})
+            sub = read_client_text(name, "subscription.txt", "link.txt")
+            vless = read_client_text(name, "link-vless.txt", "link.txt")
+            hy2 = read_client_text(name, "link-hy2.txt")
+            if not sub and not vless:
                 return self._json(404, {"error": "no link"})
-            with open(path, encoding="utf-8") as f:
-                return self._json(200, {"link": f.read().strip()})
+            return self._json(
+                200,
+                {
+                    "subscription": sub or vless,
+                    "vless": vless,
+                    "hy2": hy2,
+                    "link": sub or vless,
+                },
+            )
         if u.path == "/admin/client-config":
             return self._json(
                 200,
                 {
                     "api_base": f"http://{BIND}:{PORT}",
-                    "note": "Bearer session; prefer 127.0.0.1 + SSH tunnel",
+                    "auth": "Bearer session from: freshvps-vpn session 72",
+                    "note": "Prefer bind 127.0.0.1 + SSH tunnel or VPN",
                 },
             )
         return self._json(404, {"error": "not found"})
@@ -118,18 +150,29 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/vpn/users":
                 name = (body.get("name") or "").strip()
                 note = body.get("note") or ""
-                if not name:
-                    return self._json(400, {"error": "name required"})
+                if not valid_name(name):
+                    return self._json(400, {"error": "name required: [A-Za-z0-9_-] max 64"})
                 subprocess.check_call([VPN_BIN, "add", name, note])
-                with open(os.path.join(CLIENTS, name, "link.txt"), encoding="utf-8") as f:
-                    link = f.read().strip()
-                return self._json(201, {"name": name, "link": link, "qr": f"/vpn/users/{name}/qr"})
+                sub = read_client_text(name, "subscription.txt", "link.txt") or ""
+                return self._json(
+                    201,
+                    {
+                        "name": name,
+                        "subscription": sub,
+                        "link": sub,
+                        "qr": f"/vpn/users/{name}/qr",
+                    },
+                )
             if u.path.startswith("/vpn/users/") and u.path.endswith("/disable"):
                 name = u.path.split("/")[3]
+                if not valid_name(name):
+                    return self._json(400, {"error": "bad name"})
                 subprocess.check_call([VPN_BIN, "disable", name])
                 return self._json(200, {"disabled": name})
             if u.path.startswith("/vpn/users/") and u.path.endswith("/enable"):
                 name = u.path.split("/")[3]
+                if not valid_name(name):
+                    return self._json(400, {"error": "bad name"})
                 subprocess.check_call([VPN_BIN, "enable", name])
                 return self._json(200, {"enabled": name})
         except subprocess.CalledProcessError as e:
@@ -142,6 +185,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(401, {"error": "unauthorized"})
         if u.path.startswith("/vpn/users/"):
             name = u.path.rstrip("/").split("/")[-1]
+            if not valid_name(name):
+                return self._json(400, {"error": "bad name"})
             try:
                 subprocess.check_call([VPN_BIN, "revoke", name])
             except subprocess.CalledProcessError as e:

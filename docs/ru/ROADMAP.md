@@ -1,16 +1,7 @@
 # Roadmap (русский)
 
-## Сделано в 0.3.0
+**EN:** [../ROADMAP.md](../ROADMAP.md)
 
-- Multi-user VLESS + HY2 + subscription
-- OpenWrt site + detect-env
-- Go Telegram bot
-- CI + unit tests
+До **0.3.5**: bootstrap, идемпотентный upgrade, unified panels compose, `freshvps-tests`, plan SSH deploy, multi-user HY2.
 
-## Дальше
-
-1. Smoke на боевом VPS / Cudy
-2. Усилить client JSON templates
-3. Дописать EN/RU паритет всех docs
-
-EN: [../ROADMAP.md](../ROADMAP.md)
+**Дальше:** твой smoke на VPS/Cudy.

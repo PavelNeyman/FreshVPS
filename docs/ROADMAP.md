@@ -2,18 +2,18 @@
 
 ## Product bar
 
-Ready-to-use install: operator VPN + QR, Blocky, monitoring, CLI/TG/API.
+Ready-to-use VPS + optional OpenWrt/edge. Operator VPN with VLESS+HY2 subscription.
 
-## Done in code (0.2.2)
+## Done (0.3.0)
 
-- Modules, multi-user VPN, READY, doctor, runtime extracted, static `scripts/check.sh`
-- Docs: INSTALL, SMOKE, VPN-USERS, SHORTCUT-IOS, VPS-PROVIDERS
+Multi-user HY2, subscription artifacts, env detect OpenWrt, Go Telegram bot, unit tests + CI, AGENTS refresh.
 
 ## Next
 
-1. **Owner VPS smoke-test** ([SMOKE.md](SMOKE.md))
-2. Fix version-specific sing-box/Blocky issues from real run
+1. Owner smoke (VPS + Cudy TR1200)
+2. Shared sing-box client templates for edge/OpenWrt
+3. Full EN/RU doc parity
 
 ## Deferred
 
-Port knocking, public web UI, Keychain app, OpenWrt onboarding flows
+Port knocking, public web admin, Keychain app

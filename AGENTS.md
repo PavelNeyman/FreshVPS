@@ -1,104 +1,67 @@
 # AGENTS.md — FreshVPS
 
-> Document Version: 1.0  
+> Document Version: 1.1  
 > Status: Approved
 
 **Single source of truth for project rules and architecture.**  
 **Conversation history must never replace this document.**
 
-Progress: [docs/ROADMAP.md](docs/ROADMAP.md) (when present)  
-Also: README · SECURITY · INSTALL · CHANGELOG · VERSION (when present)
+Progress: [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/ru/ROADMAP.md](docs/ru/ROADMAP.md)
 
 ---
 
 # Product category (mandatory for agents)
 
-**Production (self-hosted, single-operator).** This is **not** a lab prototype.
+**Production (self-hosted, single-operator).** Not a lab prototype.
 
-- Treat behaviour, security, docs, tests, and releases as **production-grade** for an automated Debian VPS bootstrap (VPN, DNS, OpenWrt management, monitoring, backups).
-- Scope remains **one VPS + optional managed OpenWrt routers**, not multi-tenant SaaS.
-- Lab-quality shortcuts are **defects**, not acceptable trade-offs.
-- Assume real credentials, VPN keys, SSH access, and router configs are at risk.
+- Security, docs, tests, and releases are production-grade for automated Debian VPS bootstrap (VPN, DNS, OpenWrt/edge, monitoring, backups).
+- Scope: **one VPS** + optional **OpenWrt sites** / **edge SBC** — not multi-tenant SaaS.
+- Lab shortcuts are defects.
 
 ---
 
 # Quick Start for AI Agents
 
-1. Read **this** AGENTS.md entirely.
-2. Read **Product category**, **Project State**, and **ROADMAP** (when present) → **Next**.
-3. Inspect the **current repository** (do not rely on chat history alone).
-4. Confirm the task does not violate **Forbidden** or **Frozen Architecture**.
-5. If scope or design is ambiguous → **STOP** and ask the repository owner.
-6. Implement **only** the requested task (or the single **Next** item when continuing the plan).
-7. Update documentation when behaviour or modules change.
-8. Update ROADMAP / Project State when progress changes.
-9. Prefer idempotent shell; test modules in isolation when practical.
-10. End with **one logical Git commit** per completed task.
-
-Skipping these steps is a rule violation.
+1. Read this AGENTS.md entirely.
+2. Read Project State + ROADMAP **Next**.
+3. Inspect the **current repository**.
+4. Confirm task does not violate Forbidden / Frozen Architecture.
+5. If ambiguous → **STOP** and ask the owner.
+6. Implement only the requested task.
+7. Update docs when behaviour changes (EN + RU when docs change).
+8. Prefer idempotent shell; run `scripts/check.sh` and unit tests when practical.
+9. End with **one logical Git commit** per completed task.
 
 ---
 
-# Editing AGENTS.md (mandatory)
+# Editing AGENTS.md
 
-**Agents must NOT modify `AGENTS.md` unless the repository owner has given explicit consent in the current task.**
-
-- Implied consent from unrelated tasks is **not** enough.
-- When consent is given, bump the document version if rules change.
-
-Violating this rule is a process **Critical** failure.
+**Do not modify AGENTS.md without explicit owner consent in the current task.**
 
 ---
 
 # 1. Product
 
-**FreshVPS** is a **modular bootstrap** for a fresh Debian VPS: answer a few questions (TUI or non-interactive), get a hardened system with VPN, DNS filtering, OpenWrt central management, monitoring, Telegram control, and backups.
-
-Ships as:
-
-- modular **Bash** installer (`install.sh` + `modules/`);
-- optional **whiptail** TUI and non-interactive / config-driven mode;
-- declarative enable/disable of components.
-
-**Primary stack (v1):**
+**FreshVPS** — modular bootstrap for a fresh Debian VPS plus optional edge roles.
 
 | Component | Role |
 |-----------|------|
-| Hardening | SSH keys, fail2ban, firewall, unattended-upgrades, BBR |
-| **sing-box** | VLESS + Reality + Hysteria2 |
-| **OpenSOHO** | Central management of OpenWrt routers (outbound agent) |
-| **Blocky** | Central DNS + ad/tracker blocking (hybrid with routers) |
-| **Uptime Kuma** | Availability monitoring + alerts |
-| **Beszel** | Resource monitoring (CPU/RAM/disk) |
-| Telegram bot | VPN keys, status, notifications |
-| Backups | VPS state + OpenWrt configs (restic/borg) |
-
-**Deferred / optional (not v1 default):** port knocking, AdGuard Home, Blocky UI, parental profiles, reverse proxy, mesh.
-
----
-
-# 2. Project Philosophy
-
-- **Simplicity over cleverness**
-- **Stability over novelty**
-- **Readability over abstraction**
-- **Local-first / operator-owned security**
-- **Production quality within that scope**
-- **Modularity** — easy to add, remove, or reconfigure components
-
-Prefer standard Debian packages, official upstream binaries, and minimal custom code.
+| Hardening | SSH, fail2ban, firewall, BBR |
+| **sing-box** | Multi-user **VLESS+Reality** + **Hysteria2** (per-user); subscription bundle |
+| **Blocky** | DNS filtering |
+| **OpenSOHO** | OpenWrt central mgmt |
+| **Uptime Kuma / Beszel** | Monitoring (localhost + SSH tunnel) |
+| Telegram | Operator bot (**Go** preferred; bash fallback) |
+| Backups | restic scaffolding |
+| **edge-client** | Home SBC VPN client |
+| **openwrt/** | Site LAN/Wi-Fi + VPN client + OpenSOHO agent |
+| Lampac | **Optional only** (`ENABLE_LAMPAC`) |
 
 ---
 
-# 3. Project Principles
+# 2–3. Philosophy / Principles
 
-Immutable without owner approval:
-
-- **Git is the source of truth**
-- **Documentation is part of the product**
-- **One repository — one truth**
-- **Operator-owned** (single admin, not multi-tenant)
-- **Idempotent installs** where practical
+Simplicity, stability, readability, operator-owned security, modularity. Git is source of truth. Idempotent installs. No secrets in repo.
 
 ---
 
@@ -106,116 +69,50 @@ Immutable without owner approval:
 
 | Layer | Choice |
 |-------|--------|
-| Target OS | Debian (current stable) |
-| Installer language | Bash (modules); Python only if owner approves a specific need |
-| TUI | whiptail (or agreed equivalent) |
-| VPN engine | **sing-box** only (VLESS+Reality, Hysteria2) |
-| OpenWrt control | **OpenSOHO** (agent + server model for NAT) |
-| DNS | **Blocky** + HaGeZi (and similar) lists; hybrid VPS + router fallback |
-| Monitoring | **Uptime Kuma** + **Beszel** on the same VPS |
-| Control plane UX | Telegram bot + CLI; no mandatory Web UI for DNS/VPN in v1 |
-| Backups | restic or borg (owner preference when implementing) |
-| Layout | `install.sh`, `modules/`, `configs/`, `docs/` |
+| OS | Debian (VPS/edge); OpenWrt on routers |
+| Installer | Bash modules |
+| VPN | **sing-box** only |
+| OpenWrt control | **OpenSOHO** |
+| DNS | **Blocky** |
+| Monitoring | Kuma + Beszel |
+| Operator UX | CLI + Telegram (+ optional localhost API) |
+| Docs | English + Russian |
 
-## Forbidden (unless the owner explicitly approves)
-
-- Replacing sing-box with Xray (or other) as the default VPN engine.
-- Replacing OpenSOHO with OpenWISP or heavy panels without approval.
-- Replacing Blocky with AdGuard Home as the default DNS module.
-- Adding parental control or Blocky UI as **default** required components.
-- Committing **secrets**, private keys, or real VPN/client configs.
-- Non-idempotent “run once and hope” installers without clear state checks.
-- Scope creep into unrelated self-host stacks (media, full mail, etc.) without ROADMAP.
-- Multi-tenant / SaaS redesign without approval.
+**Forbidden without approval:** replace sing-box/OpenSOHO/Blocky defaults; commit secrets; multi-tenant SaaS; non-idempotent installers.
 
 ---
 
-# 5. Technology Policy
+# 5–6. Technology / AI rules
 
-| Area | Allowed |
-|------|---------|
-| OS | Debian |
-| Shell | Bash (POSIX-friendly where easy) |
-| TUI | whiptail |
-| VPN | sing-box upstream releases |
-| DNS | Blocky upstream; list URLs (HaGeZi, OISD, etc.) |
-| OpenWrt mgmt | OpenSOHO |
-| Monitoring | Uptime Kuma, Beszel |
-| Notifications | Telegram Bot API |
-| Backups | restic / borg |
-
-New major components or languages require owner approval.
+Allowed: Debian, Bash, Go (Telegram bot), sing-box, Blocky, OpenSOHO, Kuma, Beszel, restic. New major languages/services need owner approval. No unrequested work; no drive-by refactors.
 
 ---
 
-# 6. AI Agent Rules
+# 7. Code review
 
-1. **Read before writing** — AGENTS, ROADMAP, repo.
-2. **Never guess** — ask the owner.
-3. **AGENTS.md overrides** personal preference and chat history.
-4. **Do not edit AGENTS** without explicit owner consent.
-5. **Do not change architecture** without approval.
-6. **Do not add dependencies/services** without approval.
-7. **Do not do unrequested work**.
-8. **Do not optimize/refactor** unless ordered.
-9. **Ask** when designs diverge and this doc does not decide.
-10. Prefer **small, reviewable commits** and modular changes.
+Report first; implement after approval or explicit order.
 
 ---
 
-# 7. Code Review and Refactoring Policy
-
-Report first (issue, impact, severity, fix). Implement only after owner approval **or** an explicit implement order.
-
----
-
-# 8. Repository structure (target)
+# 8. Layout
 
 ```
-FreshVPS/
-├── AGENTS.md
-├── README.md
-├── install.sh              # entrypoint
-├── modules/                # one concern per module
-│   ├── hardening.sh
-│   ├── sing-box.sh
-│   ├── blocky.sh
-│   ├── openwisp_or_opensoho.sh
-│   ├── kuma.sh
-│   ├── beszel.sh
-│   ├── telegram.sh
-│   └── backup.sh
-├── configs/                # templates, examples (no secrets)
-├── docs/
-└── VERSION                 # when versioning starts
+install.sh, install-edge.sh, install-openwrt.sh
+modules/  lib/  runtime/  cmd/freshvps-tg/  openwrt/
+configs/  docs/  docs/ru/  tests/  scripts/
 ```
-
-Names may be refined; modularity must remain.
 
 ---
 
 # 9. Git and secrets
 
-- Default branch: **main**
-- One logical task → one commit (or small focused series if owner agrees)
-- Never commit secrets, `.env` with tokens, private keys, or client UUID lists
-- Example configs only under `configs/` with placeholders
+Default branch **main**. Never commit tokens, private keys, real Wi-Fi passwords, or live client UUID lists.
 
 ---
 
-# 10. Definition of Done (module)
+# 10. Definition of Done
 
-- Installs on clean Debian without manual steps beyond documented prompts
-- Idempotent or clearly documented re-run behaviour
-- Failures are visible; no silent partial success
-- Documented enable/disable and key paths
-- No secrets in the repo
-
----
-
-# 11. Decision priority
-
-**AGENTS.md wins** over chat history and agent preference.
+Installs on clean Debian; documented roles; failures visible; unit tests for pure logic where present; EN+RU docs for user-facing changes.
 
 ---
 
@@ -223,24 +120,16 @@ Names may be refined; modularity must remain.
 
 | Area | Status |
 |------|--------|
-| Category | **Production** goal (self-hosted, single-operator) |
-| Architecture | **Agreed** for v1 stack; installer code not yet complete |
-| VPN | sing-box (VLESS+Reality, Hysteria2) |
-| DNS | Blocky + HaGeZi; hybrid with routers |
-| OpenWrt | OpenSOHO |
-| Monitoring | Uptime Kuma + Beszel |
-| Parental / DNS UI | **Not** in v1 |
-| Next | Repository layout + modular `install.sh` skeleton |
+| Category | Production self-hosted |
+| Version | **0.3.x** line |
+| VPN | Multi-user VLESS+HY2 + subscription artifacts |
+| Telegram | Go bot in `cmd/freshvps-tg` |
+| OpenWrt | Site installer + env detect + VPN client |
+| Edge | `install-edge.sh` + MikroTik helper |
+| Tests | `scripts/check.sh`, `tests/unit/*`, GitHub Actions CI |
+| Lampac | Optional |
+| Next | Owner VPS/OpenWrt smoke; tighten client templates |
 
 ---
 
-# 13–14
-
-Mutable: Project State, ROADMAP, CHANGELOG.  
-Immutable: core rules; AGENTS edits only with owner consent.
-
-Final: production quality, no unrequested work, modular design, one commit per task, chat never overrides AGENTS.
-
----
-
-# End of Document
+Final: production quality, modular design, one commit per task, chat never overrides AGENTS.

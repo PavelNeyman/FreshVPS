@@ -1,41 +1,27 @@
 #!/usr/bin/env bash
-# Module: sing-box binary + Reality/HY2 secrets (users applied by vpn-users / vpn-core)
+# Module: sing-box binary + Reality/HY2 secrets (users by vpn-core)
 # shellcheck disable=SC2154
 
 module_sing_box_install() {
-  local arch bin_dir=/usr/local/bin conf_dir=/usr/local/etc/sing-box
-  arch="$(arch_go)"
+  local bin_dir=/usr/local/bin conf_dir=/usr/local/etc/sing-box
+  # shellcheck source=/dev/null
+  source "${FRESHVPS_ROOT}/lib/install-singbox.sh"
 
   pkg_install curl tar jq openssl
+  mkdir -p "${conf_dir}" /var/lib/sing-box /etc/sing-box/certs "${FRESHVPS_STATE_DIR}"
 
-  mkdir -p "${conf_dir}" /var/lib/sing-box /etc/sing-box/certs
+  install_singbox_binary "${bin_dir}"
 
-  local tag url tmp
-  tag="$(curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r .tag_name)"
-  [[ -n "${tag}" && "${tag}" != null ]] || die "Cannot resolve sing-box latest release"
-  url="https://github.com/SagerNet/sing-box/releases/download/${tag}/sing-box-${tag#v}-linux-${arch}.tar.gz"
-  tmp="$(mktemp -d)"
-  info "Downloading sing-box ${tag}"
-  curl -fsSL "${url}" -o "${tmp}/sb.tgz"
-  tar -xzf "${tmp}/sb.tgz" -C "${tmp}"
-  install -m 755 "${tmp}/sing-box-${tag#v}-linux-${arch}/sing-box" "${bin_dir}/sing-box"
-  rm -rf "${tmp}"
-
-  local short_id private_key public_key hy2_pass sni
+  local short_id private_key public_key sni
   short_id="$(read_secret singbox_short_id || true)"
   if [[ -z "${short_id}" ]]; then
     short_id="$(random_hex 4)"
     write_secret singbox_short_id "${short_id}"
   fi
-  hy2_pass="$(read_secret singbox_hy2_password || true)"
-  if [[ -z "${hy2_pass}" ]]; then
-    hy2_pass="$(random_hex 16)"
-    write_secret singbox_hy2_password "${hy2_pass}"
-  fi
 
   if [[ ! -f "${FRESHVPS_ETC}/secrets/singbox_reality_private" ]]; then
     local kp
-    kp="$( "${bin_dir}/sing-box" generate reality-keypair )"
+    kp="$("${bin_dir}/sing-box" generate reality-keypair)"
     private_key="$(echo "${kp}" | awk '/PrivateKey/{print $2}')"
     public_key="$(echo "${kp}" | awk '/PublicKey/{print $2}')"
     write_secret singbox_reality_private "${private_key}"
@@ -56,9 +42,7 @@ module_sing_box_install() {
     chmod 600 /etc/sing-box/certs/hy2.key
   fi
 
-  # Minimal bootstrap config until vpn-users seeds operator and applies full config
-  local boot_uuid
-  boot_uuid="$("${bin_dir}/sing-box" generate uuid 2>/dev/null || random_uuid)"
+  # Empty users until vpn-users seeds operator (no throwaway UUID)
   cat >"${conf_dir}/config.json" <<EOF
 {
   "log": { "level": "info", "timestamp": true },
@@ -68,7 +52,7 @@ module_sing_box_install() {
       "tag": "vless-reality",
       "listen": "::",
       "listen_port": ${vless_port},
-      "users": [ { "uuid": "${boot_uuid}", "flow": "xtls-rprx-vision" } ],
+      "users": [],
       "tls": {
         "enabled": true,
         "server_name": "${sni}",
@@ -85,7 +69,7 @@ module_sing_box_install() {
       "tag": "hy2",
       "listen": "::",
       "listen_port": ${hy2_port},
-      "users": [ { "password": "${hy2_pass}" } ],
+      "users": [],
       "tls": {
         "enabled": true,
         "alpn": [ "h3" ],
@@ -122,17 +106,14 @@ EOF
   systemd_enable_start sing-box
   firewall_allow_tcp "${vless_port}" "sing-box-vless"
   firewall_allow_udp "${hy2_port}" "sing-box-hy2"
-
-  # Persist IP for later link generation
   [[ -n "${PUBLIC_IP:-}" ]] && printf '%s\n' "${PUBLIC_IP}" >"${FRESHVPS_ETC}/public_ip"
 
-  info "sing-box binary + secrets ready (multi-user applied by vpn-users module)"
-  info "Reality pubkey=${public_key} short_id=${short_id} SNI=${sni}"
+  info "sing-box ready; Reality pubkey=${public_key} short_id=${short_id} SNI=${sni}"
 }
 
 module_sing_box_uninstall() {
   systemctl disable --now sing-box 2>/dev/null || true
   rm -f /etc/systemd/system/sing-box.service
   systemctl daemon-reload 2>/dev/null || true
-  info "sing-box stopped (config left under /usr/local/etc/sing-box)"
+  info "sing-box stopped"
 }

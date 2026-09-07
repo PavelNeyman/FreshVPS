@@ -1,5 +1,7 @@
 # Human test plan (owner only)
 
+**RU:** [ru/TEST-PLAN-HUMAN.md](ru/TEST-PLAN-HUMAN.md)
+
 What an AI **cannot** do without your hands / devices / accounts. Do these after a **clean VPS** recreate.
 
 ## Before install

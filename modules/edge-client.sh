@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Module: home edge VPN client (Armbian/Debian SBC) — NOT for VPS server role
+# Module: home edge VPN client (Armbian/Debian SBC)
 # shellcheck disable=SC2154
 
 module_edge_client_install() {
@@ -7,6 +7,9 @@ module_edge_client_install() {
   if [[ ! -f /etc/debian_version ]]; then
     die "edge-client supports Debian/Armbian only"
   fi
+
+  # shellcheck source=/dev/null
+  source "${FRESHVPS_ROOT}/lib/vless-parse.sh"
 
   local conf_dir=/usr/local/etc/sing-box
   local bin_dir=/usr/local/bin
@@ -29,54 +32,46 @@ module_edge_client_install() {
 
   local vless_url="${EDGE_UPSTREAM_VLESS:-}"
   if [[ -z "${vless_url}" && -f "${edge_etc}/upstream.vless" ]]; then
-    vless_url="$(tr -d rn < "${edge_etc}/upstream.vless")"
+    vless_url="$(tr -d '\r\n' < "${edge_etc}/upstream.vless")"
   fi
   if [[ -z "${vless_url}" ]]; then
-    warn "EDGE_UPSTREAM_VLESS not set — write ${edge_etc}/upstream.vless or export EDGE_UPSTREAM_VLESS"
-    warn "Generating placeholder config; service will not route until URL is set"
+    warn "EDGE_UPSTREAM_VLESS not set — write ${edge_etc}/upstream.vless"
   else
-    printf "%s" "${vless_url}" > "${edge_etc}/upstream.vless"
+    printf '%s' "${vless_url}" > "${edge_etc}/upstream.vless"
     chmod 600 "${edge_etc}/upstream.vless"
   fi
 
   local lan_if="${EDGE_LAN_IF:-}"
   if [[ -z "${lan_if}" ]]; then
-    lan_if="$(ip -4 route show default 2>/dev/null | awk "{print \$5; exit}")"
+    lan_if="$(ip -4 route show default 2>/dev/null | awk '{print $5; exit}')"
     lan_if="${lan_if:-eth0}"
   fi
-  local mode="${EDGE_MODE:-gateway}" # gateway | tun-only
+  local mode="${EDGE_MODE:-gateway}"
+  local route_mode="${EDGE_ROUTE_MODE:-global}"
 
-  # Parse minimal fields from vless:// for sing-box outbound (best-effort)
-  # Format: vless://uuid@host:port?params#name
-  local uuid host port sni pbk sid fp flow
-  if [[ -n "${vless_url}" && "${vless_url}" == vless://* ]]; then
-    local rest="${vless_url#vless://}"
-    uuid="${rest%%@*}"
-    rest="${rest#*@}"
-    local hostport="${rest%%\?*}"
-    host="${hostport%%:*}"
-    port="${hostport##*:}"
-    local qs="${rest#*\?}"
-    qs="${qs%%#*}"
-    sni="$(echo "${qs}" | tr "&" "\n" | awk -F= "/^sni=/{print \$2; exit}")"
-    pbk="$(echo "${qs}" | tr "&" "\n" | awk -F= "/^pbk=/{print \$2; exit}")"
-    sid="$(echo "${qs}" | tr "&" "\n" | awk -F= "/^sid=/{print \$2; exit}")"
-    fp="$(echo "${qs}" | tr "&" "\n" | awk -F= "/^fp=/{print \$2; exit}")"
-    flow="$(echo "${qs}" | tr "&" "\n" | awk -F= "/^flow=/{print \$2; exit}")"
-    sni="${sni:-www.microsoft.com}"
-    fp="${fp:-chrome}"
-    flow="${flow:-xtls-rprx-vision}"
-    port="${port:-443}"
+  local host port uuid sni pbk sid fp flow
+  if [[ -n "${vless_url}" ]] && vless_parse "${vless_url}"; then
+    host="${VLESS_HOST}"; port="${VLESS_PORT}"; uuid="${VLESS_UUID}"
+    sni="${VLESS_SNI}"; pbk="${VLESS_PBK}"; sid="${VLESS_SID}"
+    fp="${VLESS_FP}"; flow="${VLESS_FLOW}"
   else
-    host="127.0.0.1"
-    port="443"
-    uuid="00000000-0000-0000-0000-000000000000"
-    sni="www.microsoft.com"
-    pbk=""
-    sid=""
-    fp="chrome"
-    flow="xtls-rprx-vision"
+    host="127.0.0.1"; port="443"; uuid="00000000-0000-0000-0000-000000000000"
+    sni="www.microsoft.com"; pbk=""; sid=""; fp="chrome"; flow="xtls-rprx-vision"
   fi
+
+  local route_rules final_out
+  case "${route_mode}" in
+    ru-direct)
+      route_rules='{ "action": "sniff" },
+      { "protocol": "dns", "action": "hijack-dns" },
+      { "domain_suffix": [".ru",".xn--p1ai",".su"], "outbound": "direct" }'
+      final_out=proxy
+      ;;
+    *)
+      route_rules='{ "action": "sniff" }, { "protocol": "dns", "action": "hijack-dns" }'
+      final_out=proxy
+      ;;
+  esac
 
   cat > "${conf_dir}/config.json" <<EOF
 {
@@ -125,29 +120,25 @@ module_edge_client_install() {
     { "type": "block", "tag": "block" }
   ],
   "route": {
-    "rules": [
-      { "action": "sniff" },
-      { "protocol": "dns", "action": "hijack-dns" }
-    ],
-    "final": "proxy",
+    "rules": [ ${route_rules} ],
+    "final": "${final_out}",
     "auto_detect_interface": true
   }
 }
 EOF
 
   if [[ "${mode}" == "gateway" ]]; then
-    # Enable IPv4 forward for LAN clients using this host as default GW
     cat > /etc/sysctl.d/99-freshvps-edge.conf <<EOF
 net.ipv4.ip_forward=1
 net.ipv6.conf.all.forwarding=0
 EOF
     sysctl -p /etc/sysctl.d/99-freshvps-edge.conf >/dev/null 2>&1 || true
-
-    # NAT LAN -> outbound (tun will take over routed traffic when auto_route works;
-    # MASQUERADE on default iface helps mixed setups)
+    local wan_if
+    wan_if="$(ip -4 route show default 2>/dev/null | awk '{print $5; exit}')"
+    wan_if="${wan_if:-${lan_if}}"
     if command -v iptables >/dev/null 2>&1; then
-      iptables -t nat -C POSTROUTING -o "${lan_if}" -j MASQUERADE 2>/dev/null || \
-        iptables -t nat -A POSTROUTING -o "${lan_if}" -j MASQUERADE || true
+      iptables -t nat -C POSTROUTING -o "${wan_if}" -j MASQUERADE 2>/dev/null || \
+        iptables -t nat -A POSTROUTING -o "${wan_if}" -j MASQUERADE || true
     fi
   fi
 
@@ -173,7 +164,7 @@ EOF
   systemctl daemon-reload
   if [[ -n "${pbk}" ]]; then
     systemctl enable --now sing-box
-    info "sing-box edge client started (mode=${mode}, lan_if=${lan_if})"
+    info "sing-box edge client started (mode=${mode}, route=${route_mode})"
   else
     systemctl enable sing-box
     warn "sing-box enabled but not started — set upstream VLESS first"
@@ -184,16 +175,12 @@ FreshVPS edge-client
 Upstream: ${edge_etc}/upstream.vless
 Config:   ${conf_dir}/config.json
 Mode:     ${mode}
-LAN if:   ${lan_if}
-
-MikroTik: point VPN subnet gateway to this host IP, or set DHCP gateway.
+Route:    ${route_mode}
 EOF
-  info "Edge client ready. Host IP: $(hostname -I 2>/dev/null | awk "{print \$1}")"
 }
 
 module_edge_client_uninstall() {
   systemctl disable --now sing-box 2>/dev/null || true
   rm -f /etc/systemd/system/sing-box.service
   systemctl daemon-reload
-  info "edge-client sing-box stopped"
 }

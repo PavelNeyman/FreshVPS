@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Module: Telegram operator panel
+# Module: Telegram operator panel (Go bot)
 # shellcheck disable=SC2154
 
 module_telegram_install() {
@@ -12,24 +12,34 @@ module_telegram_install() {
     write_secret telegram_admin_id "${TELEGRAM_ADMIN_ID}"
   fi
 
-  mkdir -p /opt/freshvps/runtime/telegram
+  mkdir -p /opt/freshvps/runtime/telegram /opt/freshvps/bin /opt/freshvps-telegram
   install -m 700 "${FRESHVPS_ROOT}/runtime/telegram/notify.sh" /opt/freshvps/runtime/telegram/notify.sh
   install -m 700 "${FRESHVPS_ROOT}/runtime/telegram/status.sh" /opt/freshvps/runtime/telegram/status.sh
-  install -m 700 "${FRESHVPS_ROOT}/runtime/telegram/bot.sh" /opt/freshvps/runtime/telegram/bot.sh
-  # compat symlinks for old paths
-  mkdir -p /opt/freshvps-telegram
+  # keep bash bot as fallback artifact
+  if [[ -f "${FRESHVPS_ROOT}/runtime/telegram/bot.sh" ]]; then
+    install -m 700 "${FRESHVPS_ROOT}/runtime/telegram/bot.sh" /opt/freshvps/runtime/telegram/bot.sh
+  fi
   ln -sfn /opt/freshvps/runtime/telegram/notify.sh /opt/freshvps-telegram/notify.sh
   ln -sfn /opt/freshvps/runtime/telegram/status.sh /opt/freshvps-telegram/status.sh
-  ln -sfn /opt/freshvps/runtime/telegram/bot.sh /opt/freshvps-telegram/bot.sh
 
-  cat >/etc/systemd/system/freshvps-telegram-bot.service <<'EOF'
+  local bin=/opt/freshvps/bin/freshvps-tg
+  if command -v go >/dev/null 2>&1 || pkg_install golang-go 2>/dev/null; then
+    info "Building Go Telegram bot"
+    ( cd "${FRESHVPS_ROOT}/cmd/freshvps-tg" && go build -o "${bin}" -trimpath -ldflags='-s -w' . )
+    chmod 755 "${bin}"
+  else
+    warn "golang not available — using bash bot fallback"
+    bin=/opt/freshvps/runtime/telegram/bot.sh
+  fi
+
+  cat >/etc/systemd/system/freshvps-telegram-bot.service <<EOF
 [Unit]
 Description=FreshVPS Telegram operator bot
 After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/opt/freshvps/runtime/telegram/bot.sh
+ExecStart=${bin}
 Restart=on-failure
 RestartSec=5
 

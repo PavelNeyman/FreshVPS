@@ -13,7 +13,8 @@ module_blocky_install() {
     *) die "Unsupported arch for blocky: ${arch}" ;;
   esac
 
-  pkg_install curl tar
+  # Install deps while system DNS still works (before we point resolv at 127.0.0.1)
+  pkg_install curl tar dnsutils
 
   local tag url tmp
   tag="$(curl -fsSL https://api.github.com/repos/0xERR0R/blocky/releases/latest | jq -r .tag_name)"
@@ -109,11 +110,24 @@ EOF
   systemd_enable_start blocky
   firewall_allow_tcp 53 "blocky-dns"
   firewall_allow_udp 53 "blocky-dns"
-  # API localhost/VPN only
-  # firewall_allow_tcp 4000 "blocky-api"
 
-  printf 'nameserver 127.0.0.1\noptions edns0\n' >/etc/resolv.conf
-  info "Blocky listening on :53 (API :4000). Lists: HaGeZi multi + tif + fake"
+  # Only point resolv.conf at Blocky after it actually answers (avoid apt DNS race)
+  local i ready=0
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if dig +time=1 +tries=1 @127.0.0.1 example.com +short >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ "${ready}" -eq 1 ]]; then
+    printf 'nameserver 127.0.0.1\noptions edns0\n' >/etc/resolv.conf
+    info "Blocky listening on :53 (API :4000); resolv.conf → 127.0.0.1"
+  else
+    printf 'nameserver 9.9.9.9\nnameserver 1.1.1.1\nnameserver 127.0.0.1\n' >/etc/resolv.conf
+    warn "Blocky not answering yet — kept upstream DNS in resolv.conf"
+  fi
+  info "Lists: HaGeZi multi + tif + fake"
 }
 
 module_blocky_uninstall() {

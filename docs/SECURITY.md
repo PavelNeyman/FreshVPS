@@ -1,40 +1,33 @@
-# Security notes — FreshVPS
+# Security notes — FreshVPS (English)
+
+**RU:** [ru/SECURITY.md](ru/SECURITY.md)
 
 ## Principles
 
 - Single operator; no multi-tenant isolation claims
 - Secrets only under `/etc/freshvps/secrets` (mode 600/700)
-- Never commit real tokens, keys, or client UUIDs to git
+- Never commit tokens, keys, client UUIDs, or real Wi‑Fi passwords
 
 ## Default posture
 
-- SSH: public key only; root `prohibit-password`
-- fail2ban enabled
-- UFW: deny incoming by default; allow SSH + module ports
-- unattended-upgrades enabled
-- BBR enabled
+- SSH: public key; root `prohibit-password`
+- fail2ban; UFW deny incoming by default
+- unattended-upgrades; BBR
 
 ## VPN
 
-- VLESS + Reality reduces plaintext fingerprinting; still rotate keys if leaked
-- Hysteria2 uses a local self-signed cert; clients may need insecure/skip-verify or pin the cert
-- Prefer restricting management UIs (Kuma, Beszel, OpenSOHO, Blocky API) to VPN or firewall allowlists
+- Multi-user **VLESS+Reality** and **Hysteria2** (per-user HY2 password)
+- Hand out `subscription.txt`, not a shared global HY2 password
+- HY2 uses local self-signed TLS (`insecure=1` in generated links)
+- Rotate Reality keys if leaked
 
-## DNS
+## DNS / panels
 
-- Blocky on 53; host `resolv.conf` points to 127.0.0.1 after install
-- Exposing DNS publicly is optional and risky (amplification / abuse); prefer VPN or router forwarders only
+- Blocky on 53; prefer not exposing DNS to the whole Internet
+- OpenSOHO / Kuma / Beszel / API bind **127.0.0.1** — SSH tunnel
 
 ## Recommendations
 
-1. Change default public UI ports or put them behind reverse proxy + auth
-2. Store restic password offline; test restore
-3. Keep OpenSOHO shared secret long and only on trusted routers
-4. Review UFW after install: `ufw status numbered`
-
-## Admin UIs
-OpenSOHO / Kuma / Beszel listen on 127.0.0.1 only; use SSH tunnel or access from the VPS itself.
-
-## Panel admin credentials
-
-OpenSOHO and Beszel admin email/password are generated at install time and stored under `/etc/freshvps/secrets/` (`opensoho_admin_*`, `beszel_admin_*`). Uptime Kuma admin is created once in the browser.
+1. Offline restic password; test restore
+2. Long OpenSOHO shared secret on trusted routers only
+3. `ufw status numbered` after install

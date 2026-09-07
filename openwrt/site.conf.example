@@ -1,11 +1,12 @@
 # Per-site OpenWrt config — copy to site.conf on each router
-# sudo is not used on OpenWrt; run as root: sh install-openwrt.sh
+# Run as root: sh install-openwrt.sh
 
 LAN_NETWORK='10.9.9'
 LAN_ROUTER_HOST='1'
 LAN_NETMASK='255.255.255.0'
 
-WAN_DEVICE='eth0.2'   # Cudy TR1200 typical; change if DSA names differ
+# WAN_DEVICE: set explicitly (e.g. eth0.2 on Cudy TR1200) or 'auto' to probe
+WAN_DEVICE='auto'
 WAN_PROTO='dhcp'
 
 DHCP_POOL_START='100'
@@ -22,15 +23,12 @@ WIFI_5G_SSID='Site-5G'
 WIFI_5G_CHANNEL='auto'
 WIFI_5G_HTMODE='VHT80'
 
-# --- VPN client (FreshVPS) ---
+# --- VPN client (FreshVPS VPS upstream) ---
 # ENABLE_VPN=1
-# EDGE_UPSTREAM_VLESS='vless://uuid@host:443?...'
+# EDGE_UPSTREAM_VLESS='vless://uuid@host:443?...'  # from VPS operator/user link
 # ROUTE_MODE=ru-direct   # ru-direct | blocked-only | global
-#   ru-direct:     .ru / .рф / .su + geoip ru -> direct; rest -> VPN
-#   blocked-only:  only antifilter/re:filter style list -> VPN; rest direct
-#   global:        all via VPN
 
-# --- OpenSOHO (OpenWISP agent) ---
+# --- OpenSOHO ---
 # ENABLE_OPENSOHO=1
-# OPENSOHO_URL='http://IP_OR_HOST:8090'   # no trailing slash; reachable from router
+# OPENSOHO_URL='http://VPS_IP:8090'
 # OPENSOHO_SHARED_SECRET='from VPS secrets'

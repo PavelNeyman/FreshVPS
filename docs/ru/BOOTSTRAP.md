@@ -1,25 +1,38 @@
-# Bootstrap, compose, SSH (русский)
+# Bootstrap (русский)
 
 **EN:** [../BOOTSTRAP.md](../BOOTSTRAP.md)
 
-## Без `git clone`
+GitHub **на лету** отдаёт `tar.gz` репозитория (Actions не нужны).
+
+## VPS (Debian)
+
+**Предпочтительно** (без сюрпризов curl|bash):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh -o /tmp/fv.sh
+sudo bash /tmp/fv.sh
 ```
 
-С конфигом: `--non-interactive --config /root/freshvps.conf`. Тянется **tar.gz с GitHub**, git не обязателен.
+Также: `curl … | sudo bash` (нужен root/sudo с самого начала).
 
-Режимы: `vps` | `edge-client` | `openwrt` | `plan` (macOS — только распаковка и подготовка, VPN на Mac не ставится).
+Обновление: `sudo bash /tmp/fv.sh --upgrade`
 
-## Выбор компонентов
+После установки: `freshvps-doctor` · `freshvps-smoke` · `freshvps-vpn link operator`
 
-Как и раньше: **не всё сразу**. `ENABLE_*` / TUI / конфиг. Docker-панели — [`compose/panels.yml`](../../compose/panels.yml) с **profiles**. VPN/DNS на хосте.
+## macOS (plan)
 
-## TUI
+```bash
+curl -fsSL …/bootstrap.sh | bash -s -- --mode plan --keep
+```
 
-`lib/tui.sh`: whiptail → dialog → osascript (macOS) → обычный `read`. На OpenWrt без лишних пакетов.
+VPN на Mac **не** устанавливается.
 
-## SSH-ключи
+## Режимы
 
-Лучше ключи, не пароли. Один operator-ключ — ок для «всё моё»; отдельные ключи VPS/роутеры — меньше радиус поражения. На Mac: **passphrase + ssh-agent**; без passphrase — только если понимаешь риск кражи ноутбука.
+| ОС | Режим по умолчанию |
+|----|---------------------|
+| Darwin | plan |
+| Debian Linux | vps |
+| OpenWrt | openwrt |
+
+Явно: `--mode vps|edge-client|openwrt|plan`

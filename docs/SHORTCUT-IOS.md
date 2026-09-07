@@ -1,5 +1,7 @@
 # FreshVPS Admin Shortcut (iOS / iPadOS / macOS)
 
+**RU:** [ru/SHORTCUT-IOS.md](ru/SHORTCUT-IOS.md)
+
 **Documentation only.** Build the Shortcut once on your device. The VPS does **not** generate or redistribute `.shortcut` files.
 
 Goal: operator Shortcut → **VPN/tunnel API** after **Face ID** + **local session token file**. End users never use this.

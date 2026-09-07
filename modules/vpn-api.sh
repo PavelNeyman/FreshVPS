@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Module: admin API (default 127.0.0.1)
+# Module: admin API (default 127.0.0.1) — session auth only
 # shellcheck disable=SC2154
 
 module_vpn_api_install() {
@@ -11,9 +11,9 @@ module_vpn_api_install() {
   mkdir -p /opt/freshvps/runtime/api /etc/freshvps/sessions /opt/freshvps-api
   chmod 700 /etc/freshvps/sessions
 
-  if [[ ! -f "${FRESHVPS_ETC}/secrets/api_master_token" ]]; then
-    write_secret api_master_token "$(openssl rand -hex 32)"
-  fi
+  # Auth = session files from: freshvps-vpn session [hours]
+  # (no separate master token)
+
   printf '%s\n' "${bind}" >"${FRESHVPS_ETC}/api_bind"
   printf '%s\n' "${port}" >"${FRESHVPS_ETC}/api_port"
 
@@ -31,7 +31,8 @@ open_ufw=0
 case "${arg}" in
   localhost|127.0.0.1) BIND=127.0.0.1 ;;
   detect)
-    BIND="$(ip -4 -o addr show scope global 2>/dev/null | awk '!/docker|br-|veth/ {print $4}' | cut -d/ -f1 | tail -n +2 | head -1 || true)"
+    # Prefer primary global IPv4 (first non-docker)
+    BIND="$(ip -4 -o addr show scope global 2>/dev/null | awk '!/docker|br-|veth|virbr/ {print $4; exit}' | cut -d/ -f1 || true)"
     [[ -n "${BIND}" ]] || BIND=127.0.0.1
     ;;
   *) BIND="${arg}" ;;
@@ -73,8 +74,8 @@ WantedBy=multi-user.target
 EOF
 
   systemd_enable_start freshvps-api
-  info "API on ${bind}:${port} — session: freshvps-vpn session 72"
-  info "Rebind: freshvps-vpn api-bind localhost|detect|<ip>  (add --ufw only if intentional)"
+  info "API on ${bind}:${port} — auth: freshvps-vpn session 72"
+  info "Rebind: freshvps-vpn api-bind localhost|detect|<ip> [--ufw]"
 }
 
 module_vpn_api_uninstall() {

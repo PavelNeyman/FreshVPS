@@ -57,7 +57,6 @@ if command -v docker >/dev/null 2>&1; then
   warn_check "compose panels.yml" test -f /opt/freshvps/compose/panels.yml
   for c in opensoho uptime-kuma beszel; do
     if docker inspect "${c}" >/dev/null 2>&1; then
-      # Avoid bare `|` after warn_check (breaks under set -o pipefail)
       if docker inspect -f '{{.State.Running}}' "${c}" 2>/dev/null | grep -qi true; then
         echo "OK   container ${c}"
         ok=$((ok+1))
@@ -69,7 +68,7 @@ if command -v docker >/dev/null 2>&1; then
   done
 fi
 
-if systemctl list-unit-files 2>/dev/null | grep -q freshvps-api; then
+if [[ -f /etc/systemd/system/freshvps-api.service ]] || systemctl cat freshvps-api >/dev/null 2>&1; then
   warn_check "api unit" systemctl is-active freshvps-api
   warn_check "api health" curl -fsS --max-time 2 http://127.0.0.1:8787/health
 fi

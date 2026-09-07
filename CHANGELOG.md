@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.7 — 2026-09-07
+
+### Added
+- **openwrt** role: `openwrt/install-openwrt.sh` (idempotent site LAN/Wi-Fi)
+- VPN client (sing-box TUN) with ROUTE_MODE=ru-direct|blocked-only|global
+- OpenSOHO agent via openwisp-config
+
 ## 0.2.6 — 2026-09-07
 
 ### Added

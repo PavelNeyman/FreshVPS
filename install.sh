@@ -46,7 +46,7 @@ FreshVPS ${VERSION} — ready-to-use Debian VPS bootstrap
 Usage: sudo bash install.sh [options]
   --config FILE
   --non-interactive
-  --role vps|edge-client
+  --role vps|edge-client|openwrt
   --with-mikrotik
   -h, --help
 EOF
@@ -191,6 +191,9 @@ write_ready_summary() {
 
 main() {
   parse_args "$@"
+  if [[ "${ROLE}" == "openwrt" ]]; then
+    exec bash "${FRESHVPS_ROOT}/install-openwrt.sh"
+  fi
   if [[ "${ROLE}" == "edge-client" ]]; then
     extra=()
     [[ -n "${CONFIG_FILE}" ]] && extra+=(--config "${CONFIG_FILE}")

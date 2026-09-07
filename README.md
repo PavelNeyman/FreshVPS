@@ -1,20 +1,20 @@
 # FreshVPS
 
-Modular bootstrap for a **Debian** VPS (and optional OpenWrt / edge). After install: operator VPN (**VLESS+Reality** + **Hysteria2** multi-user), Blocky, monitoring, Telegram (Go).
+Modular bootstrap for a **Debian** VPS (optional OpenWrt / edge). Operator VPN (**VLESS+Reality** + **Hysteria2**), Blocky, panels, Telegram (Go).
 
 **Version:** [VERSION](VERSION) · **Rules:** [AGENTS.md](AGENTS.md)
 
-**Docs EN:** [docs/INSTALL.md](docs/INSTALL.md) · [docs/VPN-USERS.md](docs/VPN-USERS.md) · [docs/ROADMAP.md](docs/ROADMAP.md)  
-**Документация RU:** [docs/ru/INSTALL.md](docs/ru/INSTALL.md) · [docs/ru/VPN-USERS.md](docs/ru/VPN-USERS.md)
+**Docs:** [INSTALL](docs/INSTALL.md) · [BOOTSTRAP](docs/BOOTSTRAP.md) · [VPN users](docs/VPN-USERS.md)  
+**RU:** [docs/ru/](docs/ru/)
 
-## Quick start (VPS)
+## Quick start (no git required)
 
 ```bash
-git clone https://github.com/PavelNeyman/FreshVPS.git && cd FreshVPS
-sudo bash install.sh
-sudo freshvps-doctor
+curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh | sudo bash
 ```
 
-OpenWrt: copy `openwrt/` to the router, edit `site.conf`, run `sh install-openwrt.sh`.
+Or clone and `sudo bash install.sh`. Component selection stays optional (TUI / config / `ENABLE_*`).
 
-Tests: `bash scripts/check.sh && bash tests/unit/test_vless_parse.sh && bash tests/unit/test_vpn_registry.sh`
+OpenWrt: copy `openwrt/` to the router → `sh install-openwrt.sh`.
+
+Panels compose (profiles): `compose/panels.yml` → `/opt/freshvps/compose/panels.yml` after install.

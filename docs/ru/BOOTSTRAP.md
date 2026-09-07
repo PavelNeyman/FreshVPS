@@ -4,6 +4,8 @@
 
 GitHub **на лету** отдаёт `tar.gz` репозитория (Actions не нужны).
 
+> **Приватный репозиторий:** `raw.githubusercontent.com` и анонимный `codeload` отвечают **404**. Нужен public repo, либо PAT / `git clone` с доступом, либо копирование дерева на VPS (`scp` tarball).
+
 ## VPS (Debian)
 
 **Предпочтительно** (без сюрпризов curl|bash):

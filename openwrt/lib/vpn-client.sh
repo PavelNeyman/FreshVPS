@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install sing-box client + split routing on OpenWrt
-# ROUTE_MODE: ru-direct | blocked-only | global
+# Expects vless-parse.sh sourced (vless_parse)
 
 install_singbox_binary() {
     ARCH="$(uname -m)"
@@ -8,7 +8,7 @@ install_singbox_binary() {
         aarch64|arm64) SB_ARCH=arm64 ;;
         armv7l|armhf) SB_ARCH=armv7 ;;
         x86_64|amd64) SB_ARCH=amd64 ;;
-        mips) SB_ARCH=mipsle ;;  # best-effort; verify on device
+        mips) SB_ARCH=mipsle ;;
         *) echo "[ERROR] Unsupported arch: $ARCH"; return 1 ;;
     esac
     TAG="$(wget -qO- https://api.github.com/repos/SagerNet/sing-box/releases/latest 2>/dev/null | sed -n 's/.*"tag_name": "\(v[^"]*\)".*/\1/p' | head -1)"
@@ -26,41 +26,16 @@ install_singbox_binary() {
     rm -rf /tmp/sb-inst
 }
 
-parse_vless() {
-    # sets: V_UUID V_HOST V_PORT V_SNI V_PBK V_SID V_FP V_FLOW
-    _u="$1"
-    _rest="${_u#vless://}"
-    V_UUID="${_rest%%@*}"
-    _rest="${_rest#*@}"
-    _hp="${_rest%%\?*}"
-    V_HOST="${_hp%%:*}"
-    V_PORT="${_hp##*:}"
-    _qs="${_rest#*\?}"
-    _qs="${_qs%%#*}"
-    V_SNI="$(echo "$_qs" | tr '&' '\n' | sed -n 's/^sni=//p' | head -1)"
-    V_PBK="$(echo "$_qs" | tr '&' '\n' | sed -n 's/^pbk=//p' | head -1)"
-    V_SID="$(echo "$_qs" | tr '&' '\n' | sed -n 's/^sid=//p' | head -1)"
-    V_FP="$(echo "$_qs" | tr '&' '\n' | sed -n 's/^fp=//p' | head -1)"
-    V_FLOW="$(echo "$_qs" | tr '&' '\n' | sed -n 's/^flow=//p' | head -1)"
-    V_SNI="${V_SNI:-www.microsoft.com}"
-    V_FP="${V_FP:-chrome}"
-    V_FLOW="${V_FLOW:-xtls-rprx-vision}"
-    V_PORT="${V_PORT:-443}"
-}
-
 write_singbox_config() {
     ROUTE_MODE="${ROUTE_MODE:-ru-direct}"
-    parse_vless "$EDGE_UPSTREAM_VLESS"
+    vless_parse "$EDGE_UPSTREAM_VLESS" || { echo "[ERROR] bad EDGE_UPSTREAM_VLESS"; return 1; }
 
-    # rule sets: remote SRS from known public sources (sing-box format)
-    # ru-direct uses domain_suffix + geoip; blocked-only uses refilter-style if available
     case "$ROUTE_MODE" in
         global)
             ROUTE_RULES='"rules": [ { "action": "sniff" }, { "protocol": "dns", "action": "hijack-dns" } ],
     "final": "proxy"'
             ;;
         blocked-only)
-            # Domains often blocked in RU — extend list as needed; final=direct
             ROUTE_RULES='"rules": [
       { "action": "sniff" },
       { "protocol": "dns", "action": "hijack-dns" },
@@ -69,7 +44,6 @@ write_singbox_config() {
     "final": "direct"'
             ;;
         *)
-            # ru-direct (default)
             ROUTE_RULES='"rules": [
       { "action": "sniff" },
       { "protocol": "dns", "action": "hijack-dns" },
@@ -112,18 +86,18 @@ write_singbox_config() {
     {
       "type": "vless",
       "tag": "proxy",
-      "server": "${V_HOST}",
-      "server_port": ${V_PORT},
-      "uuid": "${V_UUID}",
-      "flow": "${V_FLOW}",
+      "server": "${VLESS_HOST}",
+      "server_port": ${VLESS_PORT},
+      "uuid": "${VLESS_UUID}",
+      "flow": "${VLESS_FLOW}",
       "tls": {
         "enabled": true,
-        "server_name": "${V_SNI}",
-        "utls": { "enabled": true, "fingerprint": "${V_FP}" },
+        "server_name": "${VLESS_SNI}",
+        "utls": { "enabled": true, "fingerprint": "${VLESS_FP}" },
         "reality": {
           "enabled": true,
-          "public_key": "${V_PBK}",
-          "short_id": "${V_SID}"
+          "public_key": "${VLESS_PBK}",
+          "short_id": "${VLESS_SID}"
         }
       },
       "packet_encoding": "xudp"
@@ -165,7 +139,7 @@ apply_vpn_client() {
     [ -n "$EDGE_UPSTREAM_VLESS" ] || { echo "[ERROR] EDGE_UPSTREAM_VLESS empty"; return 1; }
     command -v wget >/dev/null || opkg install wget-ssl 2>/dev/null || true
     install_singbox_binary || return 1
-    write_singbox_config
+    write_singbox_config || return 1
     /usr/local/bin/sing-box check -c /usr/local/etc/sing-box/config.json || {
         echo "[ERROR] sing-box config invalid"
         return 1

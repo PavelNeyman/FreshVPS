@@ -21,11 +21,13 @@ source "${ROOT}/lib/vpn-core.sh"
 
 usage() {
   cat <<EOF
-freshvps-vpn — manage VLESS users (operator only)
+freshvps-vpn — manage VPN users (operator only)
 
   freshvps-vpn add <name> [note]
   freshvps-vpn list
-  freshvps-vpn link <name>
+  freshvps-vpn link <name>          # subscription (VLESS+HY2)
+  freshvps-vpn link <name> vless    # VLESS only
+  freshvps-vpn link <name> hy2      # Hysteria2 only
   freshvps-vpn disable|enable|revoke <name>
   freshvps-vpn apply
   freshvps-vpn session [hours]
@@ -40,12 +42,20 @@ case "${cmd}" in
   add)
     name="${1:?name}"; note="${2:-}"
     vpn_add_user "${name}" "${note}"
-    echo "Link:"
-    cat "${VPN_CLIENTS_DIR}/${name}/link.txt"
-    echo "Artifacts: ${VPN_CLIENTS_DIR}/${name}/"
+    echo "Subscription:"
+    cat "${VPN_CLIENTS_DIR}/${name}/subscription.txt"
+    echo "Dir: ${VPN_CLIENTS_DIR}/${name}/"
     ;;
   list) vpn_list_users ;;
-  link) cat "${VPN_CLIENTS_DIR}/${1:?name}/link.txt" ;;
+  link)
+    name="${1:?name}"
+    kind="${2:-sub}"
+    case "${kind}" in
+      vless) cat "${VPN_CLIENTS_DIR}/${name}/link-vless.txt" 2>/dev/null || cat "${VPN_CLIENTS_DIR}/${name}/link.txt" ;;
+      hy2) cat "${VPN_CLIENTS_DIR}/${name}/link-hy2.txt" ;;
+      *) cat "${VPN_CLIENTS_DIR}/${name}/subscription.txt" 2>/dev/null || cat "${VPN_CLIENTS_DIR}/${name}/link.txt" ;;
+    esac
+    ;;
   disable) vpn_set_enabled "${1:?name}" false; echo "disabled ${1}" ;;
   enable) vpn_set_enabled "${1:?name}" true; echo "enabled ${1}" ;;
   revoke) vpn_revoke_user "${1:?name}"; echo "revoked ${1}" ;;

@@ -6,6 +6,7 @@ import re
 import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Optional
 from urllib.parse import urlparse
 
 ETC = "/etc/freshvps"
@@ -41,7 +42,7 @@ def valid_session(token: str) -> bool:
     return True
 
 
-def read_client_text(name: str, *candidates: str) -> str | None:
+def read_client_text(name: str, *candidates: str) -> Optional[str]:
     for c in candidates:
         path = os.path.join(CLIENTS, name, c)
         if os.path.isfile(path):

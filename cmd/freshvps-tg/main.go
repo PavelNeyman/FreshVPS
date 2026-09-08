@@ -676,9 +676,7 @@ func handleMessage(token string, m *message, admin int64) {
 			if len(t) > 3500 {
 				t = t[:3500] + "…"
 			}
-			sendHTML(token, chat, T("ready_title")+"
-
-<pre>"+esc(t)+"</pre>", backKeyboard())
+			sendHTML(token, chat, T("ready_title")+string([]byte{10, 10})+"<pre>"+esc(t)+"</pre>", backKeyboard())
 		}
 	default:
 		sendHTML(token, chat, T("unknown_cmd"), mainKeyboard())

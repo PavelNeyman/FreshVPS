@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.4 — 2026-09-08
+
+- **Menu:** `Prepare VPS` action; install flow checklist for components
+- **Prepare steps:** apt update/upgrade, base tools, dnsutils, Docker, golang, restic — pick one/many/all
+- **Smart prep:** from selected components derive Docker (panels/Lampac), golang only if Telegram and no prebuilt bot, restic if backup
+- **Install flow:** install now | prepare then install | prepare only
+- **Telegram bot:** prefer `FRESHVPS_TG_BIN` → existing binary → `dist/freshvps-tg-linux-$arch` → GitHub release → `go build` → bash fallback
+- **scripts/build-tg-bot.sh:** cross-compile linux/amd64|arm64 from Mac or Linux
+- **bootstrap:** `fetch_tree` logs to stderr (fix broken `cd` path)
+
 ## 0.4.3 — 2026-09-08
 
 - **uninstall:** two levels
@@ -11,21 +21,9 @@
 
 Fixes from live VPS smoke (Debian 13):
 
-- **blocky:** wait until DNS answers on 127.0.0.1 before rewriting `resolv.conf` (avoids apt DNS race right after install)
-- **doctor:** fix `set -o pipefail` breakage on container checks; detect API unit without `grep -q` race; check **lampac** when present
-- **lampac:** `init.conf` always writable/readable by container UID 1000; force `chromium.enable=false` (root-only 600 caused silent Chromium ON ~1GB RAM)
-- **docs/BOOTSTRAP:** note that private repos need PAT/`git clone` (raw/codeload 404)
+- **blocky:** wait until DNS answers on 127.0.0.1 before rewriting `resolv.conf`
+- **doctor / lampac / BOOTSTRAP** private-repo note
 
-## 0.4.1 — 2026-09-07
-
-P0 from deep review:
-
-- Bootstrap: no broken sudo re-exec from pipe; Debian-only auto vps; document file install
-- Host tools module: doctor + smoke survive tree delete (`freshvps-smoke`)
-- API: subscription-first JSON; name sanitize; no dead master token; rebind detect fix
-- Doctor: FAIL on zero enabled VPN users
-- WARN if sing-box without vpn-users; HY2 note in READY/SECURITY
-- Test plans: `docs/TEST-PLAN-HUMAN.md`, `docs/TEST-PLAN-AI.md`
-
-## 0.4.0 — greenfield hardening, install.conf, shared sing-box install
+## 0.4.1 — 2026-09-07 — P0 review fixes
+## 0.4.0 — greenfield hardening
 ## 0.3.x — panels, tests menu, idempotent upgrade

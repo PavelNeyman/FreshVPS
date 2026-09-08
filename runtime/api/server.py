@@ -11,6 +11,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
+try:
+    import edge_store
+except ImportError:
+    edge_store = None  # type: ignore
 
 ETC = "/etc/freshvps"
 SESS = os.path.join(ETC, "sessions")
@@ -292,12 +296,26 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/health":
             return self._json(200, {"ok": True, "bind": BIND, "port": PORT})
+
+        # --- Edge agent API (device token) ---
+        if edge_store and path.startswith("/api/edge/commands"):
+            auth = self.headers.get("Authorization", "")
+            if not edge_store.valid_edge_token(auth):
+                return self._json(401, {"error": "unauthorized"})
+            qs = parse_qs(urlparse(self.path).query)
+            did = (qs.get("device_id") or [""])[0]
+            return self._json(200, {"commands": edge_store.poll_commands(did)})
         if path.startswith("/admin"):
             return self._serve_admin(path)
         if not self._auth():
             return self._json(401, {"error": "unauthorized"})
 
         tok = self._token()
+        if path == "/api/edge/devices":
+            if edge_store:
+                return self._json(200, {"devices": edge_store.list_devices()})
+            return self._json(501, {"error": "edge not available"})
+
         if path == "/api/session":
             exp = session_expiry(tok)
             now = int(time.time())
@@ -337,6 +355,17 @@ class Handler(BaseHTTPRequestHandler):
                     "uptime": probe_uptime(1440),
                 })
             return self._json(200, data)
+
+        if path == "/api/edge/cmd":
+            if not edge_store:
+                return self._json(501, {"error": "edge not available"})
+            did = str(body.get("device_id", "")).strip()
+            action = str(body.get("action", "")).strip()
+            arg = str(body.get("arg", ""))
+            if not did or not action:
+                return self._json(400, {"error": "device_id and action required"})
+            cid = edge_store.enqueue_cmd(did, action, arg)
+            return self._json(200, {"ok": True, "id": cid})
 
         if path == "/api/probes/config":
             cfg_path = os.path.join(ETC, "probes.json")
@@ -423,9 +452,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         path = u.path
+        body = self._read()
+        if edge_store and path in ("/api/edge/heartbeat", "/api/edge/cmd_result"):
+            auth = self.headers.get("Authorization", "")
+            if not edge_store.valid_edge_token(auth):
+                return self._json(401, {"error": "unauthorized"})
+            if path.endswith("heartbeat"):
+                return self._json(200, edge_store.heartbeat(body))
+            edge_store.cmd_result(body)
+            return self._json(200, {"ok": True})
         if not self._auth():
             return self._json(401, {"error": "unauthorized"})
-        body = self._read()
 
         if path == "/vpn/users":
             name = str(body.get("name", "")).strip()
@@ -466,6 +503,17 @@ class Handler(BaseHTTPRequestHandler):
             except subprocess.CalledProcessError as e:
                 return self._json(500, {"error": e.output or "failed"})
             return self._json(200, {"ok": True, "output": out.strip()})
+
+        if path == "/api/edge/cmd":
+            if not edge_store:
+                return self._json(501, {"error": "edge not available"})
+            did = str(body.get("device_id", "")).strip()
+            action = str(body.get("action", "")).strip()
+            arg = str(body.get("arg", ""))
+            if not did or not action:
+                return self._json(400, {"error": "device_id and action required"})
+            cid = edge_store.enqueue_cmd(did, action, arg)
+            return self._json(200, {"ok": True, "id": cid})
 
         if path == "/api/probes/config":
             # write full config

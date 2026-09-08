@@ -82,7 +82,7 @@ pick_components_checklist() {
     beszel "Beszel (optional Docker)" 0 \
     telegram "Telegram operator bot" 1 \
     backup "restic backups" 1 \
-    metrics "Built-in metrics (no Prometheus)" 1 \
+    metrics "Built-in metrics (JSONL, no Prometheus)" 1 \
     lampac "Lampac (optional, needs Docker)" 0 \
     )" || true
 

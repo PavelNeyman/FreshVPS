@@ -88,6 +88,52 @@ EOF
       info "UFW enabled; SSH ${SSH_PORT:-22}/tcp allowed"
     fi
   fi
+
+  # Headless VPS: virtio_gpu soft lockups (drm/virtio) hang a vCPU
+  if [[ ! -f /etc/modprobe.d/blacklist-virtio-gpu.conf ]]; then
+    cat >/etc/modprobe.d/blacklist-virtio-gpu.conf <<'EOF'
+# FreshVPS: avoid virtio_gpu soft lockups on headless KVM
+blacklist virtio_gpu
+blacklist virtio_gpu_pci
+EOF
+    info "Blacklisted virtio_gpu (reboot to unload if currently loaded)"
+  else
+    info "virtio_gpu blacklist already present"
+  fi
+  if lsmod 2>/dev/null | grep -q '^virtio_gpu'; then
+    warn "virtio_gpu is loaded now — reboot recommended after blacklist"
+  fi
+
+  # Small swapfile (safety net; no-op if already active swap)
+  local swap_mb="${FRESHVPS_SWAP_MB:-2048}"
+  if [[ "${FRESHVPS_SKIP_SWAP:-0}" != "1" ]]; then
+    if swapon --show=NAME --noheadings 2>/dev/null | grep -q .; then
+      info "Swap already active — skip creating /swapfile"
+    elif [[ -f /swapfile ]]; then
+      swapon /swapfile 2>/dev/null || true
+      if ! grep -qE '^/swapfile' /etc/fstab 2>/dev/null; then
+        echo '/swapfile none swap sw 0 0' >>/etc/fstab
+      fi
+      info "Enabled existing /swapfile"
+    else
+      info "Creating ${swap_mb}M /swapfile"
+      if fallocate -l "${swap_mb}M" /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count="${swap_mb}" status=none; then
+        chmod 600 /swapfile
+        mkswap /swapfile >/dev/null
+        swapon /swapfile
+        grep -qE '^/swapfile' /etc/fstab 2>/dev/null || echo '/swapfile none swap sw 0 0' >>/etc/fstab
+        # Prefer not to swap early on small VPS
+        if [[ ! -f /etc/sysctl.d/99-freshvps-swappiness.conf ]]; then
+          echo 'vm.swappiness=10' >/etc/sysctl.d/99-freshvps-swappiness.conf
+          sysctl -w vm.swappiness=10 >/dev/null 2>&1 || true
+        fi
+        info "Swap ${swap_mb}M active (swappiness=10)"
+      else
+        warn "Could not create /swapfile"
+        rm -f /swapfile
+      fi
+    fi
+  fi
 }
 
 module_hardening_uninstall() {

@@ -16,6 +16,8 @@
       sessionSoon: "Session expires soon — renew via /session",
       sessionLeft: "Session",
       left: "left",
+      services: "Services",
+      containers: "Containers",
     },
     ru: {
       loginTitle: "Вход оператора",
@@ -31,9 +33,11 @@
       sessionSoon: "Сессия скоро истечёт — обновите через /session",
       sessionLeft: "Сессия",
       left: "осталось",
+      services: "Сервисы",
+      containers: "Контейнеры",
     },
   };
-  let lang = localStorage.getItem("fv_lang") || ((navigator.language || "en").startsWith("ru") ? "ru" : "en");
+  let lang = localStorage.getItem("fv_lang") || ((navigator.language || "ru").startsWith("en") ? "en" : "ru");
   if (lang !== "ru" && lang !== "en") lang = "en";
   function t(k) { return (STR[lang] && STR[lang][k]) || (STR.en[k] || k); }
   function applyLang() {
@@ -41,6 +45,9 @@
     if (h1) h1.textContent = t("loginTitle");
     const bi = $("btn-login"); if (bi) bi.textContent = t("signIn");
     const bo = $("btn-logout"); if (bo) bo.textContent = t("logout");
+    const setTxt = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = t(key); };
+    setTxt("t-services", "services");
+    setTxt("t-containers", "containers");
     document.querySelectorAll(".tab").forEach((b) => {
       const map = { overview: "overview", users: "users", metrics: "metrics", probes: "probes", settings: "settings" };
       if (map[b.dataset.tab]) b.textContent = t(map[b.dataset.tab]);
@@ -394,7 +401,10 @@
     };
   }
   applyLang();
-  document.querySelectorAll(".tab").forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
+  const setTxt = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = t(key); };
+    setTxt("t-services", "services");
+    setTxt("t-containers", "containers");
+    document.querySelectorAll(".tab").forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
   $("btn-refresh-users").onclick = () => refreshUsers().catch(() => {});
   $("btn-refresh-probes").onclick = () => refreshProbes().catch(() => {});
   $("user-filter").oninput = () => renderUsers();

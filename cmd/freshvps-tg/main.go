@@ -669,14 +669,16 @@ func handleMessage(token string, m *message, admin int64) {
 	case "/admin":
 		sendHTML(token, chat, T("admin_body"), mainKeyboard())
 	case "/ready":
-		if b, err := os.ReadFile("/etc/freshvps/READY.txt"); err == nil {
-			t := string(b)
-			if len(t) > 3500 {
-				t = t[:3500] + "\n…"
-			}
-			sendHTML(token, chat, "📄 <pre>"+esc(t)+"</pre>", backKeyboard())
-		} else {
+		t := readyText()
+		if t == "" {
 			sendHTML(token, chat, T("no_ready"), backKeyboard())
+		} else {
+			if len(t) > 3500 {
+				t = t[:3500] + "…"
+			}
+			sendHTML(token, chat, T("ready_title")+"
+
+<pre>"+esc(t)+"</pre>", backKeyboard())
 		}
 	default:
 		sendHTML(token, chat, T("unknown_cmd"), mainKeyboard())

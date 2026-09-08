@@ -84,23 +84,31 @@ ensure_real_script() {
   echo "${copy}"
 }
 
+# Only the tree path goes to stdout (captured by callers). Logs → stderr.
 fetch_tree() {
   local dest="$1" top tmp
   need_cmd curl; need_cmd tar
   mkdir -p "${dest}"
-  echo "[bootstrap] downloading ${TARBALL_URL}"
+  echo "[bootstrap] downloading ${TARBALL_URL}" >&2
   tmp="$(mktemp)"
   if ! curl -fsSL "${TARBALL_URL}" -o "${tmp}"; then
     if command -v git >/dev/null 2>&1; then
+      echo "[bootstrap] codeload failed — falling back to git clone" >&2
       git clone --depth 1 --branch "${REF}" "https://github.com/${REPO}.git" "${dest}/repo"
-      echo "${dest}/repo"; rm -f "${tmp}"; return
+      rm -f "${tmp}"
+      printf '%s\n' "${dest}/repo"
+      return
     fi
     echo "[bootstrap] download failed" >&2; exit 1
   fi
   tar -xzf "${tmp}" -C "${dest}"
   rm -f "${tmp}"
   top="$(find "${dest}" -mindepth 1 -maxdepth 1 -type d | head -1)"
-  echo "${top}"
+  if [[ -z "${top}" || ! -d "${top}" ]]; then
+    echo "[bootstrap] empty or invalid tarball extract under ${dest}" >&2
+    exit 1
+  fi
+  printf '%s\n' "${top}"
 }
 
 main() {

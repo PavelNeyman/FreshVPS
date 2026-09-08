@@ -13,20 +13,21 @@ Only reachable when you can reach the API (localhost, SSH tunnel, or VPN bind).
 1. `sudo freshvps-vpn session 72` or Telegram **API session**
 2. Paste token into the login form (stored in `sessionStorage`)
 
-## Features (v0.5)
+## Features
 
 - Overview: CPU / RAM / disk / load, systemd services, docker containers
 - VPN users: list, add, enable/disable/revoke, subscription + QR
-- Metrics history: local JSONL collector (1/min), no Prometheus required
+- Metrics history: local JSONL collector (1/min)
 
-## Metrics design
+## Metrics (no Prometheus)
 
-- **Default:** self-collection via `freshvps-metrics.timer` → `/var/lib/freshvps/metrics/history.jsonl`
-- **Not bundled:** full Prometheus + Grafana (optional later if you want long retention / PromQL)
-- API: `GET /api/status`, `GET /api/metrics`, `GET /api/metrics/history`
+- Collector: `freshvps-metrics.timer` → `/var/lib/freshvps/metrics/history.jsonl`
+- Live: `GET /api/status`, `GET /api/metrics`
+- History: `GET /api/metrics/history`
+- No Prometheus, Grafana, or node_exporter in the stack
 
 ## vs Kuma / Beszel
 
-Default install **no longer** enables Uptime Kuma or Beszel. Use this admin for host/VPN health; add Kuma only if you still want external HTTP probes UI.
+Default install does **not** enable Uptime Kuma or Beszel. Use this admin for host/VPN health.
 
-OpenSOHO stays a separate optional module for OpenWrt.
+OpenSOHO remains a separate optional module for OpenWrt.

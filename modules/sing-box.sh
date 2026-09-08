@@ -115,5 +115,7 @@ module_sing_box_uninstall() {
   systemctl disable --now sing-box 2>/dev/null || true
   rm -f /etc/systemd/system/sing-box.service
   systemctl daemon-reload 2>/dev/null || true
-  info "sing-box stopped"
+  rm -f /usr/local/bin/sing-box
+  # configs/certs kept unless FRESHVPS_PURGE=1 (handled in uninstall.sh --purge)
+  info "sing-box stopped; binary removed (config kept unless --purge)"
 }

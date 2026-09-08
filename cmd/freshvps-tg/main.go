@@ -70,6 +70,9 @@ var dict = map[string]map[string]string{
 		"session":       "🔑 API session",
 		"admin":         "🖥 Admin UI",
 		"help":          "❓ Help",
+		"routers":       "📡 Routers",
+		"routers_title": "📡 <b>Routers</b>",
+		"routers_empty": "No edge agents yet.",
 		"lang":          "🌐 Language",
 		"main_menu":     "🏠 Main menu",
 		"status_title":  "📊 <b>Status</b>",
@@ -111,6 +114,9 @@ var dict = map[string]map[string]string{
 		"session":       "🔑 API session",
 		"admin":         "🖥 Админка",
 		"help":          "❓ Справка",
+		"routers":       "📡 Роутеры",
+		"routers_title": "📡 <b>Роутеры</b>",
+		"routers_empty": "Агентов пока нет.",
 		"lang":          "🌐 Язык",
 		"main_menu":     "🏠 Меню",
 		"status_title":  "📊 <b>Статус</b>",
@@ -233,6 +239,7 @@ func mainKeyboard() map[string]any {
 			{btn(T("vpn_link"), "m:vpn_link", "primary"), btn(T("vpn_disable"), "m:vpn_disable", "danger")},
 			{btn(T("vpn_enable"), "m:vpn_enable", "success"), btn(T("vpn_revoke"), "m:vpn_revoke", "danger")},
 			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "primary")},
+			{btn(T("routers"), "m:routers", "primary")},
 			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
 		},
 	}
@@ -427,6 +434,32 @@ func readyText() string {
 	return strings.TrimSpace(text)
 }
 
+
+func routersText() string {
+	cmd := exec.Command("python3", "-c",
+		`import json,sys
+sys.path.insert(0,"/opt/freshvps/runtime/api")
+import edge_store
+ds=edge_store.list_devices()
+if not ds:
+ print("")
+ sys.exit(0)
+import time
+now=int(time.time())
+for d in sorted(ds, key=lambda x: -int(x.get("last_seen") or 0)):
+ ok="online" if d.get("healthy") else "offline"
+ ago=now-int(d.get("last_seen") or 0)
+ print("%s  %s  %s  wan=%s  wifi=%s  %s %ss" % (
+  d.get("device_id",""), d.get("hostname",""), d.get("board",""),
+  d.get("wan_ip",""), d.get("wifi_clients",""), ok, ago))
+`)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out) + err.Error()
+	}
+	return string(out)
+}
+
 func menuText() string {
 	return T("menu_title") + "\n\n" + T("menu_hint")
 }
@@ -501,6 +534,16 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			label = "English"
 		}
 		sendHTML(token, chat, Tf("lang_now", label), langKeyboard())
+	case "m:routers":
+		t := strings.TrimSpace(routersText())
+		if t == "" {
+			sendHTML(token, chat, T("routers_title")+string([]byte{10, 10})+T("routers_empty"), backKeyboard())
+		} else {
+			if len(t) > 3500 {
+				t = t[:3500] + "…"
+			}
+			sendHTML(token, chat, T("routers_title")+string([]byte{10, 10})+"<pre>"+esc(t)+"</pre>", backKeyboard())
+		}
 	case "m:status":
 		sendHTML(token, chat, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
 	case "m:ready":

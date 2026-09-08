@@ -29,6 +29,7 @@ freshvps-vpn — manage VPN users (operator only)
   freshvps-vpn link <name> vless    # VLESS only
   freshvps-vpn link <name> hy2      # Hysteria2 only
   freshvps-vpn disable|enable|revoke <name>
+  freshvps-vpn note <name> <text>
   freshvps-vpn apply
   freshvps-vpn session [hours]
   freshvps-vpn api-bind localhost|detect|<ip> [--ufw]
@@ -56,6 +57,7 @@ case "${cmd}" in
       *) cat "${VPN_CLIENTS_DIR}/${name}/subscription.txt" 2>/dev/null || cat "${VPN_CLIENTS_DIR}/${name}/link.txt" ;;
     esac
     ;;
+  note) vpn_set_note "${1:?name}" "${2:-}"; echo "note updated ${1}" ;;
   disable) vpn_set_enabled "${1:?name}" false; echo "disabled ${1}" ;;
   enable) vpn_set_enabled "${1:?name}" true; echo "enabled ${1}" ;;
   revoke) vpn_revoke_user "${1:?name}"; echo "revoked ${1}" ;;

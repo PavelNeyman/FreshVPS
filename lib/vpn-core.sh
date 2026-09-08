@@ -124,6 +124,19 @@ vpn_add_user() {
   echo "${name} ${uuid}"
 }
 
+vpn_set_note() {
+  local name="$1" note="${2:-}"
+  vpn_ensure_dirs
+  vpn_user_exists "${name}" || { echo "user not found: ${name}" >&2; return 1; }
+  local tmp
+  tmp="$(mktemp)"
+  jq --arg n "${name}" --arg note "${note}" \
+    '(.users[] | select(.name==$n) | .note) = $note' \
+    "${VPN_USERS_FILE}" >"${tmp}"
+  mv "${tmp}" "${VPN_USERS_FILE}"
+  chmod 600 "${VPN_USERS_FILE}"
+}
+
 vpn_set_enabled() {
   local name="$1" en="$2"
   local tmp; tmp="$(mktemp)"

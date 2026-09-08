@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FreshVPS admin API + SPA — Bearer session (freshvps-vpn session)."""
+"""FreshVPS admin API + SPA — Bearer session auth."""
 from __future__ import annotations
 
 import json
@@ -10,50 +10,46 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ETC = "/etc/freshvps"
 SESS = os.path.join(ETC, "sessions")
 CLIENTS = os.path.join(ETC, "clients")
 VPN_BIN = "/usr/local/bin/freshvps-vpn"
 METRICS_DIR = os.environ.get("FRESHVPS_METRICS_DIR", "/var/lib/freshvps/metrics")
-ADMIN_ROOT = os.environ.get(
-    "FRESHVPS_ADMIN_ROOT", "/opt/freshvps/runtime/api/admin"
-)
+ADMIN_ROOT = os.environ.get("FRESHVPS_ADMIN_ROOT", "/opt/freshvps/runtime/api/admin")
 BIND = os.environ.get("VPN_API_BIND", "127.0.0.1")
 PORT = int(os.environ.get("VPN_API_PORT", "8787"))
 NAME_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$")
-
-SERVICES = [
-    "sing-box",
-    "blocky",
-    "freshvps-api",
-    "freshvps-telegram-bot",
-]
+SERVICES = ["sing-box", "blocky", "freshvps-api", "freshvps-telegram-bot"]
 
 
 def valid_name(name: str) -> bool:
     return bool(name and NAME_RE.match(name))
 
 
-def valid_session(token: str) -> bool:
+def session_expiry(token: str) -> Optional[int]:
     if not token or "/" in token or ".." in token or len(token) > 128:
-        return False
+        return None
     path = os.path.join(SESS, token)
     if not os.path.isfile(path):
-        return False
+        return None
     try:
         with open(path, encoding="utf-8") as f:
             exp = int(f.read().strip())
     except (OSError, ValueError):
-        return False
+        return None
     if exp < int(time.time()):
         try:
             os.remove(path)
         except OSError:
             pass
-        return False
-    return True
+        return None
+    return exp
+
+
+def valid_session(token: str) -> bool:
+    return session_expiry(token) is not None
 
 
 def read_client_text(name: str, *candidates: str) -> Optional[str]:
@@ -83,7 +79,6 @@ def _read_proc_mem() -> dict[str, int]:
 
 
 def _cpu_pct() -> float:
-    """Rough CPU busy% over ~0.15s."""
     def snap():
         with open("/proc/stat", encoding="utf-8") as f:
             p = f.readline().split()
@@ -93,7 +88,7 @@ def _cpu_pct() -> float:
 
     try:
         i1, t1 = snap()
-        time.sleep(0.15)
+        time.sleep(0.12)
         i2, t2 = snap()
         dt, di = t2 - t1, i2 - i1
         if dt <= 0:
@@ -122,15 +117,33 @@ def _disk_root() -> dict[str, int]:
         return {"total": 0, "free": 0, "used": 0}
 
 
+def _net_counters() -> dict[str, int]:
+    rx = tx = 0
+    try:
+        with open("/proc/net/dev", encoding="utf-8") as f:
+            for line in f.readlines()[2:]:
+                if ":" not in line:
+                    continue
+                name, rest = line.split(":", 1)
+                name = name.strip()
+                if name in ("lo",) or name.startswith(("docker", "br-", "veth", "virbr")):
+                    continue
+                parts = rest.split()
+                if len(parts) >= 9:
+                    rx += int(parts[0])
+                    tx += int(parts[8])
+    except (OSError, ValueError):
+        pass
+    return {"rx_bytes": rx, "tx_bytes": tx}
+
+
 def _service_active(name: str) -> str:
     try:
         r = subprocess.run(
             ["systemctl", "is-active", name],
-            capture_output=True,
-            text=True,
-            timeout=3,
+            capture_output=True, text=True, timeout=3,
         )
-        return (r.stdout or r.stderr or "unknown").strip()
+        return (r.stdout or "unknown").strip()
     except (OSError, subprocess.TimeoutExpired):
         return "unknown"
 
@@ -139,37 +152,33 @@ def collect_metrics() -> dict[str, Any]:
     mem = _read_proc_mem()
     disk = _disk_root()
     services = {s: _service_active(s) for s in SERVICES}
-    # optional containers
+    containers = []
     try:
         r = subprocess.run(
             ["docker", "ps", "--format", "{{.Names}}\t{{.Status}}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+            capture_output=True, text=True, timeout=5,
         )
-        containers = []
         if r.returncode == 0:
             for line in r.stdout.strip().splitlines():
                 if "\t" in line:
                     n, st = line.split("\t", 1)
                     containers.append({"name": n, "status": st})
-        services["_containers"] = containers  # type: ignore
     except (OSError, subprocess.TimeoutExpired):
         pass
-
     return {
         "ts": int(time.time()),
         "cpu_pct": _cpu_pct(),
         "loadavg": _loadavg(),
         "mem": mem,
         "disk": disk,
-        "services": {k: v for k, v in services.items() if k != "_containers"},
-        "containers": services.get("_containers", []),
+        "net": _net_counters(),
+        "services": services,
+        "containers": containers,
         "hostname": os.uname().nodename,
     }
 
 
-def metrics_history(limit: int = 120) -> list[dict]:
+def metrics_history(limit: int = 180) -> list[dict]:
     path = os.path.join(METRICS_DIR, "history.jsonl")
     if not os.path.isfile(path):
         return []
@@ -190,24 +199,44 @@ def metrics_history(limit: int = 120) -> list[dict]:
     return rows
 
 
+def probe_uptime(limit: int = 1440) -> dict[str, Any]:
+    """Uptime % per probe name over last `limit` samples (~1 day if 1/min)."""
+    rows = metrics_history(limit)
+    stats: dict[str, dict[str, int]] = {}
+    for row in rows:
+        for p in row.get("probes") or []:
+            name = p.get("name") or "?"
+            st = stats.setdefault(name, {"ok": 0, "total": 0})
+            st["total"] += 1
+            if p.get("ok"):
+                st["ok"] += 1
+    out = {}
+    for name, st in stats.items():
+        total = st["total"] or 1
+        out[name] = {
+            "ok": st["ok"],
+            "total": st["total"],
+            "uptime_pct": round(100.0 * st["ok"] / total, 1),
+        }
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         return
 
-    def _token_from_request(self) -> str:
+    def _token(self) -> str:
         auth = self.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             return auth[7:].strip()
-        # cookie for SPA
-        cookie = self.headers.get("Cookie", "")
-        for part in cookie.split(";"):
+        for part in self.headers.get("Cookie", "").split(";"):
             part = part.strip()
             if part.startswith("fv_session="):
                 return part.split("=", 1)[1].strip()
         return ""
 
     def _auth(self) -> bool:
-        return valid_session(self._token_from_request())
+        return valid_session(self._token())
 
     def _json(self, code: int, obj):
         body = json.dumps(obj).encode()
@@ -235,11 +264,13 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     def _serve_admin(self, path: str):
+        if path == "/admin":
+            self.send_response(302)
+            self.send_header("Location", "/admin/")
+            self.end_headers()
+            return
         root = Path(ADMIN_ROOT).resolve()
-        if path in ("/admin", "/admin/"):
-            rel = "index.html"
-        else:
-            rel = path[len("/admin/") :]
+        rel = "index.html" if path in ("/admin/",) else path[len("/admin/"):]
         if ".." in rel or rel.startswith("/"):
             return self._json(400, {"error": "bad path"})
         fp = (root / rel).resolve()
@@ -253,8 +284,6 @@ class Handler(BaseHTTPRequestHandler):
             ctype = "application/javascript; charset=utf-8"
         elif rel.endswith(".css"):
             ctype = "text/css; charset=utf-8"
-        elif rel.endswith(".svg"):
-            ctype = "image/svg+xml"
         return self._bytes(200, data, ctype)
 
     def do_GET(self):
@@ -263,31 +292,50 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/health":
             return self._json(200, {"ok": True, "bind": BIND, "port": PORT})
-
         if path.startswith("/admin"):
             return self._serve_admin(path)
-
         if not self._auth():
             return self._json(401, {"error": "unauthorized"})
 
-        if path == "/api/metrics" or path == "/metrics":
+        tok = self._token()
+        if path == "/api/session":
+            exp = session_expiry(tok)
+            now = int(time.time())
+            return self._json(200, {
+                "expires_unix": exp,
+                "expires_in_sec": (exp - now) if exp else 0,
+                "now": now,
+            })
+
+        if path in ("/api/metrics", "/metrics"):
             return self._json(200, collect_metrics())
 
         if path == "/api/metrics/history":
-            return self._json(200, {"points": metrics_history(180)})
+            qs = parse_qs(u.query)
+            limit = int((qs.get("limit") or ["180"])[0])
+            limit = max(10, min(limit, 2000))
+            return self._json(200, {"points": metrics_history(limit)})
+
+        if path == "/api/probes/uptime":
+            return self._json(200, {"probes": probe_uptime(1440)})
 
         if path in ("/api/probes", "/api/latest"):
             latest = os.path.join(METRICS_DIR, "latest.json")
+            data: dict = {}
             if os.path.isfile(latest):
                 try:
                     with open(latest, encoding="utf-8") as f:
                         data = json.load(f)
                 except (OSError, json.JSONDecodeError):
                     data = {}
-            else:
+            if not data:
                 data = collect_metrics()
             if path == "/api/probes":
-                return self._json(200, {"probes": data.get("probes") or [], "ts": data.get("ts")})
+                return self._json(200, {
+                    "probes": data.get("probes") or [],
+                    "ts": data.get("ts"),
+                    "uptime": probe_uptime(1440),
+                })
             return self._json(200, data)
 
         if path == "/api/probes/config":
@@ -300,66 +348,75 @@ class Handler(BaseHTTPRequestHandler):
                     pass
             return self._json(200, {"probes": [], "alerts": {}})
 
-        if path == "/api/status" or path == "/status":
+        if path in ("/api/status", "/status"):
             m = collect_metrics()
-            return self._json(
-                200,
-                {
-                    "hostname": m["hostname"],
-                    "ts": m["ts"],
-                    "cpu_pct": m["cpu_pct"],
-                    "loadavg": m["loadavg"],
-                    "mem": m["mem"],
-                    "disk": m["disk"],
-                    "services": m["services"],
-                    "containers": m["containers"],
-                },
-            )
+            latest = os.path.join(METRICS_DIR, "latest.json")
+            probes = []
+            if os.path.isfile(latest):
+                try:
+                    with open(latest, encoding="utf-8") as f:
+                        probes = json.load(f).get("probes") or []
+                except (OSError, json.JSONDecodeError):
+                    pass
+            # stale collector?
+            hist = metrics_history(2)
+            last_ts = hist[-1]["ts"] if hist else 0
+            stale = (int(time.time()) - last_ts) > 180 if last_ts else True
+            return self._json(200, {
+                "hostname": m["hostname"],
+                "ts": m["ts"],
+                "cpu_pct": m["cpu_pct"],
+                "loadavg": m["loadavg"],
+                "mem": m["mem"],
+                "disk": m["disk"],
+                "net": m["net"],
+                "services": m["services"],
+                "containers": m["containers"],
+                "probes": probes,
+                "collector_stale": stale,
+                "collector_last_ts": last_ts,
+            })
 
         if path == "/vpn/users":
             try:
-                out = subprocess.check_output(
-                    [VPN_BIN, "list"], text=True, stderr=subprocess.STDOUT
-                )
+                out = subprocess.check_output([VPN_BIN, "list"], text=True, stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError as e:
                 return self._json(500, {"error": e.output or "list failed"})
             users = []
             for line in out.strip().splitlines():
                 p = line.split("\t")
                 if len(p) >= 3:
-                    users.append(
-                        {"name": p[0], "enabled": p[1] == "on", "uuid": p[2]}
-                    )
+                    users.append({
+                        "name": p[0],
+                        "enabled": p[1] == "on",
+                        "uuid": p[2],
+                        "note": p[3] if len(p) > 3 else "",
+                        "created": p[4] if len(p) > 4 else "",
+                    })
             return self._json(200, {"users": users})
 
         if path.startswith("/vpn/users/") and path.endswith("/qr"):
-            name = path[len("/vpn/users/") : -len("/qr")]
+            name = path[len("/vpn/users/"):-len("/qr")]
             if not valid_name(name):
                 return self._json(400, {"error": "bad name"})
             qr = os.path.join(CLIENTS, name, "qr.png")
             if not os.path.isfile(qr):
                 return self._json(404, {"error": "no qr"})
-            data = Path(qr).read_bytes()
-            return self._bytes(200, data, "image/png")
+            return self._bytes(200, Path(qr).read_bytes(), "image/png")
 
         if path.startswith("/vpn/users/") and path.endswith("/link"):
-            name = path[len("/vpn/users/") : -len("/link")]
+            name = path[len("/vpn/users/"):-len("/link")]
             if not valid_name(name):
                 return self._json(400, {"error": "bad name"})
             sub = read_client_text(name, "subscription.txt", "link.txt")
             if sub is None:
                 return self._json(404, {"error": "not found"})
-            vless = read_client_text(name, "vless.txt")
-            hy2 = read_client_text(name, "hy2.txt")
-            return self._json(
-                200,
-                {
-                    "name": name,
-                    "subscription": sub,
-                    "vless": vless,
-                    "hy2": hy2,
-                },
-            )
+            return self._json(200, {
+                "name": name,
+                "subscription": sub,
+                "vless": read_client_text(name, "link-vless.txt", "link.txt"),
+                "hy2": read_client_text(name, "link-hy2.txt"),
+            })
 
         return self._json(404, {"error": "not found"})
 
@@ -384,6 +441,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(500, {"error": e.output or "add failed"})
             return self._json(200, {"ok": True, "output": out.strip(), "name": name})
 
+        if path.startswith("/vpn/users/") and path.endswith("/note"):
+            name = path[len("/vpn/users/"):-len("/note")]
+            if not valid_name(name):
+                return self._json(400, {"error": "bad name"})
+            note = str(body.get("note", ""))
+            try:
+                out = subprocess.check_output(
+                    [VPN_BIN, "note", name, note], text=True, stderr=subprocess.STDOUT
+                )
+            except subprocess.CalledProcessError as e:
+                return self._json(500, {"error": e.output or "note failed"})
+            return self._json(200, {"ok": True, "output": out.strip()})
+
         m = re.match(r"^/vpn/users/([^/]+)/(disable|enable|revoke)$", path)
         if m:
             name, action = m.group(1), m.group(2)
@@ -397,13 +467,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(500, {"error": e.output or "failed"})
             return self._json(200, {"ok": True, "output": out.strip()})
 
+        if path == "/api/probes/config":
+            # write full config
+            cfg_path = os.path.join(ETC, "probes.json")
+            try:
+                with open(cfg_path, "w", encoding="utf-8") as f:
+                    json.dump(body, f, indent=2)
+                    f.write("\n")
+            except OSError as e:
+                return self._json(500, {"error": str(e)})
+            return self._json(200, {"ok": True})
+
         return self._json(404, {"error": "not found"})
 
 
 def main():
     os.makedirs(METRICS_DIR, exist_ok=True)
-    httpd = HTTPServer((BIND, PORT), Handler)
-    httpd.serve_forever()
+    HTTPServer((BIND, PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":

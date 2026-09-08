@@ -43,11 +43,9 @@ _opensoho_bootstrap_admin() {
 
 module_opensoho_uninstall() {
   if [[ -f /opt/freshvps/compose/panels.yml ]]; then
-    (cd /opt/freshvps/compose && docker compose -f panels.yml --profile opensoho stop) 2>/dev/null || true
+    (cd /opt/freshvps/compose && docker compose -f panels.yml --profile opensoho rm -sf 2>/dev/null) || true
   fi
-  if [[ -f /opt/opensoho/docker-compose.yml ]]; then
-    (cd /opt/opensoho && docker compose down) 2>/dev/null || true
-  fi
+  docker rm -f opensoho 2>/dev/null || true
   systemctl disable --now opensoho 2>/dev/null || true
-  info "OpenSOHO stopped (data in /var/lib/opensoho)"
+  info "OpenSOHO container removed (data kept in /var/lib/opensoho unless --purge)"
 }

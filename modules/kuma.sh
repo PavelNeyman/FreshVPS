@@ -20,13 +20,9 @@ EOF
 }
 
 module_kuma_uninstall() {
-  # shellcheck source=/dev/null
-  source "${FRESHVPS_ROOT}/modules/panels.sh" 2>/dev/null || true
   if [[ -f /opt/freshvps/compose/panels.yml ]]; then
-    (cd /opt/freshvps/compose && docker compose -f panels.yml --profile kuma stop) 2>/dev/null || true
+    (cd /opt/freshvps/compose && docker compose -f panels.yml --profile kuma rm -sf 2>/dev/null) || true
   fi
-  if [[ -f /opt/uptime-kuma/docker-compose.yml ]]; then
-    (cd /opt/uptime-kuma && docker compose down) 2>/dev/null || true
-  fi
-  info "Uptime Kuma stopped (data under /opt/uptime-kuma/data)"
+  docker rm -f uptime-kuma 2>/dev/null || true
+  info "Uptime Kuma container removed (data kept under /opt/uptime-kuma/data unless --purge)"
 }

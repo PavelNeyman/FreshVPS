@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3 — 2026-09-08
+
+- **uninstall:** two levels
+  - default — remove runtime: units, binaries (`sing-box`/`blocky`), CLI, containers, UFW rules; **restore DNS** after blocky; **keep configs + data**
+  - `--purge` — also wipe `/etc/freshvps`, `/etc/blocky`, panel data, certs, restic repo, docker images, state
+- Modules: lampac in default module list; container `rm` instead of only stop
+
 ## 0.4.2 — 2026-09-07
 
 Fixes from live VPS smoke (Debian 13):

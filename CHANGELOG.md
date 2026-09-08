@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.4 — 2026-09-08
+
+- Hardening: blacklist virtio_gpu (headless KVM soft lockup mitigation)
+- Hardening: 2G /swapfile by default (FRESHVPS_SWAP_MB, FRESHVPS_SKIP_SWAP=1)
+- Kuma/Beszel optional off by default
+
+# Changelog
+
 ## 0.5.2 — 2026-09-08
 
 - Admin UI: auto-refresh, probe strip, session expiry, toasts, note edit, search, copy VLESS/HY2

@@ -64,8 +64,7 @@ caching:
   prefetching: true
 
 prometheus:
-  enable: true
-  path: /metrics
+  enable: false
 
 log:
   level: info

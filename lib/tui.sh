@@ -83,3 +83,88 @@ tui_msg() {
     *) echo "${t}" ;;
   esac
 }
+
+# tui_menu "title" tag1 "desc1" tag2 "desc2" ... → prints selected tag
+tui_menu() {
+  local title="$1" backend; shift
+  backend="$(tui_detect)"
+  if [[ "${NONINTERACTIVE:-0}" -eq 1 ]]; then
+    printf '%s\n' "$1"
+    return 0
+  fi
+  case "${backend}" in
+    whiptail)
+      whiptail --title "${title}" --menu "Select" 20 72 10 "$@" 3>&1 1>&2 2>&3
+      ;;
+    dialog)
+      dialog --title "${title}" --menu "Select" 20 72 10 "$@" 3>&1 1>&2 2>&3
+      ;;
+    *)
+      local i=1 tags=() descs=() t d n
+      while [[ $# -ge 2 ]]; do tags+=("$1"); descs+=("$2"); shift 2; done
+      echo "${title}"
+      for i in "${!tags[@]}"; do
+        printf '  %d) %s — %s\n' "$((i + 1))" "${tags[$i]}" "${descs[$i]}"
+      done
+      read -r -p "> " n || true
+      n="${n:-1}"
+      if [[ "${n}" =~ ^[0-9]+$ ]] && [[ "${n}" -ge 1 && "${n}" -le ${#tags[@]} ]]; then
+        printf '%s\n' "${tags[$((n - 1))]}"
+      else
+        printf '%s\n' "${tags[0]}"
+      fi
+      ;;
+  esac
+}
+
+# tui_checklist "title" tag1 "desc1" on|off|0|1  tag2 ... → space-separated selected tags
+tui_checklist() {
+  local title="$1" backend; shift
+  backend="$(tui_detect)"
+  if [[ "${NONINTERACTIVE:-0}" -eq 1 ]]; then
+    # return all marked on/1
+    local out=() t d s
+    while [[ $# -ge 3 ]]; do
+      t="$1"; d="$2"; s="$3"; shift 3
+      [[ "${s}" == "on" || "${s}" == "1" ]] && out+=("${t}")
+    done
+    printf '%s\n' "${out[*]}"
+    return 0
+  fi
+  case "${backend}" in
+    whiptail)
+      # rebuild args as tag desc status
+      local args=() t d s
+      while [[ $# -ge 3 ]]; do
+        t="$1"; d="$2"; s="$3"; shift 3
+        [[ "${s}" == "1" ]] && s=on
+        [[ "${s}" == "0" ]] && s=off
+        args+=("${t}" "${d}" "${s}")
+      done
+      # shellcheck disable=SC2068
+      whiptail --title "${title}" --checklist "Space=toggle  Enter=OK" 22 78 12 "${args[@]}" 3>&1 1>&2 2>&3 | tr -d '"'
+      ;;
+    dialog)
+      local args=() t d s
+      while [[ $# -ge 3 ]]; do
+        t="$1"; d="$2"; s="$3"; shift 3
+        [[ "${s}" == "1" ]] && s=on
+        [[ "${s}" == "0" ]] && s=off
+        args+=("${t}" "${d}" "${s}")
+      done
+      dialog --title "${title}" --checklist "Select" 22 78 12 "${args[@]}" 3>&1 1>&2 2>&3 | tr -d '"'
+      ;;
+    *)
+      local t d s a out=()
+      echo "${title} (y/n for each)"
+      while [[ $# -ge 3 ]]; do
+        t="$1"; d="$2"; s="$3"; shift 3
+        def=n; [[ "${s}" == "on" || "${s}" == "1" ]] && def=y
+        read -r -p "  ${t} — ${d} [${def}]: " a || true
+        a="${a:-${def}}"
+        [[ "${a}" =~ ^[Yy] ]] && out+=("${t}")
+      done
+      printf '%s\n' "${out[*]}"
+      ;;
+  esac
+}

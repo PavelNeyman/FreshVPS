@@ -1,14 +1,21 @@
 # FreshVPS Roadmap
 
-## Done (0.4.1)
+## Done (0.5.x)
 
-- Greenfield bootstrap + modules + multi-user VPN + panels + TG + tests
-- P0 review fixes: bootstrap safety, host smoke/doctor, API subscription, doctor empty-users
-- Human + AI test plans in docs/
+- Built-in Admin UI (no Kuma/Beszel by default; no Prometheus)
+- Metrics JSONL + probes (TCP/UDP/HTTP) + TG alerts/recovery
+- Multi-user VPN, Telegram bot (menus, cards), API session
+- OpenSOHO optional; OpenWrt role separate
 
 ## Next
 
-1. **Owner:** recreate VPS, SSH key, run human plan (`docs/TEST-PLAN-HUMAN.md`)
-2. **AI (with SSH):** `docs/TEST-PLAN-AI.md` phases A–F
-3. Fix any FAIL from smoke; then optional tag `v0.4.1`
-4. OpenWrt physical pass; pin image tags later
+1. Optional: Mini App shell pointing at same Admin UI (needs HTTPS + public/VPN URL)
+2. Optional: per-user traffic (sing-box stats / access logs)
+3. OpenWrt physical devices + multi-site
+4. Release binaries for `freshvps-tg` in GitHub Releases
+5. Human + AI test plans on clean VPS after each minor
+
+## Out of scope (for now)
+
+- Full Prometheus/Grafana stack
+- Embedding OpenSOHO into Admin UI

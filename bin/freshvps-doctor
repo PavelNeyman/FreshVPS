@@ -76,6 +76,18 @@ fi
 if [[ -f /etc/systemd/system/freshvps-api.service ]] || systemctl cat freshvps-api >/dev/null 2>&1; then
   warn_check "api unit" systemctl is-active freshvps-api
   warn_check "api health" curl -fsS --max-time 2 http://127.0.0.1:8787/health
+  warn_check "admin ui" curl -fsS -o /dev/null --max-time 2 http://127.0.0.1:8787/admin/
+fi
+
+if [[ -f /etc/systemd/system/freshvps-metrics.timer ]]; then
+  warn_check "metrics timer" systemctl is-active freshvps-metrics.timer
+  if [[ -f /var/lib/freshvps/metrics/latest.json ]]; then
+    echo "OK   metrics latest.json"
+    ok=$((ok+1))
+  else
+    echo "WARN metrics latest.json missing"
+    warnn=$((warnn+1))
+  fi
 fi
 
 echo

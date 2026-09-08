@@ -10,6 +10,7 @@
       users: "VPN",
       metrics: "Metrics",
       probes: "Probes",
+      routers: "Routers",
       settings: "Settings",
       signedIn: "Signed in",
       loggedOut: "Logged out",
@@ -27,6 +28,7 @@
       users: "VPN",
       metrics: "Метрики",
       probes: "Пробы",
+      routers: "Роутеры",
       settings: "Настройки",
       signedIn: "Вход выполнен",
       loggedOut: "Вы вышли",
@@ -49,7 +51,7 @@
     setTxt("t-services", "services");
     setTxt("t-containers", "containers");
     document.querySelectorAll(".tab").forEach((b) => {
-      const map = { overview: "overview", users: "users", metrics: "metrics", probes: "probes", settings: "settings" };
+      const map = { overview: "overview", users: "users", metrics: "metrics", probes: "probes", routers: "routers", settings: "settings" };
       if (map[b.dataset.tab]) b.textContent = t(map[b.dataset.tab]);
     });
   }
@@ -348,9 +350,52 @@
     toast("Probes saved", "ok");
   }
 
+
+  async function refreshRouters() {
+    const data = await api("/api/edge/devices");
+    const tb = $("routers-table") && $("routers-table").querySelector("tbody");
+    if (!tb) return;
+    tb.innerHTML = "";
+    const devices = data.devices || [];
+    if (!devices.length) {
+      tb.innerHTML = "<tr><td colspan='8' class='muted'>—</td></tr>";
+      return;
+    }
+    devices.sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0));
+    for (const d of devices) {
+      const tr = document.createElement("tr");
+      const ok = d.healthy ? "ok" : "fail";
+      const ago = d.last_seen ? Math.max(0, Math.floor(Date.now() / 1000 - d.last_seen)) + "s" : "—";
+      tr.innerHTML = `<td><code>${d.device_id || ""}</code></td>
+        <td>${d.hostname || ""}</td>
+        <td>${d.board || ""}</td>
+        <td>${d.openwrt || ""}</td>
+        <td>${d.wan_ip || ""}</td>
+        <td>${d.wifi_clients ?? ""}</td>
+        <td class="${ok}">${d.healthy ? "online" : "offline"} (${ago})</td>
+        <td><button type="button" data-pick="${d.device_id}">Select</button></td>`;
+      tb.appendChild(tr);
+    }
+    tb.querySelectorAll("button[data-pick]").forEach((b) => {
+      b.onclick = () => { $("edge-device-id").value = b.dataset.pick; };
+    });
+  }
+
+  async function enqueueEdgeCmd() {
+    const device_id = ($("edge-device-id").value || "").trim();
+    const action = $("edge-action").value;
+    const arg = ($("edge-arg").value || "").trim();
+    if (!device_id) { toast("device_id?", "err"); return; }
+    const r = await api("/api/edge/cmd", { method: "POST", body: JSON.stringify({ device_id, action, arg }) });
+    $("edge-cmd-out").textContent = JSON.stringify(r, null, 2);
+    toast("cmd " + (r.id || ""), "ok");
+  }
+
   function setTab(name) {
+    if (name === "routers") setTimeout(() => refreshRouters().catch(() => {}), 0);
+
     document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-    ["overview", "users", "metrics", "probes", "settings"].forEach((t) => {
+    ["overview", "users", "metrics", "probes", "routers", "settings"].forEach((t) => {
       $("tab-" + t).classList.toggle("hide", t !== name);
     });
     if (name === "users") refreshUsers().catch(() => {});
@@ -371,6 +416,7 @@
       setInterval(() => {
         if ($("dash").classList.contains("hide")) return;
         if (!$("tab-probes").classList.contains("hide")) refreshProbes().catch(() => {});
+        if ($("tab-routers") && !$("tab-routers").classList.contains("hide")) refreshRouters().catch(() => {});
       }, 30000),
     ];
   }
@@ -405,6 +451,12 @@
     setTxt("t-services", "services");
     setTxt("t-containers", "containers");
     document.querySelectorAll(".tab").forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
+    const brr = $("btn-refresh-routers"); if (brr) brr.onclick = () => refreshRouters().catch((e) => toast(String(e), "err"));
+    const bec = $("btn-edge-cmd"); if (bec) bec.onclick = () => enqueueEdgeCmd().catch((e) => toast(String(e), "err"));
+    // when opening routers tab
+    const _setTab = setTab;
+    window.__fvSetTab = setTab;
+
   $("btn-refresh-users").onclick = () => refreshUsers().catch(() => {});
   $("btn-refresh-probes").onclick = () => refreshProbes().catch(() => {});
   $("user-filter").oninput = () => renderUsers();

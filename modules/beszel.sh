@@ -66,10 +66,8 @@ _beszel_bootstrap_admin() {
 
 module_beszel_uninstall() {
   if [[ -f /opt/freshvps/compose/panels.yml ]]; then
-    (cd /opt/freshvps/compose && docker compose -f panels.yml --profile beszel-agent --profile beszel stop) 2>/dev/null || true
+    (cd /opt/freshvps/compose && docker compose -f panels.yml --profile beszel-agent --profile beszel rm -sf 2>/dev/null) || true
   fi
-  if [[ -f /opt/beszel/docker-compose.yml ]]; then
-    (cd /opt/beszel && docker compose --profile agent down; docker compose down) 2>/dev/null || true
-  fi
-  info "Beszel stopped"
+  docker rm -f beszel beszel-agent 2>/dev/null || true
+  info "Beszel containers removed (data kept under /opt/beszel unless --purge)"
 }

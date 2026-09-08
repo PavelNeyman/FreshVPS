@@ -11,9 +11,6 @@ module_vpn_api_install() {
   mkdir -p /opt/freshvps/runtime/api /etc/freshvps/sessions /opt/freshvps-api
   chmod 700 /etc/freshvps/sessions
 
-  # Auth = session files from: freshvps-vpn session [hours]
-  # (no separate master token)
-
   printf '%s\n' "${bind}" >"${FRESHVPS_ETC}/api_bind"
   printf '%s\n' "${port}" >"${FRESHVPS_ETC}/api_port"
 
@@ -31,7 +28,6 @@ open_ufw=0
 case "${arg}" in
   localhost|127.0.0.1) BIND=127.0.0.1 ;;
   detect)
-    # Prefer primary global IPv4 (first non-docker)
     BIND="$(ip -4 -o addr show scope global 2>/dev/null | awk '!/docker|br-|veth|virbr/ {print $4; exit}' | cut -d/ -f1 || true)"
     [[ -n "${BIND}" ]] || BIND=127.0.0.1
     ;;
@@ -83,4 +79,7 @@ module_vpn_api_uninstall() {
   rm -f /etc/systemd/system/freshvps-api.service
   rm -rf /etc/systemd/system/freshvps-api.service.d
   systemctl daemon-reload 2>/dev/null || true
+  rm -rf /opt/freshvps-api
+  # sessions under /etc/freshvps kept unless --purge
+  info "API unit and /opt/freshvps-api removed"
 }

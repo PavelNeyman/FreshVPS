@@ -15,7 +15,12 @@ module_vpn_api_install() {
   printf '%s\n' "${port}" >"${FRESHVPS_ETC}/api_port"
 
   install -m 755 "${FRESHVPS_ROOT}/runtime/api/server.py" /opt/freshvps/runtime/api/server.py
+  mkdir -p /opt/freshvps/runtime/api/admin
+  if [[ -d "${FRESHVPS_ROOT}/runtime/api/admin" ]]; then
+    cp -a "${FRESHVPS_ROOT}/runtime/api/admin/." /opt/freshvps/runtime/api/admin/
+  fi
   ln -sfn /opt/freshvps/runtime/api/server.py /opt/freshvps-api/server.py
+  info "Admin UI: http://${bind}:${port}/admin/ (session token)"
 
   cat >/opt/freshvps-api/rebind.sh <<'EOF'
 #!/usr/bin/env bash

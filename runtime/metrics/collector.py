@@ -201,16 +201,33 @@ def evaluate_alerts(m: dict, probes: list, cfg: dict, st: dict) -> None:
         for name, status in (m.get("services") or {}).items():
             if status != "active":
                 maybe_alert(f"svc:{name}", f"🔴 Service {name}: {status}", cd, st)
+                st.setdefault("down", {})[f"svc:{name}"] = True
 
     if al.get("probe_fail", True):
         for p in probes:
+            key = f"probe:{p.get('name')}"
             if not p.get("ok"):
                 maybe_alert(
-                    f"probe:{p.get('name')}",
+                    key,
                     f"🔴 Probe {p.get('name')} failed: {p.get('error') or p.get('code') or 'down'}",
                     cd,
                     st,
                 )
+                st.setdefault("down", {})[key] = True
+            else:
+                # recovery: was down before
+                if (st.get("down") or {}).get(key):
+                    st["down"][key] = False
+                    save_state(st)
+                    notify(f"✅ Probe {p.get('name')} recovered")
+        for name, status in (m.get("services") or {}).items():
+            skey = f"svc:{name}"
+            if status == "active" and (st.get("down") or {}).get(skey):
+                st.setdefault("down", {})[skey] = False
+                save_state(st)
+                notify(f"✅ Service {name} recovered")
+            elif status != "active":
+                st.setdefault("down", {})[skey] = True
 
 
 def main() -> None:

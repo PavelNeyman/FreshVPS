@@ -37,10 +37,8 @@ EOF
 
 module_lampac_uninstall() {
   if [[ -f /opt/freshvps/compose/panels.yml ]]; then
-    (cd /opt/freshvps/compose && docker compose -f panels.yml --profile lampac stop) 2>/dev/null || true
+    (cd /opt/freshvps/compose && docker compose -f panels.yml --profile lampac rm -sf 2>/dev/null) || true
   fi
-  if [[ -f /opt/lampac/docker-compose.yml ]]; then
-    (cd /opt/lampac && docker compose down) 2>/dev/null || true
-  fi
-  info "Lampac stopped"
+  docker rm -f lampac 2>/dev/null || true
+  info "Lampac container removed (data kept under /opt/lampac unless --purge)"
 }

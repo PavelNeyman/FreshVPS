@@ -132,7 +132,8 @@ func mainKeyboard() map[string]any {
 			{btn("👥 VPN list", "m:vpn_list", ""), btn("➕ Add user", "m:vpn_add", "success")},
 			{btn("🔗 Link / QR", "m:vpn_link", "primary"), btn("🚫 Disable", "m:vpn_disable", "danger")},
 			{btn("✅ Enable", "m:vpn_enable", "success"), btn("🗑 Revoke", "m:vpn_revoke", "danger")},
-			{btn("🔑 API session", "m:session", ""), btn("❓ Help", "m:help", "")},
+			{btn("🔑 API session", "m:session", ""), btn("🖥 Admin UI", "m:admin", "primary")},
+			{btn("❓ Help", "m:help", "")},
 		},
 	}
 }
@@ -372,6 +373,15 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			"vpn_link": "Link / QR", "vpn_disable": "Disable", "vpn_enable": "Enable", "vpn_revoke": "Revoke",
 		}[action]
 		sendHTML(token, chat, "✏️ <b>"+label+"</b>\n\nSend the VPN <b>user name</b>:", backKeyboard())
+	case "m:admin":
+		sendHTML(token, chat,
+			"🖥 <b>Admin UI</b>\n\n"+
+				"URL: <code>http://127.0.0.1:8787/admin/</code>\n\n"+
+				"1) SSH tunnel:\n<code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>\n"+
+				"2) Open the URL in browser\n"+
+				"3) Paste session token (button API session or <code>/session</code>)\n\n"+
+				"Or bind API on VPN IP: <code>freshvps-vpn api-bind detect</code>",
+			backKeyboard())
 	case "m:session":
 		setState(chat, "wait_session_hours", "")
 		sendHTML(token, chat, "🔑 <b>API session</b>\n\nSend lifetime in <b>hours</b> (e.g. <code>72</code>), or /cancel:", backKeyboard())
@@ -522,6 +532,11 @@ func handleMessage(token string, m *message, admin int64) {
 			},
 		}
 		sendHTML(token, chat, "🔑 <code>"+esc(tok)+"</code>", kb)
+	case "/admin":
+		sendHTML(token, chat,
+			"🖥 <b>Admin UI</b>\n<code>http://127.0.0.1:8787/admin/</code>\n"+
+				"Tunnel: <code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>",
+			mainKeyboard())
 	case "/ready":
 		if b, err := os.ReadFile("/etc/freshvps/READY.txt"); err == nil {
 			t := string(b)

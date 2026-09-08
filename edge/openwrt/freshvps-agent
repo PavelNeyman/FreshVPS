@@ -1,0 +1,84 @@
+#!/bin/sh
+# FreshVPS edge agent for OpenWrt — outbound-only
+CONF="${CONF:-/etc/freshvps-agent/config}"
+[ -f "$CONF" ] || { echo "missing $CONF" >&2; exit 1; }
+. "$CONF"
+SERVER="${SERVER:-}"
+TOKEN="${TOKEN:-}"
+DEVICE_ID="${DEVICE_ID:-$(cat /proc/sys/kernel/hostname 2>/dev/null)}"
+INTERVAL="${INTERVAL:-60}"
+[ -n "$SERVER" ] && [ -n "$TOKEN" ] || { echo "SERVER and TOKEN required" >&2; exit 1; }
+SERVER="${SERVER%/}"
+
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g;s/"/\\"/g'; }
+
+collect_json() {
+  host="$(cat /proc/sys/kernel/hostname 2>/dev/null || echo unknown)"
+  up="$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0)"
+  load="$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || echo 0 0 0)"
+  mt="$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  ma="$(awk '/MemAvailable/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  ver="$(sed -n "s/DISTRIB_RELEASE='\([^']*\)'/\1/p" /etc/openwrt_release 2>/dev/null | head -1)"
+  board="$(cat /tmp/sysinfo/model 2>/dev/null || cat /tmp/sysinfo/board_name 2>/dev/null || echo unknown)"
+  clients=0
+  if command -v iwinfo >/dev/null 2>&1; then
+    c=0
+    for d in $(iwinfo 2>/dev/null | awk '/ESSID/ {print prev} {prev=$1}'); do
+      n=$(iwinfo "$d" assoclist 2>/dev/null | grep -c 'dBm' || true)
+      c=$((c + n))
+    done
+    clients=$c
+  fi
+  wan_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')"
+  ts=$(date +%s 2>/dev/null || echo 0)
+  printf '{"device_id":"%s","hostname":"%s","uptime":%s,"load":"%s","mem_total_kb":%s,"mem_avail_kb":%s,"openwrt":"%s","board":"%s","wan_ip":"%s","wifi_clients":%s,"ts":%s}\n' \
+    "$(esc "$DEVICE_ID")" "$(esc "$host")" "$up" "$(esc "$load")" "$mt" "$ma" "$(esc "$ver")" "$(esc "$board")" "$(esc "$wan_ip")" "$clients" "$ts"
+}
+
+post() {
+  url=$1; body=$2
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS -m 20 -X POST "$url" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$body"
+  else
+    wget -q -O - --timeout=20 --header="Authorization: Bearer $TOKEN" --header="Content-Type: application/json" --post-data="$body" "$url"
+  fi
+}
+
+get() {
+  url=$1
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS -m 20 -H "Authorization: Bearer $TOKEN" "$url"
+  else
+    wget -q -O - --timeout=20 --header="Authorization: Bearer $TOKEN" "$url"
+  fi
+}
+
+run_cmd() {
+  id=$1; action=$2; arg=$3; out=""
+  case "$action" in
+    ping) out="pong" ;;
+    reboot) out="reboot scheduled"; ( sleep 2; reboot ) & ;;
+    wifi_reload) out=$(wifi reload 2>&1) ;;
+    network_reload) out=$(/etc/init.d/network reload 2>&1) ;;
+    uci_get) out=$(uci -q get "$arg" 2>&1) ;;
+    uci_show) out=$(uci -q show "${arg:-}" 2>&1 | head -c 8000) ;;
+    logread) out=$(logread 2>/dev/null | tail -n 50) ;;
+    *) out="denied:$action" ;;
+  esac
+  body=$(printf '{"device_id":"%s","cmd_id":"%s","result":"%s"}' "$(esc "$DEVICE_ID")" "$(esc "$id")" "$(esc "$out")")
+  post "$SERVER/api/edge/cmd_result" "$body" >/dev/null 2>&1 || true
+}
+
+while true; do
+  js=$(collect_json)
+  post "$SERVER/api/edge/heartbeat" "$js" >/dev/null 2>&1 || true
+  cmds=$(get "$SERVER/api/edge/commands?device_id=$DEVICE_ID" 2>/dev/null || true)
+  echo "$cmds" | tr '{' '\n' | while read -r line; do
+    echo "$line" | grep -q 'action' || continue
+    id=$(echo "$line" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    action=$(echo "$line" | sed -n 's/.*"action"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    arg=$(echo "$line" | sed -n 's/.*"arg"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    [ -n "$id" ] && [ -n "$action" ] && run_cmd "$id" "$action" "$arg"
+  done
+  sleep "$INTERVAL"
+done

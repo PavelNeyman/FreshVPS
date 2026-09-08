@@ -32,6 +32,7 @@
         <button data-tab="overview" class="tab active">Overview</button>
         <button data-tab="users" class="tab">VPN</button>
         <button data-tab="metrics" class="tab">Metrics</button>
+        <button data-tab="routers" class="tab">Routers</button>
         <button data-tab="probes" class="tab">Probes</button>
         <button data-tab="settings" class="tab">Settings</button>
       </nav>
@@ -83,6 +84,36 @@
           <h2>CPU &amp; RAM</h2>
           <canvas id="chart" width="900" height="240"></canvas>
           <p class="muted">Blue CPU% · Green RAM% · last points</p>
+        </div>
+      </div>
+
+      
+      <div id="tab-routers" class="tab-panel hide">
+        <div class="row" style="margin-bottom:0.75rem">
+          <button type="button" id="btn-refresh-routers">Обновить</button>
+          <span class="muted" id="routers-hint">Агенты OpenWrt → /api/edge</span>
+        </div>
+        <div class="card"><table class="table" id="routers-table">
+          <thead><tr><th>ID</th><th>Host</th><th>Board</th><th>OpenWrt</th><th>WAN</th><th>Wi‑Fi</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <div class="card" style="margin-top:0.75rem">
+          <h3 id="t-router-cmd">Команда</h3>
+          <div class="row">
+            <input id="edge-device-id" placeholder="device_id" />
+            <select id="edge-action">
+              <option value="ping">ping</option>
+              <option value="uci_show">uci_show</option>
+              <option value="uci_get">uci_get</option>
+              <option value="wifi_reload">wifi_reload</option>
+              <option value="network_reload">network_reload</option>
+              <option value="logread">logread</option>
+              <option value="reboot">reboot</option>
+            </select>
+            <input id="edge-arg" placeholder="arg (uci path)" />
+            <button type="button" id="btn-edge-cmd" class="primary">Enqueue</button>
+          </div>
+          <pre id="edge-cmd-out" class="muted" style="margin-top:0.5rem"></pre>
         </div>
       </div>
 

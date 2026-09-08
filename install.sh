@@ -167,6 +167,23 @@ collect_settings() {
 write_ready_summary() {
   local f="${FRESHVPS_ETC}/READY.txt"
   {
+    echo "=== RU ==="
+    echo "FreshVPS ${VERSION} готов — $(date -Iseconds)"
+    echo "Хост: $(hostname)  IP: ${PUBLIC_IP}"
+    [[ -f /etc/freshvps/singbox-config-variant ]] && echo "Вариант sing-box: $(cat /etc/freshvps/singbox-config-variant)"
+    echo
+    echo "Примечание: ссылки HY2 с insecure=1 (самоподписанный сертификат). Предпочтительнее VLESS+Reality."
+    echo
+    if [[ -f /etc/freshvps/clients/operator/subscription.txt ]]; then
+      echo "Подписка operator:"
+      cat /etc/freshvps/clients/operator/subscription.txt
+    else
+      echo "Подписка operator: ещё нет (создайте пользователя VPN)."
+    fi
+    echo
+    echo "CLI: freshvps-vpn | freshvps-doctor | freshvps-smoke | freshvps-tests"
+    echo
+    echo "=== EN ==="
     echo "FreshVPS ${VERSION} READY — $(date -Iseconds)"
     echo "Host: $(hostname)  IP: ${PUBLIC_IP}"
     [[ -f /etc/freshvps/singbox-config-variant ]] && echo "sing-box variant: $(cat /etc/freshvps/singbox-config-variant)"
@@ -174,7 +191,10 @@ write_ready_summary() {
     echo "NOTE: HY2 client links use insecure=1 (self-signed cert). Prefer VLESS+Reality when possible."
     echo
     if [[ -f /etc/freshvps/clients/operator/subscription.txt ]]; then
+      echo "operator subscription:"
       cat /etc/freshvps/clients/operator/subscription.txt
+    else
+      echo "operator subscription: none yet (add a VPN user)."
     fi
     echo
     echo "CLI: freshvps-vpn | freshvps-doctor | freshvps-smoke | freshvps-tests"

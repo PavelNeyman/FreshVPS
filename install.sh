@@ -61,7 +61,8 @@ pick_action_menu() {
   [[ "${NONINTERACTIVE}" -eq 1 ]] && { ACTION=install; return 0; }
   ACTION="$(tui_menu "FreshVPS ${VERSION}" \
     install "Install / configure services" \
-    prepare "Prepare VPS (apt/docker/golang…)" \
+    prepare "Prepare VPS (apt/docker/golang/bot…)" \
+    rebuild-bot "Fetch/rebuild Telegram bot only" \
     upgrade "Upgrade (idempotent)" \
     tests "VPS network tests" \
     quit "Exit")" || ACTION=quit
@@ -231,6 +232,17 @@ main() {
   pick_action_menu
   [[ "${ACTION}" == "quit" ]] && exit 0
   if [[ "${ACTION}" == "tests" ]]; then require_root; run_tests_action; exit 0; fi
+  if [[ "${ACTION}" == "rebuild-bot" ]]; then
+    require_root; require_debian; ensure_dirs
+    source "${FRESHVPS_ROOT}/lib/prepare.sh"
+    prepare_pick_tg_bot_mode
+    [[ "${PREPARE_TG_BOT}" -eq 1 ]] && prepare_run_tg_bot
+    if [[ -x /opt/freshvps/bin/freshvps-tg ]]; then
+      systemctl restart freshvps-telegram-bot 2>/dev/null || true
+      info "Bot binary ready: /opt/freshvps/bin/freshvps-tg"
+    fi
+    exit 0
+  fi
   if [[ "${ACTION}" == "upgrade" ]]; then DO_UPGRADE=1; FRESHVPS_UPGRADE=1; export FRESHVPS_UPGRADE; fi
 
   require_root; require_debian; ensure_dirs; touch "${FRESHVPS_LOG}"

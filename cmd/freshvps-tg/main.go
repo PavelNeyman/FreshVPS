@@ -289,40 +289,84 @@ func runVPN(args ...string) string {
 	return string(out)
 }
 
+
+
 func statusInline() string {
 	var b strings.Builder
 	host, _ := os.Hostname()
-	b.WriteString("FreshVPS status on " + host + "\n")
-	for _, u := range []string{"sing-box", "blocky", "freshvps-api", "freshvps-telegram-bot"} {
-		cmd := exec.Command("systemctl", "is-active", u)
-		out, _ := cmd.Output()
-		st := strings.TrimSpace(string(out))
-		if st == "" {
-			st = "inactive"
+	ru := getLang() != "en"
+	act, inact := "active", "inactive"
+	if ru {
+		b.WriteString("Status FreshVPS host ")
+		b.WriteString(host)
+		b.WriteByte(10)
+		act, inact = "active-ru", "inactive-ru"
+	} else {
+		b.WriteString("FreshVPS status on ")
+		b.WriteString(host)
+		b.WriteByte(10)
+	}
+	// localized labels
+	if ru {
+		act, inact = "активен", "неактивен"
+		// rewrite header properly
+		var hdr strings.Builder
+		hdr.WriteString("Статус FreshVPS на ")
+		hdr.WriteString(host)
+		hdr.WriteByte(10)
+		b.Reset()
+		b.WriteString(hdr.String())
+	}
+	mapSt := func(s string) string {
+		s = strings.TrimSpace(s)
+		if s == "active" {
+			return act
 		}
-		b.WriteString(u + ": " + st + "\n")
+		if s == "" || (ru && s != "active") {
+			return inact
+		}
+		return s
+	}
+	for _, u := range []string{"sing-box", "blocky", "freshvps-api", "freshvps-telegram-bot"} {
+		out, _ := exec.Command("systemctl", "is-active", u).Output()
+		b.WriteString(u + ": " + mapSt(string(out)))
+		b.WriteByte(10)
 	}
 	if out, err := exec.Command("systemctl", "is-active", "freshvps-metrics.timer").Output(); err == nil {
-		b.WriteString("metrics-timer: " + strings.TrimSpace(string(out)) + "\n")
+		b.WriteString("metrics-timer: " + mapSt(string(out)))
+		b.WriteByte(10)
 	}
 	if out, err := exec.Command("docker", "ps", "--format", "{{.Names}}").Output(); err == nil {
-		b.WriteString("docker: " + strings.TrimSpace(strings.ReplaceAll(string(out), "\n", " ")) + "\n")
+		names := strings.TrimSpace(string(out))
+		names = strings.ReplaceAll(names, string([]byte{10}), " ")
+		b.WriteString("docker: " + names)
+		b.WriteByte(10)
 	}
-	b.WriteString("\nVPN users:\n")
+	b.WriteByte(10)
+	if ru {
+		b.WriteString("Пользователи VPN:")
+	} else {
+		b.WriteString("VPN users:")
+	}
+	b.WriteByte(10)
 	b.WriteString(runVPN("list"))
 	return b.String()
 }
 
 func statusText() string {
+	env := append(os.Environ(), "FRESHVPS_LANG="+getLang())
 	if st, err := os.Stat(statusSh); err == nil && st.Mode()&0111 != 0 {
-		out, err := exec.Command(statusSh).CombinedOutput()
+		cmd := exec.Command(statusSh)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
 		if err == nil && len(bytes.TrimSpace(out)) > 0 {
 			return string(out)
 		}
 	}
-	// try without exec bit
 	if _, err := os.Stat(statusSh); err == nil {
-		out, err := exec.Command("bash", statusSh).CombinedOutput()
+		cmd := exec.Command("bash", statusSh)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
 		if err == nil && len(bytes.TrimSpace(out)) > 0 {
 			return string(out)
 		}

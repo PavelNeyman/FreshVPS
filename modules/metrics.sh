@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Module: lightweight metrics collector (no Prometheus by default)
+# Module: lightweight metrics collector (no Prometheus — self-collection only)
 # shellcheck disable=SC2154
 
 module_metrics_install() {

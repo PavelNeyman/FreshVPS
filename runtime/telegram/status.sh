@@ -1,20 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
-out="FreshVPS status on $(hostname)\n"
-for u in sing-box blocky opensoho freshvps-api freshvps-telegram-bot; do
+printf 'FreshVPS status on %s\n' "$(hostname)"
+for u in sing-box blocky freshvps-api freshvps-telegram-bot; do
   if systemctl is-active --quiet "${u}" 2>/dev/null; then
-    out+="${u}: active\n"
+    printf '%s: active\n' "${u}"
   else
-    out+="${u}: inactive\n"
+    printf '%s: inactive\n' "${u}"
   fi
 done
+if systemctl is-active --quiet freshvps-metrics.timer 2>/dev/null; then
+  printf 'metrics-timer: active\n'
+else
+  printf 'metrics-timer: inactive\n'
+fi
 if command -v docker >/dev/null 2>&1; then
-  out+="docker: $(docker ps --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')\n"
+  printf 'docker: %s\n' "$(docker ps --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')"
 fi
 if command -v freshvps-vpn >/dev/null 2>&1; then
-  out+="\nVPN users:\n$(freshvps-vpn list 2>/dev/null || true)\n"
+  printf '\nVPN users:\n'
+  freshvps-vpn list 2>/dev/null || true
 fi
-if [[ -f /etc/freshvps/singbox-config-variant ]]; then
-  out+="sing-box config variant: $(cat /etc/freshvps/singbox-config-variant)\n"
+if [[ -f /var/lib/freshvps/metrics/latest.json ]]; then
+  python3 - <<'PY' 2>/dev/null || true
+import json
+d=json.load(open("/var/lib/freshvps/metrics/latest.json"))
+print("cpu: {}%  mem: {}%".format(d.get("cpu_pct"), d.get("mem_pct")))
+for p in d.get("probes") or []:
+    print("probe {}: {}".format(p.get("name"), "ok" if p.get("ok") else "FAIL"))
+PY
 fi
-echo -e "${out}"

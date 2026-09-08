@@ -9,28 +9,24 @@
 <body>
   <div id="app">
     <header class="top">
-      <div class="brand">🛡 FreshVPS</div>
+      <div class="brand">FreshVPS</div>
       <div id="host-line" class="muted"></div>
       <button type="button" id="btn-logout" class="ghost hide">Logout</button>
     </header>
-
     <section id="login" class="card">
       <h1>Operator login</h1>
-      <p class="muted">Paste session token from <code>freshvps-vpn session</code> or Telegram <code>/session</code>. API is intended for VPN/localhost only.</p>
-      <label>Session token
-        <input id="token" type="password" autocomplete="off" placeholder="token" />
-      </label>
+      <p class="muted">Session from <code>freshvps-vpn session</code> or Telegram <code>/session</code>.</p>
+      <label>Session token<input id="token" type="password" autocomplete="off" /></label>
       <button type="button" id="btn-login" class="primary">Sign in</button>
       <p id="login-err" class="err"></p>
     </section>
-
     <section id="dash" class="hide">
       <nav class="tabs">
         <button data-tab="overview" class="tab active">Overview</button>
         <button data-tab="users" class="tab">VPN users</button>
         <button data-tab="metrics" class="tab">Metrics</button>
+        <button data-tab="probes" class="tab">Probes</button>
       </nav>
-
       <div id="tab-overview" class="tab-panel">
         <div class="grid">
           <div class="card metric"><div class="label">CPU</div><div id="m-cpu" class="value">—</div></div>
@@ -38,43 +34,31 @@
           <div class="card metric"><div class="label">Disk</div><div id="m-disk" class="value">—</div></div>
           <div class="card metric"><div class="label">Load</div><div id="m-load" class="value">—</div></div>
         </div>
-        <div class="card">
-          <h2>Services</h2>
-          <ul id="svc-list" class="list"></ul>
-          <h2>Containers</h2>
-          <ul id="ct-list" class="list"></ul>
-        </div>
+        <div class="card"><h2>Services</h2><ul id="svc-list" class="list"></ul>
+          <h2>Containers</h2><ul id="ct-list" class="list"></ul></div>
       </div>
-
       <div id="tab-users" class="tab-panel hide">
         <div class="card row-actions">
-          <input id="new-name" placeholder="name" />
-          <input id="new-note" placeholder="note (optional)" />
-          <button type="button" id="btn-add" class="success">Add user</button>
+          <input id="new-name" placeholder="name" /><input id="new-note" placeholder="note" />
+          <button type="button" id="btn-add" class="success">Add</button>
           <button type="button" id="btn-refresh-users" class="ghost">Refresh</button>
         </div>
-        <div class="card">
-          <table class="table" id="users-table">
-            <thead><tr><th>Name</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
+        <div class="card"><table class="table" id="users-table"><thead><tr><th>Name</th><th>Status</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
         <div id="user-detail" class="card hide">
-          <h2 id="detail-title">User</h2>
-          <pre id="detail-sub" class="code"></pre>
-          <img id="detail-qr" alt="QR" class="qr hide" />
-          <div class="row-actions">
-            <button type="button" id="btn-copy-sub" class="primary">Copy subscription</button>
-          </div>
+          <h2 id="detail-title">User</h2><pre id="detail-sub" class="code"></pre>
+          <img id="detail-qr" class="qr hide" alt="QR" />
+          <button type="button" id="btn-copy-sub" class="primary">Copy subscription</button>
         </div>
       </div>
-
       <div id="tab-metrics" class="tab-panel hide">
-        <div class="card">
-          <h2>History (local collector)</h2>
-          <p class="muted">Points from <code>/var/lib/freshvps/metrics/history.jsonl</code>. Empty until metrics timer runs.</p>
-          <canvas id="chart" width="800" height="220"></canvas>
-          <pre id="hist-raw" class="code small"></pre>
+        <div class="card"><h2>CPU &amp; RAM</h2><canvas id="chart" width="900" height="240"></canvas>
+          <p class="muted">Blue CPU% · Green RAM%</p></div>
+      </div>
+      <div id="tab-probes" class="tab-panel hide">
+        <div class="card"><h2>Probes</h2>
+          <p class="muted">TCP/HTTP from <code>/etc/freshvps/probes.json</code>. Alerts → Telegram.</p>
+          <table class="table" id="probes-table"><thead><tr><th>Name</th><th>OK</th><th>ms</th><th>Detail</th></tr></thead><tbody></tbody></table>
+          <button type="button" id="btn-refresh-probes" class="ghost">Refresh</button>
         </div>
       </div>
     </section>

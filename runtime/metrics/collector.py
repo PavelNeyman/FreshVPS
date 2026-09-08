@@ -1,35 +1,206 @@
 #!/usr/bin/env python3
-"""Append one metrics sample to history.jsonl (lightweight, no Prometheus)."""
+"""FreshVPS metrics tick: sample + probes + Telegram alerts (no Prometheus)."""
+from __future__ import annotations
+
+import importlib.util
 import json
 import os
-import time
-
-# import collect from server if path set
-import importlib.util
+import socket
+import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 
 ROOT = os.environ.get("FRESHVPS_API_ROOT", "/opt/freshvps/runtime/api")
+METRICS_DIR = os.environ.get("FRESHVPS_METRICS_DIR", "/var/lib/freshvps/metrics")
+ETC = "/etc/freshvps"
+PROBES_CFG = os.path.join(ETC, "probes.json")
+NOTIFY = "/opt/freshvps/runtime/telegram/notify.sh"
+STATE_PATH = os.path.join(METRICS_DIR, "alert_state.json")
+
 sys.path.insert(0, ROOT)
 spec = importlib.util.spec_from_file_location("server", os.path.join(ROOT, "server.py"))
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
-METRICS_DIR = os.environ.get("FRESHVPS_METRICS_DIR", "/var/lib/freshvps/metrics")
 os.makedirs(METRICS_DIR, exist_ok=True)
-m = mod.collect_metrics()
-mem = m.get("mem") or {}
-total = mem.get("total") or 1
-used = mem.get("used") or 0
-m["mem_pct"] = round(100.0 * used / total, 1)
-path = os.path.join(METRICS_DIR, "history.jsonl")
-with open(path, "a", encoding="utf-8") as f:
-    f.write(json.dumps(m, separators=(",", ":")) + "\n")
-# keep last ~7 days at 1/min ≈ 10080 lines; trim to 10000
-try:
-    with open(path, encoding="utf-8") as f:
-        lines = f.readlines()
-    if len(lines) > 10000:
-        with open(path, "w", encoding="utf-8") as f:
-            f.writelines(lines[-10000:])
-except OSError:
-    pass
+
+
+def default_probes_cfg() -> dict:
+    return {
+        "probes": [
+            {"name": "dns-blocky", "type": "tcp", "host": "127.0.0.1", "port": 53, "timeout": 2},
+            {"name": "vless", "type": "tcp", "host": "127.0.0.1", "port": 443, "timeout": 2},
+            {"name": "hy2", "type": "tcp", "host": "127.0.0.1", "port": 8443, "timeout": 2},
+            {"name": "api-health", "type": "http", "url": "http://127.0.0.1:8787/health", "timeout": 3},
+        ],
+        "alerts": {
+            "cpu_pct": 90,
+            "mem_pct": 92,
+            "disk_pct": 90,
+            "service_not_active": True,
+            "probe_fail": True,
+            "cooldown_sec": 1800,
+        },
+    }
+
+
+def load_cfg() -> dict:
+    if os.path.isfile(PROBES_CFG):
+        try:
+            with open(PROBES_CFG, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return default_probes_cfg()
+
+
+def probe_tcp(host: str, port: int, timeout: float) -> dict:
+    t0 = time.time()
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return {"ok": True, "ms": round((time.time() - t0) * 1000, 1)}
+    except OSError as e:
+        return {"ok": False, "ms": round((time.time() - t0) * 1000, 1), "error": str(e)}
+
+
+def probe_http(url: str, timeout: float) -> dict:
+    t0 = time.time()
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            code = r.getcode()
+            ok = 200 <= code < 400
+            return {"ok": ok, "ms": round((time.time() - t0) * 1000, 1), "code": code}
+    except (urllib.error.URLError, OSError) as e:
+        return {"ok": False, "ms": round((time.time() - t0) * 1000, 1), "error": str(e)}
+
+
+def run_probes(cfg: dict) -> list:
+    out = []
+    for p in cfg.get("probes") or []:
+        name = p.get("name") or "probe"
+        timeout = float(p.get("timeout") or 3)
+        typ = (p.get("type") or "tcp").lower()
+        if typ == "http":
+            res = probe_http(str(p.get("url") or ""), timeout)
+        else:
+            res = probe_tcp(str(p.get("host") or "127.0.0.1"), int(p.get("port") or 0), timeout)
+        res["name"] = name
+        res["type"] = typ
+        out.append(res)
+    return out
+
+
+def load_state() -> dict:
+    if os.path.isfile(STATE_PATH):
+        try:
+            with open(STATE_PATH, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return {"last": {}}
+
+
+def save_state(st: dict) -> None:
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(st, f)
+
+
+def notify(msg: str) -> None:
+    if not os.path.isfile(NOTIFY):
+        return
+    try:
+        subprocess.run([NOTIFY, msg], timeout=15, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def maybe_alert(key: str, msg: str, cooldown: int, st: dict) -> None:
+    now = int(time.time())
+    last = int((st.get("last") or {}).get(key) or 0)
+    if now - last < cooldown:
+        return
+    notify(msg)
+    st.setdefault("last", {})[key] = now
+
+
+def evaluate_alerts(m: dict, probes: list, cfg: dict, st: dict) -> None:
+    al = cfg.get("alerts") or {}
+    cd = int(al.get("cooldown_sec") or 1800)
+    cpu = float(m.get("cpu_pct") or 0)
+    mem_pct = float(m.get("mem_pct") or 0)
+    disk = m.get("disk") or {}
+    dt = disk.get("total") or 1
+    du = disk.get("used") or 0
+    disk_pct = round(100.0 * du / dt, 1)
+
+    if cpu >= float(al.get("cpu_pct") or 90):
+        maybe_alert("cpu", f"⚠️ FreshVPS CPU {cpu}%", cd, st)
+    if mem_pct >= float(al.get("mem_pct") or 92):
+        maybe_alert("mem", f"⚠️ FreshVPS RAM {mem_pct}%", cd, st)
+    if disk_pct >= float(al.get("disk_pct") or 90):
+        maybe_alert("disk", f"⚠️ FreshVPS disk {disk_pct}%", cd, st)
+
+    if al.get("service_not_active", True):
+        for name, status in (m.get("services") or {}).items():
+            if status != "active":
+                maybe_alert(f"svc:{name}", f"🔴 Service {name}: {status}", cd, st)
+
+    if al.get("probe_fail", True):
+        for p in probes:
+            if not p.get("ok"):
+                maybe_alert(
+                    f"probe:{p.get('name')}",
+                    f"🔴 Probe {p.get('name')} failed: {p.get('error') or p.get('code') or 'down'}",
+                    cd,
+                    st,
+                )
+
+
+def main() -> None:
+    cfg = load_cfg()
+    # ensure default config on disk once
+    if not os.path.isfile(PROBES_CFG):
+        os.makedirs(ETC, exist_ok=True)
+        with open(PROBES_CFG, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+            f.write("\n")
+
+    m = mod.collect_metrics()
+    mem = m.get("mem") or {}
+    total = mem.get("total") or 1
+    used = mem.get("used") or 0
+    m["mem_pct"] = round(100.0 * used / total, 1)
+    disk = m.get("disk") or {}
+    dt = disk.get("total") or 1
+    m["disk_pct"] = round(100.0 * (disk.get("used") or 0) / dt, 1)
+
+    probes = run_probes(cfg)
+    m["probes"] = probes
+
+    path = os.path.join(METRICS_DIR, "history.jsonl")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(m, separators=(",", ":")) + "\n")
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) > 10000:
+            with open(path, "w", encoding="utf-8") as f:
+                f.writelines(lines[-10000:])
+    except OSError:
+        pass
+
+    # latest snapshot for API
+    latest = os.path.join(METRICS_DIR, "latest.json")
+    with open(latest, "w", encoding="utf-8") as f:
+        json.dump(m, f)
+
+    st = load_state()
+    evaluate_alerts(m, probes, cfg, st)
+    save_state(st)
+
+
+if __name__ == "__main__":
+    main()

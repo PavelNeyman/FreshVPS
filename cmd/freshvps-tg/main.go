@@ -5,28 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
 const (
 	tokenFile = "/etc/freshvps/secrets/telegram_bot_token"
 	chatFile  = "/etc/freshvps/secrets/telegram_admin_id"
-	vpnBin    = "/usr/local/bin/freshvps-vpn"
-)
-
-var (
-	stateMu sync.Mutex
-	state   = map[int64]string{}
-	pending = map[int64]string{}
+	langFile  = "/etc/freshvps/telegram_lang"
+	statusSh  = "/opt/freshvps/runtime/telegram/status.sh"
 )
 
 type update struct {
@@ -36,25 +28,14 @@ type update struct {
 }
 
 type message struct {
-	MessageID   int    `json:"message_id"`
-	Chat        chat   `json:"chat"`
-	From        *user  `json:"from"`
-	Text        string `json:"text"`
-	ForwardFrom *user  `json:"forward_from"`
+	MessageID    int      `json:"message_id"`
+	Text         string   `json:"text"`
+	Chat         chat     `json:"chat"`
+	From         *user    `json:"from"`
+	ForwardFrom  *user    `json:"forward_from"`
 	ForwardOrigin *struct {
-		Type       string `json:"type"`
-		SenderUser *user  `json:"sender_user"`
+		SenderUser *user `json:"sender_user"`
 	} `json:"forward_origin"`
-}
-
-type user struct {
-	ID        int64  `json:"id"`
-	Username  string `json:"username"`
-	FirstName string `json:"first_name"`
-}
-
-type chat struct {
-	ID int64 `json:"id"`
 }
 
 type callbackQuery struct {
@@ -62,6 +43,133 @@ type callbackQuery struct {
 	From    user     `json:"from"`
 	Message *message `json:"message"`
 	Data    string   `json:"data"`
+}
+
+type chat struct {
+	ID int64 `json:"id"`
+}
+
+type user struct {
+	ID int64 `json:"id"`
+}
+
+// --- i18n ---
+
+var dict = map[string]map[string]string{
+	"en": {
+		"menu_title":    "🛡 <b>FreshVPS operator panel</b>",
+		"menu_hint":     "Use buttons below. Slash commands still work.",
+		"status":        "📊 Status",
+		"ready":         "📄 READY",
+		"vpn_list":      "👥 VPN list",
+		"vpn_add":       "➕ Add user",
+		"vpn_link":      "🔗 Link / QR",
+		"vpn_disable":   "🚫 Disable",
+		"vpn_enable":    "✅ Enable",
+		"vpn_revoke":    "🗑 Revoke",
+		"session":       "🔑 API session",
+		"admin":         "🖥 Admin UI",
+		"help":          "❓ Help",
+		"lang":          "🌐 Language",
+		"main_menu":     "🏠 Main menu",
+		"status_title":  "📊 <b>Status</b>",
+		"help_title":    "❓ <b>Help</b>",
+		"help_body":     "Operator-only bot.\n• VPN users: add / link / enable / disable / revoke\n• Session token for Admin UI &amp; Shortcuts\n• Status &amp; READY\n\nCommands: /menu /status /vpn_list /lang /session /admin /help",
+		"add_prompt":    "➕ <b>Add VPN user</b>\n\nSend a short <b>name</b> (e.g. <code>alice</code>).",
+		"name_prompt":   "✏️ <b>%s</b>\n\nSend the VPN <b>user name</b>:",
+		"session_prompt": "🔑 <b>API session</b>\n\nSend lifetime in <b>hours</b> (e.g. <code>72</code>), or /cancel:",
+		"admin_body":    "🖥 <b>Admin UI</b>\n\nURL: <code>http://127.0.0.1:8787/admin/</code>\n\n1) SSH tunnel:\n<code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>\n2) Open URL in browser\n3) Paste session token\n\nOr: <code>freshvps-vpn api-bind detect</code>",
+		"unknown":       "Unknown action.",
+		"unknown_cmd":   "Unknown. Open the menu:",
+		"no_ready":      "⚠️ No READY.txt",
+		"lang_now":      "🌐 Language: <b>%s</b>\n\nChoose:",
+		"lang_en":       "English",
+		"lang_ru":       "Русский",
+		"lang_set":      "✅ Language set to <b>%s</b>",
+		"copy_token":    "📋 Copy token",
+		"show_links":    "🔗 Show links again",
+		"cancelled":     "Cancelled.",
+		"vpn_users":     "👥 <b>VPN users</b>",
+		"label_link":    "Link / QR",
+		"label_disable": "Disable",
+		"label_enable":  "Enable",
+		"label_revoke":  "Revoke",
+	},
+	"ru": {
+		"menu_title":    "🛡 <b>Панель оператора FreshVPS</b>",
+		"menu_hint":     "Кнопки ниже. Слеш-команды тоже работают.",
+		"status":        "📊 Статус",
+		"ready":         "📄 READY",
+		"vpn_list":      "👥 Список VPN",
+		"vpn_add":       "➕ Добавить",
+		"vpn_link":      "🔗 Ссылка / QR",
+		"vpn_disable":   "🚫 Отключить",
+		"vpn_enable":    "✅ Включить",
+		"vpn_revoke":    "🗑 Отозвать",
+		"session":       "🔑 API session",
+		"admin":         "🖥 Админка",
+		"help":          "❓ Справка",
+		"lang":          "🌐 Язык",
+		"main_menu":     "🏠 Меню",
+		"status_title":  "📊 <b>Статус</b>",
+		"help_title":    "❓ <b>Справка</b>",
+		"help_body":     "Бот только для оператора.\n• VPN: добавить / ссылка / вкл / выкл / отозвать\n• Session-токен для админки и Shortcuts\n• Статус и READY\n\nКоманды: /menu /status /vpn_list /lang /session /admin /help",
+		"add_prompt":    "➕ <b>Новый VPN-пользователь</b>\n\nПришлите короткое <b>имя</b> (напр. <code>alice</code>).",
+		"name_prompt":   "✏️ <b>%s</b>\n\nПришлите <b>имя пользователя VPN</b>:",
+		"session_prompt": "🔑 <b>API session</b>\n\nПришлите срок в <b>часах</b> (напр. <code>72</code>) или /cancel:",
+		"admin_body":    "🖥 <b>Админка</b>\n\nURL: <code>http://127.0.0.1:8787/admin/</code>\n\n1) SSH-туннель:\n<code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>\n2) Откройте URL в браузере\n3) Вставьте session-токен\n\nИли: <code>freshvps-vpn api-bind detect</code>",
+		"unknown":       "Неизвестное действие.",
+		"unknown_cmd":   "Неизвестно. Откройте меню:",
+		"no_ready":      "⚠️ Нет READY.txt",
+		"lang_now":      "🌐 Язык: <b>%s</b>\n\nВыберите:",
+		"lang_en":       "English",
+		"lang_ru":       "Русский",
+		"lang_set":      "✅ Язык: <b>%s</b>",
+		"copy_token":    "📋 Копировать токен",
+		"show_links":    "🔗 Ссылки ещё раз",
+		"cancelled":     "Отменено.",
+		"vpn_users":     "👥 <b>Пользователи VPN</b>",
+		"label_link":    "Ссылка / QR",
+		"label_disable": "Отключить",
+		"label_enable":  "Включить",
+		"label_revoke":  "Отозвать",
+	},
+}
+
+func getLang() string {
+	b, err := os.ReadFile(langFile)
+	if err != nil {
+		return "ru"
+	}
+	s := strings.TrimSpace(string(b))
+	if s == "en" || s == "ru" {
+		return s
+	}
+	return "ru"
+}
+
+func setLang(l string) {
+	if l != "en" && l != "ru" {
+		return
+	}
+	_ = os.WriteFile(langFile, []byte(l+"\n"), 0644)
+}
+
+func T(key string) string {
+	l := getLang()
+	if m, ok := dict[l]; ok {
+		if v, ok := m[key]; ok {
+			return v
+		}
+	}
+	if v, ok := dict["en"][key]; ok {
+		return v
+	}
+	return key
+}
+
+func Tf(key string, args ...any) string {
+	return fmt.Sprintf(T(key), args...)
 }
 
 func mustRead(path string) string {
@@ -74,12 +182,8 @@ func mustRead(path string) string {
 }
 
 func apiPost(token, method string, payload any) ([]byte, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	u := "https://api.telegram.org/bot" + token + "/" + method
-	resp, err := http.Post(u, "application/json", bytes.NewReader(body))
+	body, _ := json.Marshal(payload)
+	resp, err := http.Post("https://api.telegram.org/bot"+token+"/"+method, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -87,11 +191,8 @@ func apiPost(token, method string, payload any) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func apiGet(token, method string, vals url.Values) ([]byte, error) {
-	u := "https://api.telegram.org/bot" + token + "/" + method
-	if vals != nil {
-		u += "?" + vals.Encode()
-	}
+func apiGet(token, method string, v url.Values) ([]byte, error) {
+	u := "https://api.telegram.org/bot" + token + "/" + method + "?" + v.Encode()
 	resp, err := http.Get(u)
 	if err != nil {
 		return nil, err
@@ -105,11 +206,10 @@ func esc(s string) string {
 	return r.Replace(s)
 }
 
-// Inline button helpers — Bot API 9.4+ style; copy_text; disabled (10.3)
 func btn(text, data, style string) map[string]any {
 	b := map[string]any{"text": text, "callback_data": data}
 	if style != "" {
-		b["style"] = style // primary | success | danger
+		b["style"] = style
 	}
 	return b
 }
@@ -121,19 +221,15 @@ func btnCopy(text, copyPayload string) map[string]any {
 	}
 }
 
-func btnDisabled(text string) map[string]any {
-	return map[string]any{"text": text, "callback_data": "noop", "disabled": true}
-}
-
 func mainKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn("📊 Status", "m:status", "primary"), btn("📄 READY", "m:ready", "")},
-			{btn("👥 VPN list", "m:vpn_list", ""), btn("➕ Add user", "m:vpn_add", "success")},
-			{btn("🔗 Link / QR", "m:vpn_link", "primary"), btn("🚫 Disable", "m:vpn_disable", "danger")},
-			{btn("✅ Enable", "m:vpn_enable", "success"), btn("🗑 Revoke", "m:vpn_revoke", "danger")},
-			{btn("🔑 API session", "m:session", ""), btn("🖥 Admin UI", "m:admin", "primary")},
-			{btn("❓ Help", "m:help", "")},
+			{btn(T("status"), "m:status", "primary"), btn(T("ready"), "m:ready", "")},
+			{btn(T("vpn_list"), "m:vpn_list", ""), btn(T("vpn_add"), "m:vpn_add", "success")},
+			{btn(T("vpn_link"), "m:vpn_link", "primary"), btn(T("vpn_disable"), "m:vpn_disable", "danger")},
+			{btn(T("vpn_enable"), "m:vpn_enable", "success"), btn(T("vpn_revoke"), "m:vpn_revoke", "danger")},
+			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "primary")},
+			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
 		},
 	}
 }
@@ -141,195 +237,136 @@ func mainKeyboard() map[string]any {
 func backKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn("🏠 Main menu", "m:menu", "primary")},
+			{btn(T("main_menu"), "m:menu", "primary")},
+		},
+	}
+}
+
+func langKeyboard() map[string]any {
+	return map[string]any{
+		"inline_keyboard": [][]map[string]any{
+			{btn(T("lang_ru"), "m:lang:ru", "primary"), btn(T("lang_en"), "m:lang:en", "")},
+			{btn(T("main_menu"), "m:menu", "")},
 		},
 	}
 }
 
 func userCardKeyboard(name, subText string) map[string]any {
 	rows := [][]map[string]any{
-		{btn("🔗 Show links again", "u:link:"+name, "primary")},
-		{btn("✅ Enable", "u:enable:"+name, "success"), btn("🚫 Disable", "u:disable:"+name, "danger")},
-		{btn("🗑 Revoke", "u:revoke:"+name, "danger")},
-		{btn("🏠 Main menu", "m:menu", "")},
+		{btn(T("show_links"), "u:link:"+name, "primary")},
+		{btn(T("vpn_enable"), "u:enable:"+name, "success"), btn(T("vpn_disable"), "u:disable:"+name, "danger")},
+		{btn(T("vpn_revoke"), "u:revoke:"+name, "danger")},
+		{btn(T("main_menu"), "m:menu", "primary")},
 	}
 	if subText != "" {
-		// Copy full subscription (may truncate if huge; TG limit ~256 for display but copy can be longer)
-		cp := subText
-		if len(cp) > 4000 {
-			cp = cp[:4000]
-		}
-		rows = append([][]map[string]any{{btnCopy("📋 Copy subscription", cp)}}, rows...)
+		rows = append([][]map[string]any{{btnCopy(T("copy_token"), subText)}}, rows...)
 	}
 	return map[string]any{"inline_keyboard": rows}
 }
 
-func sendHTML(token string, chat int64, text string, keyboard any) {
+func sendHTML(token string, chat int64, text string, kb map[string]any) {
 	payload := map[string]any{
-		"chat_id":                  chat,
-		"text":                     text,
-		"parse_mode":               "HTML",
-		"disable_web_page_preview": true,
+		"chat_id":    chat,
+		"text":       text,
+		"parse_mode": "HTML",
 	}
-	if keyboard != nil {
-		payload["reply_markup"] = keyboard
+	if kb != nil {
+		payload["reply_markup"] = kb
 	}
 	_, _ = apiPost(token, "sendMessage", payload)
 }
 
-func answerCallback(token, id, text string) {
-	p := map[string]any{"callback_query_id": id}
-	if text != "" {
-		p["text"] = text
-	}
-	_, _ = apiPost(token, "answerCallbackQuery", p)
-}
-
-// One message: photo (QR) + HTML caption + buttons
-func sendUserCard(token string, chat int64, name string) {
-	subPath := filepath.Join("/etc/freshvps/clients", name, "subscription.txt")
-	linkPath := filepath.Join("/etc/freshvps/clients", name, "link.txt")
-	qrPath := filepath.Join("/etc/freshvps/clients", name, "qr.png")
-
-	sub := ""
-	if b, err := os.ReadFile(subPath); err == nil {
-		sub = strings.TrimSpace(string(b))
-	} else if b, err := os.ReadFile(linkPath); err == nil {
-		sub = strings.TrimSpace(string(b))
-	} else {
-		sendHTML(token, chat, "⚠️ User <code>"+esc(name)+"</code> not found.", backKeyboard())
-		return
-	}
-
-	caption := "👤 <b>" + esc(name) + "</b>\n" +
-		"────────────────────\n" +
-		"📦 <b>Subscription</b> (VLESS + HY2)\n\n" +
-		"<pre>" + esc(sub) + "</pre>"
-	if len(caption) > 1024 {
-		// Telegram caption limit 1024
-		caption = "👤 <b>" + esc(name) + "</b>\n\n<code>subscription too long — use Copy button</code>"
-	}
-
-	kb := userCardKeyboard(name, sub)
-
-	if _, err := os.Stat(qrPath); err == nil {
-		sendPhotoCaptionKeyboard(token, chat, qrPath, caption, kb)
-		return
-	}
-	sendHTML(token, chat, caption+"\n\n<code>(no QR image)</code>", kb)
-}
-
-func sendPhotoCaptionKeyboard(token string, chat int64, path, caption string, keyboard any) {
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	_ = w.WriteField("chat_id", strconv.FormatInt(chat, 10))
-	_ = w.WriteField("caption", caption)
-	_ = w.WriteField("parse_mode", "HTML")
-	if keyboard != nil {
-		kb, _ := json.Marshal(keyboard)
-		_ = w.WriteField("reply_markup", string(kb))
-	}
-	part, err := w.CreateFormFile("photo", filepath.Base(path))
-	if err != nil {
-		return
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	_, _ = io.Copy(part, f)
-	_ = w.Close()
-	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+token+"/sendPhoto", &buf)
-	if err != nil {
-		return
-	}
-	req.Header.Set("Content-Type", w.FormDataContentType())
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-	_, _ = io.ReadAll(resp.Body)
+func answerCallback(token, id string) {
+	_, _ = apiPost(token, "answerCallbackQuery", map[string]any{"callback_query_id": id})
 }
 
 func runVPN(args ...string) string {
-	out, err := exec.Command(vpnBin, args...).CombinedOutput()
-	s := strings.TrimSpace(string(out))
-	if err != nil && s == "" {
-		return err.Error()
+	cmd := exec.Command("/usr/local/bin/freshvps-vpn", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out) + "\n" + err.Error()
 	}
-	return s
+	return string(out)
+}
+
+func statusInline() string {
+	var b strings.Builder
+	host, _ := os.Hostname()
+	b.WriteString("FreshVPS status on " + host + "\n")
+	for _, u := range []string{"sing-box", "blocky", "freshvps-api", "freshvps-telegram-bot"} {
+		cmd := exec.Command("systemctl", "is-active", u)
+		out, _ := cmd.Output()
+		st := strings.TrimSpace(string(out))
+		if st == "" {
+			st = "inactive"
+		}
+		b.WriteString(u + ": " + st + "\n")
+	}
+	if out, err := exec.Command("systemctl", "is-active", "freshvps-metrics.timer").Output(); err == nil {
+		b.WriteString("metrics-timer: " + strings.TrimSpace(string(out)) + "\n")
+	}
+	if out, err := exec.Command("docker", "ps", "--format", "{{.Names}}").Output(); err == nil {
+		b.WriteString("docker: " + strings.TrimSpace(strings.ReplaceAll(string(out), "\n", " ")) + "\n")
+	}
+	b.WriteString("\nVPN users:\n")
+	b.WriteString(runVPN("list"))
+	return b.String()
 }
 
 func statusText() string {
-	out, _ := exec.Command("/opt/freshvps/runtime/telegram/status.sh").CombinedOutput()
-	if len(out) > 0 {
-		return string(out)
+	if st, err := os.Stat(statusSh); err == nil && st.Mode()&0111 != 0 {
+		out, err := exec.Command(statusSh).CombinedOutput()
+		if err == nil && len(bytes.TrimSpace(out)) > 0 {
+			return string(out)
+		}
 	}
-	return "status script missing"
+	// try without exec bit
+	if _, err := os.Stat(statusSh); err == nil {
+		out, err := exec.Command("bash", statusSh).CombinedOutput()
+		if err == nil && len(bytes.TrimSpace(out)) > 0 {
+			return string(out)
+		}
+	}
+	return statusInline()
 }
 
 func menuText() string {
-	return "🛡 <b>FreshVPS Operator</b>\n" +
-		"────────────────────\n" +
-		"Choose an action.\n" +
-		"Only <b>admin</b> can use this bot."
+	return T("menu_title") + "\n\n" + T("menu_hint")
 }
 
 func helpText() string {
-	return "❓ <b>Help</b>\n\n" +
-		"• Colored buttons: primary / success / danger\n" +
-		"• <b>Copy subscription</b> on user card\n" +
-		"• QR + description + actions in <b>one</b> message\n" +
-		"• Forward a user’s message → their Telegram id\n" +
-		"• <code>/cancel</code> aborts a step\n\n" +
-		"Slash commands still work: /status /vpn_add …"
+	return T("help_title") + "\n\n" + T("help_body")
 }
 
-func setState(chat int64, s, extra string) {
-	stateMu.Lock()
-	defer stateMu.Unlock()
-	if s == "" {
-		delete(state, chat)
-		delete(pending, chat)
+var chatState = map[int64]string{}
+var chatExtra = map[int64]string{}
+
+func setState(chat int64, st, extra string) {
+	if st == "" {
+		delete(chatState, chat)
+		delete(chatExtra, chat)
 		return
 	}
-	state[chat] = s
-	if extra != "" {
-		pending[chat] = extra
-	} else {
-		delete(pending, chat)
-	}
-}
-
-func getState(chat int64) (string, string) {
-	stateMu.Lock()
-	defer stateMu.Unlock()
-	return state[chat], pending[chat]
+	chatState[chat] = st
+	chatExtra[chat] = extra
 }
 
 func handleCallback(token string, cq *callbackQuery, admin int64) {
 	if cq.From.ID != admin {
-		answerCallback(token, cq.ID, "⛔ Not authorized")
 		return
 	}
+	answerCallback(token, cq.ID)
 	chat := cq.Message.Chat.ID
 	data := cq.Data
-	if data == "noop" {
-		answerCallback(token, cq.ID, "")
-		return
-	}
-	answerCallback(token, cq.ID, "")
 
-	// per-user quick actions u:action:name
 	if strings.HasPrefix(data, "u:") {
 		parts := strings.SplitN(data, ":", 3)
 		if len(parts) == 3 {
-			act, name := parts[1], parts[2]
-			switch act {
+			action, name := parts[1], parts[2]
+			switch action {
 			case "link":
-				sendUserCard(token, chat, name)
+				sub := runVPN("link", name)
+				sendHTML(token, chat, "🔗 <b>"+esc(name)+"</b>\n\n<pre>"+esc(sub)+"</pre>", userCardKeyboard(name, strings.TrimSpace(sub)))
 			case "enable":
 				sendHTML(token, chat, "✅ <pre>"+esc(runVPN("enable", name))+"</pre>", backKeyboard())
 			case "disable":
@@ -341,6 +378,17 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		return
 	}
 
+	if strings.HasPrefix(data, "m:lang:") {
+		l := strings.TrimPrefix(data, "m:lang:")
+		setLang(l)
+		name := "Русский"
+		if l == "en" {
+			name = "English"
+		}
+		sendHTML(token, chat, Tf("lang_set", name), mainKeyboard())
+		return
+	}
+
 	switch data {
 	case "m:menu", "m:help":
 		setState(chat, "", "")
@@ -349,8 +397,15 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		} else {
 			sendHTML(token, chat, menuText(), mainKeyboard())
 		}
+	case "m:lang":
+		cur := getLang()
+		label := "Русский"
+		if cur == "en" {
+			label = "English"
+		}
+		sendHTML(token, chat, Tf("lang_now", label), langKeyboard())
 	case "m:status":
-		sendHTML(token, chat, "📊 <b>Status</b>\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
+		sendHTML(token, chat, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
 	case "m:ready":
 		if b, err := os.ReadFile("/etc/freshvps/READY.txt"); err == nil {
 			t := string(b)
@@ -359,34 +414,28 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			}
 			sendHTML(token, chat, "📄 <b>READY</b>\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
 		} else {
-			sendHTML(token, chat, "⚠️ No READY.txt", backKeyboard())
+			sendHTML(token, chat, T("no_ready"), backKeyboard())
 		}
 	case "m:vpn_list":
-		sendHTML(token, chat, "👥 <b>VPN users</b>\n\n<pre>"+esc(runVPN("list"))+"</pre>", backKeyboard())
+		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(runVPN("list"))+"</pre>", backKeyboard())
 	case "m:vpn_add":
 		setState(chat, "wait_vpn_add_name", "")
-		sendHTML(token, chat, "➕ <b>Add VPN user</b>\n\nSend a short <b>name</b> (e.g. <code>alice</code>).", backKeyboard())
+		sendHTML(token, chat, T("add_prompt"), backKeyboard())
 	case "m:vpn_link", "m:vpn_disable", "m:vpn_enable", "m:vpn_revoke":
 		action := strings.TrimPrefix(data, "m:")
 		setState(chat, "wait_vpn_name:"+action, "")
 		label := map[string]string{
-			"vpn_link": "Link / QR", "vpn_disable": "Disable", "vpn_enable": "Enable", "vpn_revoke": "Revoke",
+			"vpn_link": T("label_link"), "vpn_disable": T("label_disable"),
+			"vpn_enable": T("label_enable"), "vpn_revoke": T("label_revoke"),
 		}[action]
-		sendHTML(token, chat, "✏️ <b>"+label+"</b>\n\nSend the VPN <b>user name</b>:", backKeyboard())
+		sendHTML(token, chat, Tf("name_prompt", label), backKeyboard())
 	case "m:admin":
-		sendHTML(token, chat,
-			"🖥 <b>Admin UI</b>\n\n"+
-				"URL: <code>http://127.0.0.1:8787/admin/</code>\n\n"+
-				"1) SSH tunnel:\n<code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>\n"+
-				"2) Open the URL in browser\n"+
-				"3) Paste session token (button API session or <code>/session</code>)\n\n"+
-				"Or bind API on VPN IP: <code>freshvps-vpn api-bind detect</code>",
-			backKeyboard())
+		sendHTML(token, chat, T("admin_body"), backKeyboard())
 	case "m:session":
 		setState(chat, "wait_session_hours", "")
-		sendHTML(token, chat, "🔑 <b>API session</b>\n\nSend lifetime in <b>hours</b> (e.g. <code>72</code>), or /cancel:", backKeyboard())
+		sendHTML(token, chat, T("session_prompt"), backKeyboard())
 	default:
-		sendHTML(token, chat, "Unknown action.", mainKeyboard())
+		sendHTML(token, chat, T("unknown"), mainKeyboard())
 	}
 }
 
@@ -397,59 +446,29 @@ func handleMessage(token string, m *message, admin int64) {
 	chat := m.Chat.ID
 	text := strings.TrimSpace(m.Text)
 
-	if m.ForwardFrom != nil || (m.ForwardOrigin != nil && m.ForwardOrigin.SenderUser != nil) {
-		u := m.ForwardFrom
-		if u == nil {
-			u = m.ForwardOrigin.SenderUser
-		}
-		sendHTML(token, chat,
-			fmt.Sprintf("👤 Forwarded user\nID: <code>%d</code>\nName: %s\nUsername: @%s",
-				u.ID, esc(u.FirstName), esc(u.Username)),
-			backKeyboard())
-		return
-	}
-
-	st, extra := getState(chat)
 	if text == "/cancel" {
 		setState(chat, "", "")
-		sendHTML(token, chat, "Cancelled.", mainKeyboard())
+		sendHTML(token, chat, T("cancelled"), mainKeyboard())
 		return
 	}
 
-	switch {
-	case st == "wait_vpn_add_name":
-		if text == "" || strings.HasPrefix(text, "/") {
-			sendHTML(token, chat, "Send a plain name, or /cancel", backKeyboard())
-			return
-		}
+	st := chatState[chat]
+	if st == "wait_vpn_add_name" {
 		name := strings.Fields(text)[0]
-		setState(chat, "wait_vpn_add_note", name)
-		sendHTML(token, chat,
-			"📝 Optional <b>note</b> for <code>"+esc(name)+"</code>\nSend <code>-</code> to skip.",
-			backKeyboard())
-		return
-	case st == "wait_vpn_add_note":
-		name := extra
-		note := text
-		if note == "-" {
-			note = ""
-		}
+		out := runVPN("add", name)
 		setState(chat, "", "")
-		out := runVPN("add", name, note)
-		sendHTML(token, chat, "✅ <b>Created</b> <code>"+esc(name)+"</code>\n\n<pre>"+esc(out)+"</pre>", backKeyboard())
-		sendUserCard(token, chat, name)
+		sub := runVPN("link", name)
+		sendHTML(token, chat, "✅ <pre>"+esc(out)+"</pre>\n\n<pre>"+esc(sub)+"</pre>", userCardKeyboard(name, strings.TrimSpace(sub)))
 		return
-	case strings.HasPrefix(st, "wait_vpn_name:"):
+	}
+	if strings.HasPrefix(st, "wait_vpn_name:") {
 		action := strings.TrimPrefix(st, "wait_vpn_name:")
-		if text == "" || strings.HasPrefix(text, "/") {
-			sendHTML(token, chat, "Send user name, or /cancel", backKeyboard())
-			return
-		}
 		name := strings.Fields(text)[0]
 		setState(chat, "", "")
 		switch action {
 		case "vpn_link":
-			sendUserCard(token, chat, name)
+			sub := runVPN("link", name)
+			sendHTML(token, chat, "🔗 <b>"+esc(name)+"</b>\n\n<pre>"+esc(sub)+"</pre>", userCardKeyboard(name, strings.TrimSpace(sub)))
 		case "vpn_disable":
 			sendHTML(token, chat, "🚫 <pre>"+esc(runVPN("disable", name))+"</pre>", backKeyboard())
 		case "vpn_enable":
@@ -458,61 +477,74 @@ func handleMessage(token string, m *message, admin int64) {
 			sendHTML(token, chat, "🗑 <pre>"+esc(runVPN("revoke", name))+"</pre>", backKeyboard())
 		}
 		return
-	case st == "wait_session_hours":
+	}
+	if st == "wait_session_hours" {
 		h := text
 		if h == "" {
 			h = "72"
 		}
 		setState(chat, "", "")
 		tok := runVPN("session", h)
-		// copy button for token
+		fields := strings.Fields(tok)
+		copyVal := tok
+		if len(fields) > 0 {
+			copyVal = fields[0]
+		}
 		kb := map[string]any{
 			"inline_keyboard": [][]map[string]any{
-				{btnCopy("📋 Copy token", strings.Fields(tok)[0])},
-				{btn("🏠 Main menu", "m:menu", "primary")},
+				{btnCopy(T("copy_token"), copyVal)},
+				{btn(T("main_menu"), "m:menu", "primary")},
 			},
 		}
-		sendHTML(token, chat, "🔑 <b>Session</b> ("+esc(h)+"h)\n\n<code>"+esc(tok)+"</code>", kb)
+		sendHTML(token, chat, "🔑 <code>"+esc(tok)+"</code>", kb)
 		return
 	}
 
-	if text == "" {
+	parts := strings.Fields(text)
+	if len(parts) == 0 {
+		sendHTML(token, chat, menuText(), mainKeyboard())
 		return
 	}
-	fields := strings.Fields(text)
-	cmd := fields[0]
-	arg1, note := "", ""
-	if len(fields) > 1 {
-		arg1 = fields[1]
+	cmd := parts[0]
+	arg1 := ""
+	if len(parts) > 1 {
+		arg1 = parts[1]
 	}
-	if len(fields) > 2 {
-		note = strings.Join(fields[2:], " ")
-	}
+
 	switch cmd {
 	case "/start", "/menu":
 		sendHTML(token, chat, menuText(), mainKeyboard())
 	case "/help":
 		sendHTML(token, chat, helpText(), mainKeyboard())
+	case "/lang":
+		if arg1 == "en" || arg1 == "ru" {
+			setLang(arg1)
+			name := "Русский"
+			if arg1 == "en" {
+				name = "English"
+			}
+			sendHTML(token, chat, Tf("lang_set", name), mainKeyboard())
+		} else {
+			cur := getLang()
+			label := "Русский"
+			if cur == "en" {
+				label = "English"
+			}
+			sendHTML(token, chat, Tf("lang_now", label), langKeyboard())
+		}
 	case "/status":
-		sendHTML(token, chat, "📊 <b>Status</b>\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
+		sendHTML(token, chat, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
 	case "/vpn_list":
-		sendHTML(token, chat, "👥 <b>VPN users</b>\n\n<pre>"+esc(runVPN("list"))+"</pre>", backKeyboard())
+		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(runVPN("list"))+"</pre>", backKeyboard())
 	case "/vpn_add":
 		if arg1 == "" {
 			setState(chat, "wait_vpn_add_name", "")
-			sendHTML(token, chat, "➕ Send VPN user <b>name</b>:", backKeyboard())
-			return
+			sendHTML(token, chat, T("add_prompt"), backKeyboard())
+		} else {
+			out := runVPN("add", arg1)
+			sub := runVPN("link", arg1)
+			sendHTML(token, chat, "✅ <pre>"+esc(out)+"</pre>\n\n<pre>"+esc(sub)+"</pre>", userCardKeyboard(arg1, strings.TrimSpace(sub)))
 		}
-		out := runVPN("add", arg1, note)
-		sendHTML(token, chat, "✅ <pre>"+esc(out)+"</pre>", backKeyboard())
-		sendUserCard(token, chat, arg1)
-	case "/vpn_link":
-		if arg1 == "" {
-			setState(chat, "wait_vpn_name:vpn_link", "")
-			sendHTML(token, chat, "Send user name:", backKeyboard())
-			return
-		}
-		sendUserCard(token, chat, arg1)
 	case "/vpn_disable":
 		sendHTML(token, chat, "🚫 <pre>"+esc(runVPN("disable", arg1))+"</pre>", backKeyboard())
 	case "/vpn_enable":
@@ -525,18 +557,20 @@ func handleMessage(token string, m *message, admin int64) {
 			h = arg1
 		}
 		tok := runVPN("session", h)
+		fields := strings.Fields(tok)
+		copyVal := tok
+		if len(fields) > 0 {
+			copyVal = fields[0]
+		}
 		kb := map[string]any{
 			"inline_keyboard": [][]map[string]any{
-				{btnCopy("📋 Copy token", strings.Fields(tok)[0])},
-				{btn("🏠 Main menu", "m:menu", "primary")},
+				{btnCopy(T("copy_token"), copyVal)},
+				{btn(T("main_menu"), "m:menu", "primary")},
 			},
 		}
 		sendHTML(token, chat, "🔑 <code>"+esc(tok)+"</code>", kb)
 	case "/admin":
-		sendHTML(token, chat,
-			"🖥 <b>Admin UI</b>\n<code>http://127.0.0.1:8787/admin/</code>\n"+
-				"Tunnel: <code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>",
-			mainKeyboard())
+		sendHTML(token, chat, T("admin_body"), mainKeyboard())
 	case "/ready":
 		if b, err := os.ReadFile("/etc/freshvps/READY.txt"); err == nil {
 			t := string(b)
@@ -545,19 +579,21 @@ func handleMessage(token string, m *message, admin int64) {
 			}
 			sendHTML(token, chat, "📄 <pre>"+esc(t)+"</pre>", backKeyboard())
 		} else {
-			sendHTML(token, chat, "⚠️ no READY.txt", backKeyboard())
+			sendHTML(token, chat, T("no_ready"), backKeyboard())
 		}
 	default:
-		sendHTML(token, chat, "Unknown. Open the menu:", mainKeyboard())
+		sendHTML(token, chat, T("unknown_cmd"), mainKeyboard())
 	}
 }
 
 func setBotCommands(token string) {
+	// descriptions in both langs is limited; use English short + user can /lang
 	cmds := []map[string]string{
-		{"command": "menu", "description": "Main menu"},
-		{"command": "status", "description": "Service status"},
-		{"command": "vpn_list", "description": "List VPN users"},
-		{"command": "help", "description": "Help"},
+		{"command": "menu", "description": "Menu / Меню"},
+		{"command": "status", "description": "Status / Статус"},
+		{"command": "vpn_list", "description": "VPN users"},
+		{"command": "lang", "description": "Language / Язык"},
+		{"command": "help", "description": "Help / Справка"},
 	}
 	_, _ = apiPost(token, "setMyCommands", map[string]any{"commands": cmds})
 }
@@ -569,6 +605,10 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bad admin id: %v\n", err)
 		os.Exit(1)
+	}
+	// default language ru for this project
+	if _, err := os.Stat(langFile); err != nil {
+		setLang("ru")
 	}
 	setBotCommands(token)
 	offset := 0

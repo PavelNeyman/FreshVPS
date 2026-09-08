@@ -19,5 +19,7 @@ module_host_tools_install() {
 }
 
 module_host_tools_uninstall() {
-  rm -f /usr/local/bin/freshvps-doctor /usr/local/bin/freshvps-smoke
+  rm -f /usr/local/bin/freshvps-doctor /usr/local/bin/freshvps-smoke \
+    /usr/local/bin/freshvps-vpn /usr/local/bin/freshvps-tests
+  info "Host CLI symlinks removed (/opt/freshvps tree kept unless --purge)"
 }

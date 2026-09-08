@@ -13,8 +13,8 @@ source "${FRESHVPS_ROOT}/lib/prepare.sh"
 VERSION="$(cat "${FRESHVPS_ROOT}/VERSION" 2>/dev/null || echo 0.0.0)"
 
 ENABLE_HARDENING=1 ENABLE_SINGBOX=1 ENABLE_BLOCKY=1 ENABLE_VPN_USERS=1
-ENABLE_VPN_API=1 ENABLE_OPENSOHO=1 ENABLE_KUMA=1 ENABLE_BESZEL=1
-ENABLE_TELEGRAM=1 ENABLE_BACKUP=1 ENABLE_LAMPAC=0
+ENABLE_VPN_API=1 ENABLE_OPENSOHO=1 ENABLE_KUMA=0 ENABLE_BESZEL=0 ENABLE_METRICS=1
+ENABLE_TELEGRAM=1 ENABLE_BACKUP=1 ENABLE_LAMPAC=0 ENABLE_METRICS=1
 
 PUBLIC_IP="" SSH_PORT=22
 SINGBOX_VLESS_PORT=443 SINGBOX_HY2_PORT=8443
@@ -78,16 +78,17 @@ pick_components_checklist() {
     vpn_users "Multi-user VPN CLI" 1 \
     vpn_api "Admin API (session auth)" 1 \
     opensoho "OpenSOHO (needs Docker)" 1 \
-    kuma "Uptime Kuma (needs Docker)" 1 \
-    beszel "Beszel (needs Docker)" 1 \
+    kuma "Uptime Kuma (optional Docker)" 0 \
+    beszel "Beszel (optional Docker)" 0 \
     telegram "Telegram operator bot" 1 \
     backup "restic backups" 1 \
+    metrics "Built-in metrics (no Prometheus)" 1 \
     lampac "Lampac (optional, needs Docker)" 0 \
     )" || true
 
   ENABLE_HARDENING=0 ENABLE_SINGBOX=0 ENABLE_BLOCKY=0 ENABLE_VPN_USERS=0
   ENABLE_VPN_API=0 ENABLE_OPENSOHO=0 ENABLE_KUMA=0 ENABLE_BESZEL=0
-  ENABLE_TELEGRAM=0 ENABLE_BACKUP=0 ENABLE_LAMPAC=0
+  ENABLE_TELEGRAM=0 ENABLE_BACKUP=0 ENABLE_LAMPAC=0 ENABLE_METRICS=0
 
   for item in ${result}; do
     case "${item}" in
@@ -101,6 +102,7 @@ pick_components_checklist() {
       beszel) ENABLE_BESZEL=1 ;;
       telegram) ENABLE_TELEGRAM=1 ;;
       backup) ENABLE_BACKUP=1 ;;
+      metrics) ENABLE_METRICS=1 ;;
       lampac) ENABLE_LAMPAC=1 ;;
     esac
   done
@@ -204,6 +206,7 @@ run_install_modules() {
   [[ "${ENABLE_LAMPAC}" -eq 1 ]] && run_module_idempotent lampac
   [[ "${ENABLE_TELEGRAM}" -eq 1 ]] && run_module_idempotent telegram
   [[ "${ENABLE_BACKUP}" -eq 1 ]] && run_module_idempotent backup
+  [[ "${ENABLE_METRICS:-1}" -eq 1 ]] && run_module_idempotent metrics
   run_module_idempotent vps-tests
   # shellcheck source=/dev/null
   source "${FRESHVPS_ROOT}/modules/host-tools.sh"

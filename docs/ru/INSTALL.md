@@ -90,4 +90,14 @@ Lampac **опционален** (`ENABLE_LAMPAC=1`).
 
 ## Удаление
 
-`sudo bash uninstall.sh` · `sudo bash uninstall.sh --purge-secrets`
+Из дерева исходников (или `/opt/src/FreshVPS`, если ещё есть):
+
+```bash
+# Снять runtime (юниты, бинарники, контейнеры, правила UFW). Конфиги и данные оставить.
+sudo bash uninstall.sh
+
+# Плюс вычистить конфиги, секреты, данные панелей, docker-образы, state установки.
+sudo bash uninstall.sh --purge
+```
+
+`--purge-secrets` — алиас `--purge`. Hardening (SSH только по ключу, BBR) намеренно не откатывается.

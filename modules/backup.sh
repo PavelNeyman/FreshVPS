@@ -27,7 +27,7 @@ restic -r "\${REPO}" backup \\
   /etc/freshvps \\
   /usr/local/etc/sing-box \\
   /etc/blocky \\
-  /opt/opensoho \\
+  /var/lib/opensoho \\
   /opt/uptime-kuma/data \\
   /opt/beszel/hub-data \\
   --exclude-caches || true
@@ -65,5 +65,7 @@ module_backup_uninstall() {
   systemctl disable --now freshvps-backup.timer 2>/dev/null || true
   rm -f /etc/systemd/system/freshvps-backup.timer /etc/systemd/system/freshvps-backup.service
   systemctl daemon-reload 2>/dev/null || true
-  info "Backup timer removed (restic repo data not deleted)"
+  rm -rf /opt/freshvps-backup
+  # restic repo under /var/backups/freshvps kept unless --purge
+  info "Backup timer/scripts removed (restic repo kept unless --purge)"
 }

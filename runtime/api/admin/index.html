@@ -19,7 +19,7 @@
     </header>
 
     <section id="login" class="card">
-      <h1>Operator login</h1>
+      <h1 id="t-login-title">Вход оператора</h1>
       <p class="muted">Token: <code>freshvps-vpn session</code> or Telegram /session</p>
       <label>Session token<input id="token" type="password" autocomplete="off" /></label>
       <button type="button" id="btn-login" class="primary">Sign in</button>
@@ -48,8 +48,8 @@
           <div class="card metric"><div class="label">Net TX</div><div id="m-tx" class="value">—</div></div>
         </div>
         <p id="collector-warn" class="err hide">Collector stale (&gt;3 min) — check freshvps-metrics.timer</p>
-        <div class="card"><h2>Services</h2><ul id="svc-list" class="list"></ul>
-          <h2>Containers</h2><ul id="ct-list" class="list"></ul></div>
+        <div class="card"><h2 id="t-services">Сервисы</h2><ul id="svc-list" class="list"></ul>
+          <h2 id="t-containers">Контейнеры</h2><ul id="ct-list" class="list"></ul></div>
       </div>
 
       <div id="tab-users" class="tab-panel hide">

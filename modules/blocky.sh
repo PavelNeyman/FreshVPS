@@ -134,5 +134,11 @@ module_blocky_uninstall() {
   systemctl disable --now blocky 2>/dev/null || true
   rm -f /etc/systemd/system/blocky.service
   systemctl daemon-reload 2>/dev/null || true
-  info "blocky stopped (config left under /etc/blocky)"
+  rm -f /usr/local/bin/blocky
+  # Always restore upstream DNS when removing blocky (avoid dead 127.0.0.1)
+  if [[ -f /etc/resolv.conf ]] && grep -qE '^nameserver[[:space:]]+127\.' /etc/resolv.conf 2>/dev/null; then
+    printf 'nameserver 9.9.9.9\nnameserver 1.1.1.1\n' >/etc/resolv.conf
+    info "resolv.conf restored to upstream DNS"
+  fi
+  info "blocky stopped; binary removed (config kept under /etc/blocky unless --purge)"
 }

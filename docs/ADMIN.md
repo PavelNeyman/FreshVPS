@@ -1,33 +1,39 @@
 # FreshVPS Admin UI
 
-Built-in operator panel (desktop + mobile) served by the admin API.
+Built-in operator panel (desktop + mobile) on the admin API. No Prometheus.
 
 ## URL
 
-`http://127.0.0.1:8787/admin/`
+`http://127.0.0.1:8787/admin/` (`/admin` redirects here)
 
-Only reachable when you can reach the API (localhost, SSH tunnel, or VPN bind).
+Reachable via localhost, SSH tunnel, or VPN bind (`freshvps-vpn api-bind`).
 
 ## Login
 
-1. `sudo freshvps-vpn session 72` or Telegram **API session**
-2. Paste token into the login form (stored in `sessionStorage`)
+1. `sudo freshvps-vpn session 72` or Telegram **API session** / `/session`
+2. Paste token (kept in `sessionStorage`)
+3. Language: **RU/EN** toggle in header
 
-## Features
+## Tabs
 
-- Overview: CPU / RAM / disk / load, systemd services, docker containers
-- VPN users: list, add, enable/disable/revoke, subscription + QR
-- Metrics history: local JSONL collector (1/min)
+| Tab | Content |
+|-----|---------|
+| Overview | CPU/RAM/disk/load, net RX/TX, services, containers, probe strip, collector stale warning |
+| VPN | users search, add, note, enable/disable/revoke, subscription + VLESS + HY2 copy, QR |
+| Metrics | CPU & RAM history chart |
+| Probes | live status, latency, 24h uptime % |
+| Settings | alert thresholds + probes JSON → `/etc/freshvps/probes.json` |
 
-## Metrics (no Prometheus)
+## Metrics & alerts
 
-- Collector: `freshvps-metrics.timer` → `/var/lib/freshvps/metrics/history.jsonl`
-- Live: `GET /api/status`, `GET /api/metrics`
-- History: `GET /api/metrics/history`
-- No Prometheus, Grafana, or node_exporter in the stack
+- Timer `freshvps-metrics` every minute → JSONL + Telegram alerts / recovery
+- Config: `/etc/freshvps/probes.json`
+- HY2 probe must be **UDP** (not TCP)
 
-## vs Kuma / Beszel
+## Telegram
 
-Default install does **not** enable Uptime Kuma or Beszel. Use this admin for host/VPN health.
+Bot: **Admin UI** button or `/admin` — tunnel + URL hints.
 
-OpenSOHO remains a separate optional module for OpenWrt.
+## Security
+
+API default bind `127.0.0.1`. Prefer tunnel or VPN interface; avoid public `0.0.0.0` without extra auth.

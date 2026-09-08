@@ -82,6 +82,8 @@ var dict = map[string]map[string]string{
 		"unknown":       "Unknown action.",
 		"unknown_cmd":   "Unknown. Open the menu:",
 		"no_ready":      "⚠️ No READY.txt",
+		"ready_title":   "📄 <b>READY</b>",
+		"session_token": "🔑 Session token",
 		"lang_now":      "🌐 Language: <b>%s</b>\n\nChoose:",
 		"lang_en":       "English",
 		"lang_ru":       "Русский",
@@ -121,6 +123,8 @@ var dict = map[string]map[string]string{
 		"unknown":       "Неизвестное действие.",
 		"unknown_cmd":   "Неизвестно. Откройте меню:",
 		"no_ready":      "⚠️ Нет READY.txt",
+		"ready_title":   "📄 <b>Готово (READY)</b>",
+		"session_token": "🔑 Session-токен",
 		"lang_now":      "🌐 Язык: <b>%s</b>\n\nВыберите:",
 		"lang_en":       "English",
 		"lang_ru":       "Русский",
@@ -280,6 +284,25 @@ func answerCallback(token, id string) {
 	_, _ = apiPost(token, "answerCallbackQuery", map[string]any{"callback_query_id": id})
 }
 
+func formatVPNList(s string) string {
+	if getLang() == "en" {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		p := strings.Split(line, "\t")
+		if len(p) >= 2 {
+			if p[1] == "on" {
+				p[1] = "вкл"
+			} else if p[1] == "off" {
+				p[1] = "выкл"
+			}
+			lines[i] = strings.Join(p, "\t")
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func runVPN(args ...string) string {
 	cmd := exec.Command("/usr/local/bin/freshvps-vpn", args...)
 	out, err := cmd.CombinedOutput()
@@ -349,7 +372,7 @@ func statusInline() string {
 		b.WriteString("VPN users:")
 	}
 	b.WriteByte(10)
-	b.WriteString(runVPN("list"))
+	b.WriteString(formatVPNList(runVPN("list")))
 	return b.String()
 }
 
@@ -372,6 +395,36 @@ func statusText() string {
 		}
 	}
 	return statusInline()
+}
+
+
+func readyText() string {
+	b, err := os.ReadFile("/etc/freshvps/READY.txt")
+	if err != nil {
+		return ""
+	}
+	text := string(b)
+	ru := getLang() != "en"
+	// Prefer language section if bilingual file present
+	if strings.Contains(text, "=== RU ===") && strings.Contains(text, "=== EN ===") {
+		var part string
+		if ru {
+			i := strings.Index(text, "=== RU ===")
+			j := strings.Index(text, "=== EN ===")
+			if i >= 0 && j > i {
+				part = strings.TrimSpace(text[i+len("=== RU ==="):j])
+			}
+		} else {
+			i := strings.Index(text, "=== EN ===")
+			if i >= 0 {
+				part = strings.TrimSpace(text[i+len("=== EN ==="):])
+			}
+		}
+		if part != "" {
+			return part
+		}
+	}
+	return strings.TrimSpace(text)
 }
 
 func menuText() string {
@@ -451,17 +504,17 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	case "m:status":
 		sendHTML(token, chat, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
 	case "m:ready":
-		if b, err := os.ReadFile("/etc/freshvps/READY.txt"); err == nil {
-			t := string(b)
+		t := readyText()
+		if t == "" {
+			sendHTML(token, chat, T("no_ready"), backKeyboard())
+		} else {
 			if len(t) > 3500 {
 				t = t[:3500] + "\n…"
 			}
-			sendHTML(token, chat, "📄 <b>READY</b>\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
-		} else {
-			sendHTML(token, chat, T("no_ready"), backKeyboard())
+			sendHTML(token, chat, T("ready_title")+"\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
 		}
 	case "m:vpn_list":
-		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(runVPN("list"))+"</pre>", backKeyboard())
+		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(formatVPNList(runVPN("list")))+"</pre>", backKeyboard())
 	case "m:vpn_add":
 		setState(chat, "wait_vpn_add_name", "")
 		sendHTML(token, chat, T("add_prompt"), backKeyboard())
@@ -579,7 +632,7 @@ func handleMessage(token string, m *message, admin int64) {
 	case "/status":
 		sendHTML(token, chat, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
 	case "/vpn_list":
-		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(runVPN("list"))+"</pre>", backKeyboard())
+		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(formatVPNList(runVPN("list")))+"</pre>", backKeyboard())
 	case "/vpn_add":
 		if arg1 == "" {
 			setState(chat, "wait_vpn_add_name", "")

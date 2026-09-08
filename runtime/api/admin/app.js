@@ -1,5 +1,52 @@
 (() => {
   const $ = (id) => document.getElementById(id);
+  
+  const STR = {
+    en: {
+      loginTitle: "Operator login",
+      signIn: "Sign in",
+      logout: "Logout",
+      overview: "Overview",
+      users: "VPN",
+      metrics: "Metrics",
+      probes: "Probes",
+      settings: "Settings",
+      signedIn: "Signed in",
+      loggedOut: "Logged out",
+      sessionSoon: "Session expires soon — renew via /session",
+      sessionLeft: "Session",
+      left: "left",
+    },
+    ru: {
+      loginTitle: "Вход оператора",
+      signIn: "Войти",
+      logout: "Выйти",
+      overview: "Обзор",
+      users: "VPN",
+      metrics: "Метрики",
+      probes: "Пробы",
+      settings: "Настройки",
+      signedIn: "Вход выполнен",
+      loggedOut: "Вы вышли",
+      sessionSoon: "Сессия скоро истечёт — обновите через /session",
+      sessionLeft: "Сессия",
+      left: "осталось",
+    },
+  };
+  let lang = localStorage.getItem("fv_lang") || ((navigator.language || "en").startsWith("ru") ? "ru" : "en");
+  if (lang !== "ru" && lang !== "en") lang = "en";
+  function t(k) { return (STR[lang] && STR[lang][k]) || (STR.en[k] || k); }
+  function applyLang() {
+    const h1 = document.querySelector("#login h1");
+    if (h1) h1.textContent = t("loginTitle");
+    const bi = $("btn-login"); if (bi) bi.textContent = t("signIn");
+    const bo = $("btn-logout"); if (bo) bo.textContent = t("logout");
+    document.querySelectorAll(".tab").forEach((b) => {
+      const map = { overview: "overview", users: "users", metrics: "metrics", probes: "probes", settings: "settings" };
+      if (map[b.dataset.tab]) b.textContent = t(map[b.dataset.tab]);
+    });
+  }
+
   const state = {
     token: sessionStorage.getItem("fv_token") || "",
     users: [],
@@ -77,7 +124,7 @@
     state.timers.forEach(clearInterval);
     state.timers = [];
     showDash(false);
-    if (clearMsg !== false) toast("Logged out", "ok");
+    if (clearMsg !== false) toast(t("loggedOut"), "ok");
   }
 
   function renderProbeStrip(probes) {
@@ -96,8 +143,8 @@
   async function refreshSession() {
     try {
       const s = await api("/api/session");
-      $("session-line").textContent = "Session " + fmtDur(s.expires_in_sec) + " left";
-      if (s.expires_in_sec < 600) toast("Session expires soon — renew via /session", "err");
+      $("session-line").textContent = t("sessionLeft") + " " + fmtDur(s.expires_in_sec) + " " + t("left");
+      if (s.expires_in_sec < 600) toast(t("sessionSoon"), "err");
     } catch (_) {}
   }
 
@@ -332,13 +379,21 @@
       setTab("overview");
       startTimers();
       refreshSession();
-      toast("Signed in", "ok");
+      toast(t("signedIn"), "ok");
     } catch (e) {
       $("login-err").textContent = e.message || "Login failed";
     }
   };
 
   $("btn-logout").onclick = () => logout();
+  if ($("btn-lang")) {
+    $("btn-lang").onclick = () => {
+      lang = lang === "ru" ? "en" : "ru";
+      localStorage.setItem("fv_lang", lang);
+      applyLang();
+    };
+  }
+  applyLang();
   document.querySelectorAll(".tab").forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
   $("btn-refresh-users").onclick = () => refreshUsers().catch(() => {});
   $("btn-refresh-probes").onclick = () => refreshProbes().catch(() => {});

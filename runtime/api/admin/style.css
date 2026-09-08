@@ -109,3 +109,5 @@ button:disabled { opacity: .5; cursor: default; }
 .code.small { max-height: 180px; }
 .qr { max-width: min(280px, 100%); margin-top: .75rem; border-radius: 8px; background: #fff; padding: .5rem; }
 h1, h2 { margin-top: 0; }
+
+#chart{width:100%;height:auto;background:#0d1218;border-radius:8px;}

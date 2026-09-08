@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FreshVPS installer — ready-to-use; safe re-run / upgrade / VPS tests
+# FreshVPS installer — ready-to-use; safe re-run / upgrade / VPS tests / prepare
 set -euo pipefail
 
 FRESHVPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,6 +8,7 @@ source "${FRESHVPS_ROOT}/lib/common.sh"
 source "${FRESHVPS_ROOT}/lib/tui.sh"
 source "${FRESHVPS_ROOT}/lib/idempotent.sh"
 source "${FRESHVPS_ROOT}/lib/install-conf.sh"
+source "${FRESHVPS_ROOT}/lib/prepare.sh"
 
 VERSION="$(cat "${FRESHVPS_ROOT}/VERSION" 2>/dev/null || echo 0.0.0)"
 
@@ -21,13 +22,14 @@ BLOCKY_DNS_PORT=53 OPENSOHO_HTTP_PORT=8090 KUMA_PORT=3001 BESZEL_PORT=8091
 VPN_API_PORT=8787 VPN_API_BIND=127.0.0.1
 TELEGRAM_BOT_TOKEN="" TELEGRAM_ADMIN_ID="" BACKUP_REPO=""
 CONFIG_FILE="" NONINTERACTIVE=0 ROLE=vps WITH_MIKROTIK=0 DO_UPGRADE=0 ACTION=""
+INSTALL_AFTER_PREPARE=0
 export NONINTERACTIVE
 
 usage() {
   cat <<EOF
 FreshVPS ${VERSION}
   --config FILE | --non-interactive | --upgrade | --force | --force-module NAME
-  --role vps|edge-client|openwrt | --with-mikrotik | --tests
+  --role vps|edge-client|openwrt | --with-mikrotik | --tests | --prepare
 EOF
 }
 
@@ -44,6 +46,7 @@ parse_args() {
       --role) ROLE="$2"; shift 2 ;;
       --with-mikrotik) WITH_MIKROTIK=1; shift ;;
       --tests) ACTION=tests; shift ;;
+      --prepare) ACTION=prepare; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "Unknown option: $1" ;;
     esac
@@ -56,14 +59,50 @@ prompt_value() { tui_input "$@"; }
 pick_action_menu() {
   [[ -n "${ACTION}" ]] && return 0
   [[ "${NONINTERACTIVE}" -eq 1 ]] && { ACTION=install; return 0; }
-  if command -v whiptail >/dev/null 2>&1; then
-    ACTION="$(whiptail --title "FreshVPS ${VERSION}" --menu "Choose action" 16 60 5 \
-      install "Install / configure" upgrade "Upgrade (idempotent)" \
-      tests "VPS tests" quit "Exit" 3>&1 1>&2 2>&3)" || ACTION=quit
-  else
-    echo "1) install  2) upgrade  3) tests  4) quit"; read -r -p "> " n
-    case "${n}" in 2) ACTION=upgrade ;; 3) ACTION=tests ;; 4) ACTION=quit ;; *) ACTION=install ;; esac
-  fi
+  ACTION="$(tui_menu "FreshVPS ${VERSION}" \
+    install "Install / configure services" \
+    prepare "Prepare VPS (apt/docker/golang…)" \
+    upgrade "Upgrade (idempotent)" \
+    tests "VPS network tests" \
+    quit "Exit")" || ACTION=quit
+}
+
+# Checklist for product modules → ENABLE_*
+pick_components_checklist() {
+  local result item
+  result="$(tui_checklist "Components to install" \
+    hardening "SSH hardening / BBR / UFW base" 1 \
+    singbox "sing-box VLESS+Reality + HY2" 1 \
+    blocky "Blocky DNS" 1 \
+    vpn_users "Multi-user VPN CLI" 1 \
+    vpn_api "Admin API (session auth)" 1 \
+    opensoho "OpenSOHO (needs Docker)" 1 \
+    kuma "Uptime Kuma (needs Docker)" 1 \
+    beszel "Beszel (needs Docker)" 1 \
+    telegram "Telegram operator bot" 1 \
+    backup "restic backups" 1 \
+    lampac "Lampac (optional, needs Docker)" 0 \
+    )" || true
+
+  ENABLE_HARDENING=0 ENABLE_SINGBOX=0 ENABLE_BLOCKY=0 ENABLE_VPN_USERS=0
+  ENABLE_VPN_API=0 ENABLE_OPENSOHO=0 ENABLE_KUMA=0 ENABLE_BESZEL=0
+  ENABLE_TELEGRAM=0 ENABLE_BACKUP=0 ENABLE_LAMPAC=0
+
+  for item in ${result}; do
+    case "${item}" in
+      hardening) ENABLE_HARDENING=1 ;;
+      singbox) ENABLE_SINGBOX=1 ;;
+      blocky) ENABLE_BLOCKY=1 ;;
+      vpn_users) ENABLE_VPN_USERS=1 ;;
+      vpn_api) ENABLE_VPN_API=1 ;;
+      opensoho) ENABLE_OPENSOHO=1 ;;
+      kuma) ENABLE_KUMA=1 ;;
+      beszel) ENABLE_BESZEL=1 ;;
+      telegram) ENABLE_TELEGRAM=1 ;;
+      backup) ENABLE_BACKUP=1 ;;
+      lampac) ENABLE_LAMPAC=1 ;;
+    esac
+  done
 }
 
 collect_settings() {
@@ -83,24 +122,40 @@ collect_settings() {
   [[ -n "${PUBLIC_IP}" ]] || die "PUBLIC_IP required"
 
   if [[ "${NONINTERACTIVE}" -eq 0 && "${DO_UPGRADE}" -eq 0 ]]; then
-    prompt_yes_no "Hardening?" y && ENABLE_HARDENING=1 || ENABLE_HARDENING=0
-    prompt_yes_no "sing-box VPN?" y && ENABLE_SINGBOX=1 || ENABLE_SINGBOX=0
-    prompt_yes_no "Blocky DNS?" y && ENABLE_BLOCKY=1 || ENABLE_BLOCKY=0
-    prompt_yes_no "Multi-user VPN CLI?" y && ENABLE_VPN_USERS=1 || ENABLE_VPN_USERS=0
-    prompt_yes_no "Admin API?" y && ENABLE_VPN_API=1 || ENABLE_VPN_API=0
-    prompt_yes_no "OpenSOHO?" y && ENABLE_OPENSOHO=1 || ENABLE_OPENSOHO=0
-    prompt_yes_no "Uptime Kuma?" y && ENABLE_KUMA=1 || ENABLE_KUMA=0
-    prompt_yes_no "Beszel?" y && ENABLE_BESZEL=1 || ENABLE_BESZEL=0
-    prompt_yes_no "Telegram bot?" y && ENABLE_TELEGRAM=1 || ENABLE_TELEGRAM=0
-    prompt_yes_no "restic backups?" y && ENABLE_BACKUP=1 || ENABLE_BACKUP=0
-    prompt_yes_no "Lampac?" n && ENABLE_LAMPAC=1 || ENABLE_LAMPAC=0
+    pick_components_checklist
+    local flow
+    flow="$(tui_menu "How to proceed" \
+      install_now "Install selected components now" \
+      prepare_then "Prepare deps for selection, then install" \
+      prepare_only "Only prepare deps (no install)")" || flow=install_now
+    case "${flow}" in
+      prepare_only)
+        ACTION=prepare
+        prepare_derive_from_components
+        # still allow manual tweak
+        if prompt_yes_no "Review/adjust prepare checklist?" n; then
+          prepare_pick_checklist
+          # re-apply component hints for docker/golang if user cleared them wrongly
+          prepare_derive_from_components
+        fi
+        ;;
+      prepare_then)
+        INSTALL_AFTER_PREPARE=1
+        prepare_derive_from_components
+        if prompt_yes_no "Review/adjust prepare checklist?" n; then
+          prepare_pick_checklist
+          prepare_derive_from_components
+        fi
+        ;;
+      *) ;;
+    esac
   fi
 
   if [[ "${ENABLE_SINGBOX}" -eq 1 && "${ENABLE_VPN_USERS}" -eq 0 ]]; then
     warn "sing-box without vpn-users → empty users (VPN will accept nobody)"
   fi
 
-  if [[ "${ENABLE_TELEGRAM}" -eq 1 && "${NONINTERACTIVE}" -eq 0 && "${DO_UPGRADE}" -eq 0 ]]; then
+  if [[ "${ENABLE_TELEGRAM}" -eq 1 && "${NONINTERACTIVE}" -eq 0 && "${DO_UPGRADE}" -eq 0 && "${ACTION}" != "prepare" ]]; then
     TELEGRAM_BOT_TOKEN="$(prompt_value "Telegram bot token" "${TELEGRAM_BOT_TOKEN}")"
     TELEGRAM_ADMIN_ID="$(prompt_value "Telegram admin chat id" "${TELEGRAM_ADMIN_ID}")"
   fi
@@ -131,30 +186,7 @@ run_tests_action() {
   bash /opt/freshvps/scripts/vps-tests.sh
 }
 
-main() {
-  parse_args "$@"
-  if [[ "${ROLE}" == "openwrt" ]]; then exec bash "${FRESHVPS_ROOT}/install-openwrt.sh"; fi
-  if [[ "${ROLE}" == "edge-client" ]]; then
-    extra=(); [[ -n "${CONFIG_FILE}" ]] && extra+=(--config "${CONFIG_FILE}")
-    [[ "${WITH_MIKROTIK}" -eq 1 ]] && extra+=(--with-mikrotik)
-    exec bash "${FRESHVPS_ROOT}/install-edge.sh" "${extra[@]}"
-  fi
-
-  pick_action_menu
-  [[ "${ACTION}" == "quit" ]] && exit 0
-  if [[ "${ACTION}" == "tests" ]]; then require_root; run_tests_action; exit 0; fi
-  if [[ "${ACTION}" == "upgrade" ]]; then DO_UPGRADE=1; FRESHVPS_UPGRADE=1; export FRESHVPS_UPGRADE; fi
-
-  require_root; require_debian; ensure_dirs; touch "${FRESHVPS_LOG}"
-  [[ "${DO_UPGRADE}" -eq 1 ]] && { NONINTERACTIVE="${NONINTERACTIVE:-1}"; export NONINTERACTIVE; }
-
-  info "FreshVPS ${VERSION} action=${ACTION:-install}"
-  collect_settings
-  export PUBLIC_IP SSH_PORT SINGBOX_VLESS_PORT SINGBOX_HY2_PORT SINGBOX_REALITY_SNI
-  export BLOCKY_DNS_PORT OPENSOHO_HTTP_PORT KUMA_PORT BESZEL_PORT
-  export VPN_API_PORT VPN_API_BIND TELEGRAM_BOT_TOKEN TELEGRAM_ADMIN_ID BACKUP_REPO ENABLE_LAMPAC
-  printf '%s\n' "${PUBLIC_IP}" >"${FRESHVPS_ETC}/public_ip"
-
+run_install_modules() {
   pkg_install ca-certificates curl wget openssl jq tar gzip coreutils
   mkdir -p /opt/freshvps/compose
   [[ -f "${FRESHVPS_ROOT}/compose/panels.yml" ]] && install -m 644 "${FRESHVPS_ROOT}/compose/panels.yml" /opt/freshvps/compose/panels.yml
@@ -172,7 +204,6 @@ main() {
   [[ "${ENABLE_TELEGRAM}" -eq 1 ]] && run_module_idempotent telegram
   [[ "${ENABLE_BACKUP}" -eq 1 ]] && run_module_idempotent backup
   run_module_idempotent vps-tests
-  # always refresh CLI/smoke after modules (ignore skip)
   # shellcheck source=/dev/null
   source "${FRESHVPS_ROOT}/modules/host-tools.sh"
   module_host_tools_install
@@ -186,6 +217,58 @@ main() {
     bash /opt/freshvps/scripts/smoke-host.sh || warn "smoke reported failures — run freshvps-doctor"
   fi
   info "Finished — ${VERSION}"
+}
+
+main() {
+  parse_args "$@"
+  if [[ "${ROLE}" == "openwrt" ]]; then exec bash "${FRESHVPS_ROOT}/install-openwrt.sh"; fi
+  if [[ "${ROLE}" == "edge-client" ]]; then
+    extra=(); [[ -n "${CONFIG_FILE}" ]] && extra+=(--config "${CONFIG_FILE}")
+    [[ "${WITH_MIKROTIK}" -eq 1 ]] && extra+=(--with-mikrotik)
+    exec bash "${FRESHVPS_ROOT}/install-edge.sh" "${extra[@]}"
+  fi
+
+  pick_action_menu
+  [[ "${ACTION}" == "quit" ]] && exit 0
+  if [[ "${ACTION}" == "tests" ]]; then require_root; run_tests_action; exit 0; fi
+  if [[ "${ACTION}" == "upgrade" ]]; then DO_UPGRADE=1; FRESHVPS_UPGRADE=1; export FRESHVPS_UPGRADE; fi
+
+  require_root; require_debian; ensure_dirs; touch "${FRESHVPS_LOG}"
+  [[ "${DO_UPGRADE}" -eq 1 ]] && { NONINTERACTIVE="${NONINTERACTIVE:-1}"; export NONINTERACTIVE; }
+
+  # Standalone prepare from main menu
+  if [[ "${ACTION}" == "prepare" ]]; then
+    info "FreshVPS ${VERSION} action=prepare"
+    if [[ "${NONINTERACTIVE}" -eq 0 ]]; then
+      prepare_pick_checklist
+    else
+      PREPARE_APT_UPDATE=1 PREPARE_BASE_TOOLS=1
+      # optional via env PREPARE_DOCKER=1 etc.
+    fi
+    prepare_run_selected
+    exit 0
+  fi
+
+  info "FreshVPS ${VERSION} action=${ACTION:-install}"
+  collect_settings
+
+  # collect_settings may switch ACTION to prepare
+  if [[ "${ACTION}" == "prepare" && "${INSTALL_AFTER_PREPARE}" -eq 0 ]]; then
+    prepare_run_selected
+    info "Prepare finished — run install when ready"
+    exit 0
+  fi
+
+  if [[ "${INSTALL_AFTER_PREPARE}" -eq 1 ]]; then
+    prepare_run_selected
+  fi
+
+  export PUBLIC_IP SSH_PORT SINGBOX_VLESS_PORT SINGBOX_HY2_PORT SINGBOX_REALITY_SNI
+  export BLOCKY_DNS_PORT OPENSOHO_HTTP_PORT KUMA_PORT BESZEL_PORT
+  export VPN_API_PORT VPN_API_BIND TELEGRAM_BOT_TOKEN TELEGRAM_ADMIN_ID BACKUP_REPO ENABLE_LAMPAC
+  printf '%s\n' "${PUBLIC_IP}" >"${FRESHVPS_ETC}/public_ip"
+
+  run_install_modules
 
   if [[ "${NONINTERACTIVE}" -eq 0 ]]; then
     prompt_yes_no "Run VPS network tests now?" n && run_tests_action || true

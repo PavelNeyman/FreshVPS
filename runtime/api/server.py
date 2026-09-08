@@ -276,6 +276,30 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/metrics/history":
             return self._json(200, {"points": metrics_history(180)})
 
+        if path in ("/api/probes", "/api/latest"):
+            latest = os.path.join(METRICS_DIR, "latest.json")
+            if os.path.isfile(latest):
+                try:
+                    with open(latest, encoding="utf-8") as f:
+                        data = json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    data = {}
+            else:
+                data = collect_metrics()
+            if path == "/api/probes":
+                return self._json(200, {"probes": data.get("probes") or [], "ts": data.get("ts")})
+            return self._json(200, data)
+
+        if path == "/api/probes/config":
+            cfg_path = os.path.join(ETC, "probes.json")
+            if os.path.isfile(cfg_path):
+                try:
+                    with open(cfg_path, encoding="utf-8") as f:
+                        return self._json(200, json.load(f))
+                except (OSError, json.JSONDecodeError):
+                    pass
+            return self._json(200, {"probes": [], "alerts": {}})
+
         if path == "/api/status" or path == "/status":
             m = collect_metrics()
             return self._json(

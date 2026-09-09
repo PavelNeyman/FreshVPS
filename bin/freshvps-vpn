@@ -1,95 +1,41 @@
 #!/usr/bin/env bash
-# freshvps-vpn — operator CLI
+# DEPRECATED: use `netductor vpn ...`. This wrapper forwards when possible.
 set -euo pipefail
-
+if command -v netductor >/dev/null 2>&1; then
+  case "${1:-}" in
+    add|list|link|note|disable|enable|revoke|apply|session|edge-list|edge-cmd|api-bind)
+      exec netductor vpn "$@"
+      ;;
+  esac
+fi
 ROOT="${FRESHVPS_ROOT:-}"
 if [[ -z "${ROOT}" ]]; then
-  if [[ -f /opt/freshvps/lib/vpn-core.sh ]]; then
-    ROOT=/opt/freshvps
+  if [[ -f /opt/freshvps/lib/vpn-core.sh ]]; then ROOT=/opt/freshvps
   elif [[ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/vpn-core.sh" ]]; then
     ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   else
-    echo "Cannot find FreshVPS root" >&2
-    exit 1
+    echo "netductor/freshvps root not found" >&2; exit 1
   fi
 fi
-
 # shellcheck source=/dev/null
 source "${ROOT}/lib/common.sh" 2>/dev/null || true
 # shellcheck source=/dev/null
 source "${ROOT}/lib/vpn-core.sh"
-
-usage() {
-  cat <<EOF
-freshvps-vpn — manage VPN users (operator only)
-
-  freshvps-vpn add <name> [note]
-  freshvps-vpn list
-  freshvps-vpn link <name>          # subscription (VLESS+HY2)
-  freshvps-vpn link <name> vless    # VLESS only
-  freshvps-vpn link <name> hy2      # Hysteria2 only
-  freshvps-vpn disable|enable|revoke <name>
-  freshvps-vpn note <name> <text>
-  freshvps-vpn apply
-  freshvps-vpn session [hours]
-  freshvps-vpn api-bind localhost|detect|<ip> [--ufw]
-  freshvps-vpn edge-list
-  freshvps-vpn edge-cmd <device_id> <action> [arg]
-EOF
-}
-
-cmd="${1:-}"
-shift || true
-
+cmd="${1:-}"; shift || true
 case "${cmd}" in
-  add)
-    name="${1:?name}"; note="${2:-}"
-    vpn_add_user "${name}" "${note}"
-    echo "Subscription:"
-    cat "${VPN_CLIENTS_DIR}/${name}/subscription.txt"
-    echo "Dir: ${VPN_CLIENTS_DIR}/${name}/"
-    ;;
+  add) vpn_add_user "${1:?}" "${2:-}"; cat "${VPN_CLIENTS_DIR}/${1}/subscription.txt" ;;
   list) vpn_list_users ;;
   link)
-    name="${1:?name}"
-    kind="${2:-sub}"
-    case "${kind}" in
-      vless) cat "${VPN_CLIENTS_DIR}/${name}/link-vless.txt" 2>/dev/null || cat "${VPN_CLIENTS_DIR}/${name}/link.txt" ;;
-      hy2) cat "${VPN_CLIENTS_DIR}/${name}/link-hy2.txt" ;;
-      *) cat "${VPN_CLIENTS_DIR}/${name}/subscription.txt" 2>/dev/null || cat "${VPN_CLIENTS_DIR}/${name}/link.txt" ;;
-    esac
-    ;;
-  note) vpn_set_note "${1:?name}" "${2:-}"; echo "note updated ${1}" ;;
-  disable) vpn_set_enabled "${1:?name}" false; echo "disabled ${1}" ;;
-  enable) vpn_set_enabled "${1:?name}" true; echo "enabled ${1}" ;;
-  revoke) vpn_revoke_user "${1:?name}"; echo "revoked ${1}" ;;
-  apply) vpn_apply_config; echo "config applied" ;;
-  session)
-    hours="${1:-72}"
-    tok="$(openssl rand -hex 32)"
-    exp="$(( $(date +%s) + hours * 3600 ))"
-    mkdir -p /etc/freshvps/sessions
-    chmod 700 /etc/freshvps/sessions
-    printf '%s\n' "${exp}" >"/etc/freshvps/sessions/${tok}"
-    chmod 600 "/etc/freshvps/sessions/${tok}"
-    echo "${tok}"
-    echo "expires_unix=${exp} hours=${hours}" >&2
-    ;;
-  edge-list)
-    PYTHONPATH=/opt/freshvps/runtime/api python3 -c 'import edge_store,time; now=int(time.time());
-[print("%s\t%s\t%ss\t%s\t%s\t%s" % (d.get("device_id"), "online" if d.get("healthy") else "offline", now-int(d.get("last_seen") or 0), d.get("hostname",""), d.get("wan_ip",""), d.get("board",""))) for d in sorted(edge_store.list_devices(), key=lambda x: -int(x.get("last_seen") or 0))]'
-    ;;
-  edge-cmd)
-    did="${2:?device_id}"; action="${3:?action}"; arg="${4:-}"
-    PYTHONPATH=/opt/freshvps/runtime/api python3 -c "import edge_store; print(edge_store.enqueue_cmd('$did', '$action', '$arg'))"
-    ;;
-  api-bind)
-    if [[ ! -x /opt/freshvps-api/rebind.sh ]]; then
-      echo "API module not installed" >&2
-      exit 1
-    fi
-    /opt/freshvps-api/rebind.sh "${1:-localhost}" "${2:-}"
-    ;;
-  -h|--help|"") usage ;;
-  *) echo "unknown: ${cmd}" >&2; usage; exit 1 ;;
+    n="${1:?}"; k="${2:-sub}"
+    case "$k" in vless) cat "${VPN_CLIENTS_DIR}/$n/link-vless.txt" 2>/dev/null || cat "${VPN_CLIENTS_DIR}/$n/link.txt" ;;
+      hy2) cat "${VPN_CLIENTS_DIR}/$n/link-hy2.txt" ;;
+      *) cat "${VPN_CLIENTS_DIR}/$n/subscription.txt" 2>/dev/null || cat "${VPN_CLIENTS_DIR}/$n/link.txt" ;; esac ;;
+  note) vpn_set_note "${1:?}" "${2:-}" ;;
+  disable) vpn_set_enabled "${1:?}" false ;;
+  enable) vpn_set_enabled "${1:?}" true ;;
+  revoke) vpn_revoke_user "${1:?}" ;;
+  apply) vpn_apply_config ;;
+  session|edge-list|edge-cmd|api-bind)
+    echo "install netductor for $cmd" >&2; exit 1 ;;
+  *) echo "usage: freshvps-vpn (deprecated) → netductor vpn ..." >&2; exit 1 ;;
 esac

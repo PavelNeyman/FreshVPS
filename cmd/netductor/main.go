@@ -70,7 +70,8 @@ func main() {
 func printHelp() {
 	fmt.Print(`netductor — network control plane
 
-  tui|menu | version | doctor | status | vpn | edge | serve | install | probe | collect | help
+  tui|menu [--mode vps|openwrt|workstation|operator]
+  version | doctor | status | vpn | edge | serve | install | probe | collect | help
 
   (no args on a TTY → interactive menu)
 

@@ -339,13 +339,13 @@ func runServe(args []string) {
 		if !requireSession(w, r) {
 			return
 		}
-		writeJSON(w, 200, map[string]any{"probes": metrics.LatestProbes(), "config": probes.Load()})
+		writeJSON(w, 200, map[string]any{"probes": probes.Run(probes.Load()), "config": probes.Load()})
 	})
 	mux.HandleFunc("/api/latest", func(w http.ResponseWriter, r *http.Request) {
 		if !requireSession(w, r) {
 			return
 		}
-		writeJSON(w, 200, map[string]any{"metrics": metrics.Collect(), "probes": metrics.LatestProbes()})
+		writeJSON(w, 200, map[string]any{"metrics": metrics.Collect(), "probes": probes.Run(probes.Load())})
 	})
 	mux.HandleFunc("/api/probes/uptime", func(w http.ResponseWriter, r *http.Request) {
 		if !requireSession(w, r) {
@@ -384,7 +384,7 @@ func runServe(args []string) {
 		m := metrics.Collect()
 		writeJSON(w, 200, map[string]any{
 			"ok": true, "service": "netductor", "version": version,
-			"metrics": m, "probes": metrics.LatestProbes(),
+			"metrics": m, "probes": probes.Run(probes.Load()),
 		})
 	})
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
@@ -392,7 +392,7 @@ func runServe(args []string) {
 			return
 		}
 		m := metrics.Collect()
-		writeJSON(w, 200, map[string]any{"ok": true, "metrics": m, "probes": metrics.LatestProbes()})
+		writeJSON(w, 200, map[string]any{"ok": true, "metrics": m, "probes": probes.Run(probes.Load())})
 	})
 
 	// --- VPN users (operator session) ---

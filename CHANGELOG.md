@@ -1,12 +1,22 @@
 # Changelog
 
+## 0.7.0-dev — 2026-09-09 (Netductor)
+
+- **Rename** product/repo: FreshVPS → **Netductor** (`PavelNeyman/netductor`)
+- **Go orchestrator** `netductor`: version, doctor, vpn, edge, serve, install, probe
+- **Go API**: edge, session, metrics, live probes, VPN users, admin SPA; proxy to Python
+- **Units**: `netductor-api` (parallel :8790 / cutover :8787)
+- **Agent**: `netductor-agent` (OpenWrt outbound)
+- **Telegram**: `netductor-tg` + unit `netductor-telegram-bot`
+- **G7 paths**: dual layout `/opt|/etc|/var/lib/netductor` → legacy symlinks
+- Cleanup: prefer Go bots over `cmd/freshvps-tg` and bash `bot.sh`
+
 ## 0.5.4 — 2026-09-08
 
 - Hardening: blacklist virtio_gpu (headless KVM soft lockup mitigation)
 - Hardening: 2G /swapfile by default (FRESHVPS_SWAP_MB, FRESHVPS_SKIP_SWAP=1)
 - Kuma/Beszel optional off by default
 
-# Changelog
 
 ## 0.5.2 — 2026-09-08
 

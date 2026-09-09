@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# LEGACY: Python Admin API (freshvps-api). Prefer modules/netductor-api.sh (Go).
+# Parallel mode: both can run; cutover uses netductor only.
 # Module: admin API (default 127.0.0.1) — session auth only
 # shellcheck disable=SC2154
 

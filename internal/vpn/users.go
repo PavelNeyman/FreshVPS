@@ -12,7 +12,9 @@ import (
 
 var nameRe = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$`)
 
-func Bin() string     { return paths.VPNBin() }
+func Bin() string {
+	return paths.VPNBin()
+}
 func Clients() string { return paths.ClientsDir() }
 
 func ValidName(name string) bool {
@@ -33,6 +35,9 @@ type User struct {
 }
 
 func List() ([]User, error) {
+	if users, err := ListNative(); err == nil {
+		return users, nil
+	}
 	out, err := run("list")
 	if err != nil {
 		return nil, err
@@ -62,17 +67,36 @@ func List() ([]User, error) {
 }
 
 func Add(name, note string) (string, error) {
-	args := []string{"add", name}
-	if note != "" {
-		args = append(args, note)
+	if out, err := AddNative(name, note); err == nil || out != "" {
+		return out, err
 	}
-	return run(args...)
+	return run("add", name, note)
 }
 
-func Note(name, note string) (string, error) { return run("note", name, note) }
-func Disable(name string) (string, error)   { return run("disable", name) }
-func Enable(name string) (string, error)    { return run("enable", name) }
-func Revoke(name string) (string, error)    { return run("revoke", name) }
+func Note(name, note string) (string, error) {
+	if err := SetNoteNative(name, note); err == nil {
+		return "note updated " + name, nil
+	}
+	return run("note", name, note)
+}
+func Disable(name string) (string, error) {
+	if err := SetEnabledNative(name, false); err == nil {
+		return "disabled " + name, nil
+	}
+	return run("disable", name)
+}
+func Enable(name string) (string, error) {
+	if err := SetEnabledNative(name, true); err == nil {
+		return "enabled " + name, nil
+	}
+	return run("enable", name)
+}
+func Revoke(name string) (string, error) {
+	if err := RevokeNative(name); err == nil {
+		return "revoked " + name, nil
+	}
+	return run("revoke", name)
+}
 
 func ReadClient(name string, candidates ...string) (string, bool) {
 	for _, c := range candidates {

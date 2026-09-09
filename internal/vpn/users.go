@@ -6,27 +6,21 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/PavelNeyman/netductor/internal/paths"
 )
 
-var (
-	Bin     = env("NETDUCTOR_VPN_BIN", "/usr/local/bin/freshvps-vpn")
-	Clients = env("NETDUCTOR_CLIENTS", "/etc/freshvps/clients")
-	nameRe  = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$`)
-)
+var nameRe = regexp.MustCompile(`^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$`)
 
-func env(k, d string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return d
-}
+func Bin() string     { return paths.VPNBin() }
+func Clients() string { return paths.ClientsDir() }
 
 func ValidName(name string) bool {
 	return name != "" && nameRe.MatchString(name)
 }
 
 func run(args ...string) (string, error) {
-	out, err := exec.Command(Bin, args...).CombinedOutput()
+	out, err := exec.Command(Bin(), args...).CombinedOutput()
 	return string(out), err
 }
 
@@ -82,7 +76,7 @@ func Revoke(name string) (string, error)    { return run("revoke", name) }
 
 func ReadClient(name string, candidates ...string) (string, bool) {
 	for _, c := range candidates {
-		b, err := os.ReadFile(filepath.Join(Clients, name, c))
+		b, err := os.ReadFile(filepath.Join(Clients(), name, c))
 		if err == nil {
 			return strings.TrimSpace(string(b)), true
 		}
@@ -91,5 +85,5 @@ func ReadClient(name string, candidates ...string) (string, bool) {
 }
 
 func QRPath(name string) string {
-	return filepath.Join(Clients, name, "qr.png")
+	return filepath.Join(Clients(), name, "qr.png")
 }

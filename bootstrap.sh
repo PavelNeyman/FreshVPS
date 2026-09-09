@@ -1,23 +1,20 @@
 #!/usr/bin/env bash
-# FreshVPS bootstrap — no git required.
+# Netductor bootstrap — no git required (legacy name: FreshVPS).
 #
-# Prefer:
-#   curl -fsSL .../bootstrap.sh -o /tmp/fv.sh && sudo bash /tmp/fv.sh
-# Also works:
-#   curl -fsSL .../bootstrap.sh | sudo bash
+#   curl -fsSL .../bootstrap.sh -o /tmp/nd.sh && sudo bash /tmp/nd.sh
 #
 set -euo pipefail
 
-REF="${FRESHVPS_REF:-main}"
-REPO="PavelNeyman/FreshVPS"
-TARBALL_URL="${FRESHVPS_TARBALL_URL:-https://codeload.github.com/${REPO}/tar.gz/refs/heads/${REF}}"
+REF="${NETDUCTOR_REF:-${FRESHVPS_REF:-main}}"
+REPO="${NETDUCTOR_REPO:-PavelNeyman/netductor}"
+TARBALL_URL="${NETDUCTOR_TARBALL_URL:-${FRESHVPS_TARBALL_URL:-https://codeload.github.com/${REPO}/tar.gz/refs/heads/${REF}}}"
 MODE=""
 EXTRA=()
 KEEP=0
 
 usage() {
   cat <<'EOF'
-FreshVPS bootstrap
+Netductor bootstrap
 
   --mode auto|vps|edge-client|openwrt|plan
   --ref REF | --dir DIR | --keep
@@ -70,21 +67,6 @@ detect_mode() {
   esac
 }
 
-# If we were started via curl|bash, $0 is not a real file — materialize once.
-ensure_real_script() {
-  local self="${BASH_SOURCE[0]:-$0}"
-  if [[ -f "${self}" && -r "${self}" && "${self}" != "-" && "${self}" != "bash" ]]; then
-    echo "${self}"
-    return
-  fi
-  local copy
-  copy="$(mktemp /tmp/freshvps-bootstrap.XXXXXX)"
-  cat >"${copy}"
-  chmod 700 "${copy}"
-  echo "${copy}"
-}
-
-# Only the tree path goes to stdout (captured by callers). Logs → stderr.
 fetch_tree() {
   local dest="$1" top tmp
   need_cmd curl; need_cmd tar
@@ -105,40 +87,39 @@ fetch_tree() {
   rm -f "${tmp}"
   top="$(find "${dest}" -mindepth 1 -maxdepth 1 -type d | head -1)"
   if [[ -z "${top}" || ! -d "${top}" ]]; then
-    echo "[bootstrap] empty or invalid tarball extract under ${dest}" >&2
+    echo "[bootstrap] empty or invalid tarball under ${dest}" >&2
     exit 1
   fi
   printf '%s\n' "${top}"
 }
 
 main() {
-  local mode work root script_path
+  local mode work root
   mode="$(detect_mode)"
-  echo "[bootstrap] mode=${mode}"
+  echo "[bootstrap] mode=${mode} repo=${REPO}"
 
   if [[ -f /var/lib/freshvps/installed_version ]]; then
     echo "[bootstrap] existing install: $(cat /var/lib/freshvps/installed_version)"
   fi
 
   if [[ "${mode}" == "plan" ]]; then
-    work="${FRESHVPS_DIR:-$(mktemp -d /tmp/freshvps-plan.XXXXXX)}"
+    work="${FRESHVPS_DIR:-$(mktemp -d /tmp/netductor-plan.XXXXXX)}"
     root="$(fetch_tree "${work}")"
     echo "[bootstrap] plan tree: ${root}"
     if [[ -f "${root}/scripts/plan.sh" ]]; then
       bash "${root}/scripts/plan.sh" "${root}"
     else
-      echo "Tree at ${root} — see docs/BOOTSTRAP.md"
+      echo "Tree at ${root} — see docs/"
     fi
     exit 0
   fi
 
   if [[ "$(id -u)" -ne 0 ]]; then
     echo "[bootstrap] need root for mode=${mode}"
-    echo "  curl -fsSL .../bootstrap.sh -o /tmp/fv.sh && sudo bash /tmp/fv.sh --mode ${mode} ..."
     exit 1
   fi
 
-  work="${FRESHVPS_DIR:-$(mktemp -d /tmp/freshvps.XXXXXX)}"
+  work="${FRESHVPS_DIR:-$(mktemp -d /tmp/netductor.XXXXXX)}"
   root="$(fetch_tree "${work}")"
   cd "${root}"
 

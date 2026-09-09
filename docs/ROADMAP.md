@@ -1,21 +1,38 @@
-# FreshVPS Roadmap
+# Netductor Roadmap
 
-## Done (0.5.x)
+Former name: FreshVPS.
 
-- Built-in Admin UI (no Kuma/Beszel by default; no Prometheus)
-- Metrics JSONL + probes (TCP/UDP/HTTP) + TG alerts/recovery
-- Multi-user VPN, Telegram bot (menus, cards), API session
-- OpenSOHO optional; OpenWrt role separate
+## Done (FreshVPS 0.5.x–0.6.x)
 
-## Next
+- Admin UI + metrics/probes + TG alerts (no Prometheus; Kuma/Beszel off by default)
+- Multi-user VPN (VLESS+HY2), Telegram bot, API sessions
+- Edge hub + OpenWrt shell agent (MVP), `api-bind`, optional OpenSOHO
+- Release: `freshvps-tg` linux amd64/arm64
 
-1. Optional: Mini App shell pointing at same Admin UI (needs HTTPS + public/VPN URL)
-2. Optional: per-user traffic (sing-box stats / access logs)
-3. OpenWrt physical devices + multi-site
-4. Release binaries for `freshvps-tg` in GitHub Releases
-5. Human + AI test plans on clean VPS after each minor
+## Phase G — Netductor + Go orchestrator (active)
+
+**Name fixed: Netductor.** Parallel Go migration; bash remains until replaced.
+
+| Step | Deliverable |
+|------|-------------|
+| G0 | AGENTS.md 2.0, ARCHITECTURE.md (EN+RU), this roadmap |
+| G1 | `cmd/netductor` scaffold: `version`, `doctor` (bridge), `vpn list` via existing CLI |
+| G2 | Compat: `netductor` binary in Releases; wrappers/`freshvps-*` still work |
+| G3 | `netductor serve` — port API from Python to Go (Admin embed) |
+| G4 | `netductor install/upgrade` — planes host→vpn→dns→core→edge |
+| G5 | `cmd/netductor-agent` replace shell agent |
+| G6 | Rename TG bot package/strings; optional GitHub repo rename |
+| G7 | Cut over paths `/opt/netductor`; deprecate bash modules |
+
+## Later
+
+- Mini App (needs HTTPS/domain or tunnel)
+- Per-user traffic stats
+- Multi-site OpenWrt hardening of agent allowlist
+- Cloudflare Tunnel module as documented extra
 
 ## Out of scope (for now)
 
-- Full Prometheus/Grafana stack
-- Embedding OpenSOHO into Admin UI
+- Prometheus/Grafana
+- Full OpenWISP/OpenSOHO feature parity inside Admin
+- Multi-tenant SaaS

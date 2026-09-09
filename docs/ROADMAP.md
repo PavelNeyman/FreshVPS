@@ -1,8 +1,18 @@
 # Netductor Roadmap
 
-| Step | Status |
-|------|--------|
-| G0–G6 | done |
-| G7 paths | **done** — dual layout + `internal/paths` + symlinks |
+## Phase G — complete
 
-See [MIGRATION-G7.md](MIGRATION-G7.md).
+G0–G7 done.
+
+## Cleanup (done)
+
+- Removed `cmd/freshvps-tg`
+- LEGACY markers on Python vpn-api + bash bot.sh
+- [DEPRECATED.md](DEPRECATED.md)
+
+## Next
+
+1. VPS smoke (parallel API + bot + agent)
+2. Optional Go metrics collector
+3. Port `freshvps-vpn` / doctor into `netductor`
+4. Full path cutover when ready

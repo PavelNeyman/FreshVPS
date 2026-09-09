@@ -54,3 +54,11 @@ See `edge/openwrt/INSTALL.md`.
 4. Agent `SERVER=https://your-hostname`  
 
 Admin and edge share the same tunnel origin; protect with tokens/sessions.
+
+## Reachability without Cloudflare
+
+```bash
+freshvps-vpn api-bind detect --ufw
+```
+
+Prefer Cloudflare Tunnel when you have a domain.

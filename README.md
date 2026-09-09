@@ -1,18 +1,19 @@
 # Netductor
 
-> Formerly **FreshVPS**. Repository name may still be `FreshVPS` during migration.
-
 Personal **network control plane** for a Debian VPS (+ OpenWrt edge): VPN, DNS, Admin, Telegram, outbound router agents.
 
-```bash
-# Current bootstrap (legacy entrypoint, still valid):
-curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh -o /tmp/fv.sh
-sudo bash /tmp/fv.sh
+Formerly **FreshVPS** (paths `/opt/freshvps`, `freshvps-*` still valid during migration).
 
-sudo freshvps-doctor
-sudo freshvps-vpn link operator
+```bash
+# Bootstrap (Debian VPS)
+curl -fsSL https://raw.githubusercontent.com/PavelNeyman/netductor/main/bootstrap.sh -o /tmp/nd.sh
+sudo bash /tmp/nd.sh
+
+# Or CLI from release
+curl -fsSL -o /usr/local/bin/netductor \
+  https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64
+chmod 755 /usr/local/bin/netductor
+netductor version
 ```
 
-**Direction:** single Go binary `netductor` from GitHub Releases (see [docs/ROADMAP.md](docs/ROADMAP.md) Phase G).
-
-**Docs:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/README.md](docs/README.md) · [docs/ru/README.md](docs/ru/README.md) · [AGENTS.md](AGENTS.md)
+**Docs:** [ARCHITECTURE](docs/ARCHITECTURE.md) · [ROADMAP](docs/ROADMAP.md) · [RELEASES](docs/RELEASES.md) · [AGENTS.md](AGENTS.md)

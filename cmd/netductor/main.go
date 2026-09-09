@@ -18,6 +18,7 @@ import (
 	"github.com/PavelNeyman/netductor/internal/metrics"
 	"github.com/PavelNeyman/netductor/internal/session"
 	"github.com/PavelNeyman/netductor/internal/vpn"
+	"github.com/PavelNeyman/netductor/internal/paths"
 	"github.com/PavelNeyman/netductor/internal/probes"
 )
 
@@ -164,22 +165,7 @@ func requireSession(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func adminRoot() string {
-	if v := os.Getenv("FRESHVPS_ADMIN_ROOT"); v != "" {
-		return v
-	}
-	if v := os.Getenv("NETDUCTOR_ADMIN_ROOT"); v != "" {
-		return v
-	}
-	for _, p := range []string{"/opt/freshvps/runtime/api/admin", "/opt/netductor/runtime/api/admin"} {
-		if st, err := os.Stat(p); err == nil && st.IsDir() {
-			return p
-		}
-	}
-	// repo path when developing
-	if st, err := os.Stat("runtime/api/admin"); err == nil && st.IsDir() {
-		return "runtime/api/admin"
-	}
-	return "/opt/freshvps/runtime/api/admin"
+	return paths.AdminRoot()
 }
 
 func runInstall(args []string) {

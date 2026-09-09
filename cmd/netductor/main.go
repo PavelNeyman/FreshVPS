@@ -10,10 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/PavelNeyman/netductor/internal/edge"
+	"github.com/PavelNeyman/netductor/internal/metrics"
+	"github.com/PavelNeyman/netductor/internal/session"
 )
 
 var version = "0.7.0-dev"
@@ -23,40 +26,41 @@ func main() {
 		printHelp()
 		os.Exit(0)
 	}
-	cmd := os.Args[1]
-	args := os.Args[2:]
-	switch cmd {
+	switch os.Args[1] {
 	case "version", "-v", "--version":
 		fmt.Printf("netductor %s\n", version)
 	case "help", "-h", "--help":
 		printHelp()
 	case "doctor":
-		runBridge(lookPath("freshvps-doctor", "netductor-doctor"), args)
+		runBridge(lookPath("freshvps-doctor"), os.Args[2:])
 	case "vpn":
-		if len(args) == 0 {
+		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "usage: netductor vpn ...")
 			os.Exit(2)
 		}
-		runBridge(lookPath("freshvps-vpn"), args)
+		runBridge(lookPath("freshvps-vpn"), os.Args[2:])
 	case "edge":
-		runEdgeCLI(args)
+		runEdgeCLI(os.Args[2:])
 	case "status":
 		runStatus()
 	case "serve":
-		runServe(args)
+		runServe(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
-		printHelp()
+		fmt.Fprintf(os.Stderr, "unknown: %s\n", os.Args[1])
 		os.Exit(1)
 	}
 }
 
 func printHelp() {
-	fmt.Print(`netductor — personal network control plane
+	fmt.Print(`netductor — network control plane
 
-Commands: version | doctor | status | vpn | edge | serve | help
+  version | doctor | status | vpn | edge | serve | help
 
-  serve [--bind] [--port] [--legacy URL] [--no-proxy]
+serve:
+  --bind ADDR   (default 127.0.0.1)
+  --port PORT   (default 8790; use 8787 to replace Python)
+  --legacy URL  (default http://127.0.0.1:8787)
+  --no-proxy
 `)
 }
 
@@ -65,10 +69,10 @@ func lookPath(names ...string) string {
 		if p, err := exec.LookPath(n); err == nil {
 			return p
 		}
-		for _, dir := range []string{"/usr/local/bin", "/opt/freshvps/bin", "/opt/netductor/bin"} {
-			cand := filepath.Join(dir, n)
-			if st, err := os.Stat(cand); err == nil && !st.IsDir() {
-				return cand
+		for _, d := range []string{"/usr/local/bin", "/opt/freshvps/bin", "/opt/netductor/bin"} {
+			c := filepath.Join(d, n)
+			if st, err := os.Stat(c); err == nil && !st.IsDir() {
+				return c
 			}
 		}
 	}
@@ -77,7 +81,7 @@ func lookPath(names ...string) string {
 
 func runBridge(bin string, args []string) {
 	if bin == "" {
-		fmt.Fprintln(os.Stderr, "command not found (install stack or wait for native implementation)")
+		fmt.Fprintln(os.Stderr, "binary not found")
 		os.Exit(1)
 	}
 	c := exec.Command(bin, args...)
@@ -95,29 +99,22 @@ func runEdgeCLI(args []string) {
 		fmt.Fprintln(os.Stderr, "usage: netductor edge list|cmd ...")
 		os.Exit(2)
 	}
-	bin := lookPath("freshvps-vpn")
-	if bin == "" {
-		// native list
-		if args[0] == "list" {
-			for _, d := range edge.ListDevices() {
-				b, _ := json.Marshal(d)
-				fmt.Println(string(b))
-			}
+	if args[0] == "list" {
+		if bin := lookPath("freshvps-vpn"); bin != "" {
+			runBridge(bin, []string{"edge-list"})
 			return
 		}
-		fmt.Fprintln(os.Stderr, "edge: freshvps-vpn not found")
-		os.Exit(1)
+		enc := json.NewEncoder(os.Stdout)
+		for _, d := range edge.ListDevices() {
+			_ = enc.Encode(d)
+		}
+		return
 	}
-	var vpnArgs []string
-	switch args[0] {
-	case "list":
-		vpnArgs = []string{"edge-list"}
-	case "cmd":
-		vpnArgs = append([]string{"edge-cmd"}, args[1:]...)
-	default:
-		os.Exit(2)
+	if args[0] == "cmd" {
+		runBridge(lookPath("freshvps-vpn"), append([]string{"edge-cmd"}, args[1:]...))
+		return
 	}
-	runBridge(bin, vpnArgs)
+	os.Exit(2)
 }
 
 func runStatus() {
@@ -147,9 +144,41 @@ func readJSON(r *http.Request) map[string]any {
 	return m
 }
 
+func bearer(r *http.Request) string {
+	return session.TokenFromAuth(r.Header.Get("Authorization"), r.Header.Get("Cookie"))
+}
+
+func requireSession(w http.ResponseWriter, r *http.Request) bool {
+	tok := bearer(r)
+	if !session.Valid(tok) {
+		writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+		return false
+	}
+	return true
+}
+
+func adminRoot() string {
+	if v := os.Getenv("FRESHVPS_ADMIN_ROOT"); v != "" {
+		return v
+	}
+	if v := os.Getenv("NETDUCTOR_ADMIN_ROOT"); v != "" {
+		return v
+	}
+	for _, p := range []string{"/opt/freshvps/runtime/api/admin", "/opt/netductor/runtime/api/admin"} {
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return p
+		}
+	}
+	// repo path when developing
+	if st, err := os.Stat("runtime/api/admin"); err == nil && st.IsDir() {
+		return "runtime/api/admin"
+	}
+	return "/opt/freshvps/runtime/api/admin"
+}
+
 func runServe(args []string) {
-	bind := envOr("NETDUCTOR_API_BIND", "127.0.0.1")
-	port := envOr("NETDUCTOR_API_PORT", "8790")
+	bind := envOr("NETDUCTOR_API_BIND", envOr("VPN_API_BIND", "127.0.0.1"))
+	port := envOr("NETDUCTOR_API_PORT", envOr("VPN_API_PORT", "8790"))
 	legacy := envOr("NETDUCTOR_LEGACY_API", "http://127.0.0.1:8787")
 	proxyOn := true
 	for i := 0; i < len(args); i++ {
@@ -169,20 +198,17 @@ func runServe(args []string) {
 		case "--no-proxy":
 			proxyOn = false
 		case "--help", "-h":
-			fmt.Println("netductor serve [--bind] [--port] [--legacy] [--no-proxy]")
+			printHelp()
 			return
 		}
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{
-			"ok": true, "service": "netductor", "version": version,
-			"time": time.Now().UTC().Format(time.RFC3339),
-		})
+		writeJSON(w, 200, map[string]any{"ok": true, "service": "netductor", "version": version, "time": time.Now().UTC().Format(time.RFC3339)})
 	})
 
-	// Native edge API (same storage as Python)
+	// --- edge (device token) ---
 	mux.HandleFunc("/api/edge/heartbeat", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, map[string]string{"error": "method"})
@@ -200,8 +226,7 @@ func runServe(args []string) {
 			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
 			return
 		}
-		did := r.URL.Query().Get("device_id")
-		writeJSON(w, 200, map[string]any{"commands": edge.PollCommands(did)})
+		writeJSON(w, 200, map[string]any{"commands": edge.PollCommands(r.URL.Query().Get("device_id"))})
 	})
 	mux.HandleFunc("/api/edge/cmd_result", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -216,22 +241,20 @@ func runServe(args []string) {
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("/api/edge/devices", func(w http.ResponseWriter, r *http.Request) {
-		// operator path: still require proxy/session via legacy for now if Authorization looks like session
-		// For migration: list is readable with edge token OR we list openly only on localhost — prefer edge token OR empty for local ops
-		auth := r.Header.Get("Authorization")
-		if edge.ValidBearer(auth) || strings.HasPrefix(auth, "Bearer ") {
-			writeJSON(w, 200, map[string]any{"devices": edge.ListDevices()})
+		tok := bearer(r)
+		if !edge.ValidBearer(r.Header.Get("Authorization")) && !session.Valid(tok) {
+			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
 			return
 		}
-		writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+		writeJSON(w, 200, map[string]any{"devices": edge.ListDevices()})
 	})
 	mux.HandleFunc("/api/edge/cmd", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, map[string]string{"error": "method"})
 			return
 		}
-		auth := r.Header.Get("Authorization")
-		if !edge.ValidBearer(auth) && !strings.HasPrefix(auth, "Bearer ") {
+		tok := bearer(r)
+		if !edge.ValidBearer(r.Header.Get("Authorization")) && !session.Valid(tok) {
 			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
 			return
 		}
@@ -243,10 +266,52 @@ func runServe(args []string) {
 			writeJSON(w, 400, map[string]string{"error": "device_id and action required"})
 			return
 		}
-		id := edge.EnqueueCmd(did, action, arg)
-		writeJSON(w, 200, map[string]any{"ok": true, "id": id})
+		writeJSON(w, 200, map[string]any{"ok": true, "id": edge.EnqueueCmd(did, action, arg)})
 	})
 
+	// --- operator session ---
+	mux.HandleFunc("/api/session", func(w http.ResponseWriter, r *http.Request) {
+		tok := bearer(r)
+		exp, ok := session.Expiry(tok)
+		if !ok {
+			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "expires_unix": exp})
+	})
+	mux.HandleFunc("/api/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		writeJSON(w, 200, metrics.Collect())
+	})
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		writeJSON(w, 200, metrics.Collect())
+	})
+	mux.HandleFunc("/api/metrics/history", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		limit := 180
+		if s := r.URL.Query().Get("limit"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil {
+				limit = n
+			}
+		}
+		writeJSON(w, 200, map[string]any{"points": metrics.History(limit)})
+	})
+
+	// --- Admin SPA ---
+	root := adminRoot()
+	mux.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/", http.StatusFound)
+	})
+	mux.Handle("/admin/", http.StripPrefix("/admin/", http.FileServer(http.Dir(root))))
+
+	// --- legacy proxy for remaining API ---
 	if proxyOn {
 		u, err := url.Parse(legacy)
 		if err != nil {
@@ -258,7 +323,10 @@ func runServe(args []string) {
 			writeJSON(w, 502, map[string]string{"error": "legacy_api_unreachable", "detail": e.Error()})
 		}
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, "/api/edge/") || r.URL.Path == "/health" {
+			p := r.URL.Path
+			if p == "/health" || strings.HasPrefix(p, "/api/edge/") || p == "/api/session" ||
+				p == "/api/metrics" || p == "/api/metrics/history" || p == "/metrics" ||
+				strings.HasPrefix(p, "/admin") {
 				http.NotFound(w, r)
 				return
 			}
@@ -267,7 +335,7 @@ func runServe(args []string) {
 	}
 
 	addr := bind + ":" + port
-	fmt.Fprintf(os.Stderr, "netductor serve on http://%s (edge native, legacy proxy %v → %s)\n", addr, proxyOn, legacy)
+	fmt.Fprintf(os.Stderr, "netductor serve on http://%s admin=%s proxy=%v→%s\n", addr, root, proxyOn, legacy)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

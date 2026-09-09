@@ -47,6 +47,8 @@ func main() {
 		runStatus()
 	case "install":
 		runInstall(os.Args[2:])
+	case "probe":
+		runProbe(os.Args[2:])
 	case "serve":
 		runServe(os.Args[2:])
 	default:
@@ -58,7 +60,7 @@ func main() {
 func printHelp() {
 	fmt.Print(`netductor — network control plane
 
-  version | doctor | status | vpn | edge | serve | install | help
+  version | doctor | status | vpn | edge | serve | install | probe | help
 
 serve:
   --bind ADDR   (default 127.0.0.1)
@@ -201,6 +203,23 @@ func runInstall(args []string) {
 		if ee, ok := err.(*exec.ExitError); ok {
 			os.Exit(ee.ExitCode())
 		}
+		os.Exit(1)
+	}
+}
+
+func runProbe(args []string) {
+	cfg := probes.Load()
+	results := probes.Run(cfg)
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(map[string]any{"probes": results})
+	fail := 0
+	for _, r := range results {
+		if ok, _ := r["ok"].(bool); !ok {
+			fail++
+		}
+	}
+	if fail > 0 {
 		os.Exit(1)
 	}
 }

@@ -43,7 +43,11 @@ module_default_healthy() {
       ;;
     blocky) unit_active blocky && [[ -x /usr/local/bin/blocky ]] ;;
     vpn-users) [[ -x /usr/local/bin/freshvps-vpn ]] && [[ -f /etc/freshvps/vpn-users.json ]] ;;
-    vpn-api) unit_active freshvps-api 2>/dev/null || return 1 ;;
+    netductor-api)
+    systemctl is-active --quiet netductor-api 2>/dev/null && return 0
+    return 1
+    ;;
+  vpn-api) unit_active freshvps-api 2>/dev/null || return 1 ;;
     opensoho) container_running opensoho || unit_active opensoho ;;
     kuma) container_running uptime-kuma ;;
     beszel) container_running beszel ;;

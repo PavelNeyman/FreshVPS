@@ -18,6 +18,7 @@ import (
 	"github.com/PavelNeyman/netductor/internal/metrics"
 	"github.com/PavelNeyman/netductor/internal/session"
 	"github.com/PavelNeyman/netductor/internal/vpn"
+	"github.com/PavelNeyman/netductor/internal/probes"
 )
 
 var version = "0.7.0-dev"
@@ -333,6 +334,67 @@ func runServe(args []string) {
 	})
 
 
+
+	mux.HandleFunc("/api/probes", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		writeJSON(w, 200, map[string]any{"probes": metrics.LatestProbes(), "config": probes.Load()})
+	})
+	mux.HandleFunc("/api/latest", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		writeJSON(w, 200, map[string]any{"metrics": metrics.Collect(), "probes": metrics.LatestProbes()})
+	})
+	mux.HandleFunc("/api/probes/uptime", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		limit := 1440
+		if s := r.URL.Query().Get("limit"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil {
+				limit = n
+			}
+		}
+		writeJSON(w, 200, map[string]any{"uptime": metrics.ProbeUptime(limit)})
+	})
+	mux.HandleFunc("/api/probes/config", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, 200, probes.Load())
+		case http.MethodPost, http.MethodPut:
+			cfg := readJSON(r)
+			if err := probes.Save(cfg); err != nil {
+				writeJSON(w, 500, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, 200, map[string]any{"ok": true})
+		default:
+			writeJSON(w, 405, map[string]string{"error": "method"})
+		}
+	})
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		m := metrics.Collect()
+		writeJSON(w, 200, map[string]any{
+			"ok": true, "service": "netductor", "version": version,
+			"metrics": m, "probes": metrics.LatestProbes(),
+		})
+	})
+	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		m := metrics.Collect()
+		writeJSON(w, 200, map[string]any{"ok": true, "metrics": m, "probes": metrics.LatestProbes()})
+	})
+
 	// --- VPN users (operator session) ---
 	mux.HandleFunc("/vpn/users", func(w http.ResponseWriter, r *http.Request) {
 		if !requireSession(w, r) {
@@ -456,6 +518,8 @@ func runServe(args []string) {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			p := r.URL.Path
 			if p == "/health" || strings.HasPrefix(p, "/api/edge/") || p == "/api/session" ||
+				p == "/api/probes" || p == "/api/probes/uptime" || p == "/api/probes/config" ||
+				p == "/api/latest" || p == "/api/status" || p == "/status" ||
 				p == "/api/metrics" || p == "/api/metrics/history" || p == "/metrics" ||
 				strings.HasPrefix(p, "/admin") || strings.HasPrefix(p, "/vpn/") {
 				http.NotFound(w, r)

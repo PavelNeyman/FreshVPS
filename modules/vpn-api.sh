@@ -15,6 +15,9 @@ module_vpn_api_install() {
   printf '%s\n' "${port}" >"${FRESHVPS_ETC}/api_port"
 
   install -m 755 "${FRESHVPS_ROOT}/runtime/api/server.py" /opt/freshvps/runtime/api/server.py
+  if [[ -f "${FRESHVPS_ROOT}/runtime/api/edge_store.py" ]]; then
+    install -m 644 "${FRESHVPS_ROOT}/runtime/api/edge_store.py" /opt/freshvps/runtime/api/edge_store.py
+  fi
   mkdir -p /opt/freshvps/runtime/api/admin
   if [[ -d "${FRESHVPS_ROOT}/runtime/api/admin" ]]; then
     cp -a "${FRESHVPS_ROOT}/runtime/api/admin/." /opt/freshvps/runtime/api/admin/
@@ -33,8 +36,8 @@ open_ufw=0
 case "${arg}" in
   localhost|127.0.0.1) BIND=127.0.0.1 ;;
   detect)
-    BIND="$(ip -4 -o addr show scope global 2>/dev/null | awk '!/docker|br-|veth|virbr/ {print $4; exit}' | cut -d/ -f1 || true)"
-    [[ -n "${BIND}" ]] || BIND=127.0.0.1
+    # all interfaces (localhost + public) — auth still required
+    BIND=0.0.0.0
     ;;
   *) BIND="${arg}" ;;
 esac
@@ -64,8 +67,10 @@ After=network-online.target
 
 [Service]
 Type=simple
+WorkingDirectory=/opt/freshvps/runtime/api
 Environment=VPN_API_BIND=${bind}
 Environment=VPN_API_PORT=${port}
+Environment=PYTHONPATH=/opt/freshvps/runtime/api
 ExecStart=/usr/bin/python3 /opt/freshvps/runtime/api/server.py
 Restart=on-failure
 RestartSec=3

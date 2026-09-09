@@ -1,16 +1,29 @@
-# Roadmap FreshVPS (русский)
+# Roadmap Netductor
 
-**EN:** [../ROADMAP.md](../ROADMAP.md)
+Прежнее имя: FreshVPS. **EN:** [../ROADMAP.md](../ROADMAP.md)
 
-## Сделано (0.4.1)
+## Сделано (FreshVPS 0.5.x–0.6.x)
 
-- Greenfield bootstrap + модули + multi-user VPN + панели + TG + тесты
-- P0 после ревью: безопасный bootstrap, host smoke/doctor, API subscription, doctor при 0 users
-- Планы тестов: human + AI в `docs/`
+- Admin UI, метрики/пробы, алерты TG
+- Multi-user VPN, бот, session API
+- Edge hub + shell-агент OpenWrt
+- Release `freshvps-tg`
 
-## Дальше
+## Фаза G — Netductor + Go (активна)
 
-1. **Владелец:** пересоздать VPS, SSH-ключ, human plan (`TEST-PLAN-HUMAN.md`)
-2. **ИИ (по SSH):** фазы A–F в `TEST-PLAN-AI.md`
-3. Чинить FAIL по результатам smoke; при зелёном — тег `v0.4.1`
-4. Физический прогон OpenWrt; позже pin тегов образов
+Имя **Netductor** зафиксировано. Bash живёт, пока плоскость не перенесена в Go.
+
+| Шаг | Результат |
+|-----|-----------|
+| G0 | AGENTS 2.0, ARCHITECTURE, roadmap |
+| G1 | Каркас `cmd/netductor` |
+| G2 | Releases + compat `freshvps-*` |
+| G3 | `netductor serve` (API на Go) |
+| G4 | `install/upgrade` по planes |
+| G5 | `netductor-agent` |
+| G6 | TG / опционально rename репо |
+| G7 | `/opt/netductor`, deprecate bash |
+
+## Позже / вне скоупа
+
+Mini App, трафик per-user, полный паритет OpenSOHO, Prometheus — см. EN roadmap.

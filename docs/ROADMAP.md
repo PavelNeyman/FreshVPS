@@ -13,26 +13,19 @@ Former name: FreshVPS.
 
 **Name fixed: Netductor.** Parallel Go migration; bash remains until replaced.
 
-| Step | Deliverable |
-|------|-------------|
-| G0 | AGENTS.md 2.0, ARCHITECTURE.md (EN+RU), this roadmap |
-| G1 | `cmd/netductor` scaffold: `version`, `doctor` (bridge), `vpn list` via existing CLI |
-| G2 | Compat: `netductor` binary in Releases; wrappers/`freshvps-*` still work |
-| G3 | `netductor serve` — port API from Python to Go (Admin embed) |
-| G4 | `netductor install/upgrade` — planes host→vpn→dns→core→edge |
-| G5 | `cmd/netductor-agent` replace shell agent |
-| G6 | Rename TG bot package/strings; optional GitHub repo rename |
-| G7 | Cut over paths `/opt/netductor`; deprecate bash modules |
+| Step | Status | Deliverable |
+|------|--------|-------------|
+| G0 | **done** | AGENTS.md 2.0, ARCHITECTURE.md (EN+RU), roadmap |
+| G1 | **done** | `cmd/netductor` scaffold: version, doctor, vpn, edge, status |
+| G2 | next | `netductor` in GitHub Releases; `freshvps-*` still work |
+| G3 | | `netductor serve` — port API from Python to Go |
+| G4 | | `install/upgrade` by planes |
+| G5 | | `netductor-agent` |
+| G6 | | TG rename; **GitHub repo rename → netductor** (owner) |
+| G7 | | `/opt/netductor`; deprecate bash |
 
-## Later
+**Repo rename:** after **G2** (first `netductor` release assets published), not at G7.
 
-- Mini App (needs HTTPS/domain or tunnel)
-- Per-user traffic stats
-- Multi-site OpenWrt hardening of agent allowlist
-- Cloudflare Tunnel module as documented extra
+## Later / out of scope
 
-## Out of scope (for now)
-
-- Prometheus/Grafana
-- Full OpenWISP/OpenSOHO feature parity inside Admin
-- Multi-tenant SaaS
+Mini App, per-user traffic, Prometheus, full OpenSOHO parity — unchanged.

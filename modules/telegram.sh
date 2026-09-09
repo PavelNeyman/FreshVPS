@@ -1,65 +1,86 @@
 #!/usr/bin/env bash
-# Module: Telegram operator panel (Go bot)
+# Module: Telegram operator panel (Go bot — netductor-tg)
 # shellcheck disable=SC2154
 #
-# Binary resolution order:
-#   1) FRESHVPS_TG_BIN (path to already-built binary, e.g. scp from Mac)
-#   2) existing /opt/freshvps/bin/freshvps-tg
-#   3) ${FRESHVPS_ROOT}/dist/freshvps-tg-linux-$(arch_go)
-#   4) GitHub release asset for this VERSION (optional)
-#   5) go build on VPS
-#   6) bash bot.sh fallback
+# Binary resolution:
+#   1) FRESHVPS_TG_BIN / NETDUCTOR_TG_BIN
+#   2) /opt/freshvps/bin/netductor-tg or freshvps-tg
+#   3) dist/netductor-tg-linux-* or freshvps-tg-linux-*
+#   4) GitHub release (PavelNeyman/netductor)
+#   5) go build cmd/netductor-tg or cmd/freshvps-tg
+#   6) bash fallback
 
 _telegram_install_binary() {
-  local dest=/opt/freshvps/bin/freshvps-tg
+  local dest=/opt/freshvps/bin/netductor-tg
+  local legacy=/opt/freshvps/bin/freshvps-tg
   local arch src ver
   arch="$(arch_go)"
   mkdir -p /opt/freshvps/bin
 
-  if [[ -n "${FRESHVPS_TG_BIN:-}" && -f "${FRESHVPS_TG_BIN}" ]]; then
-    install -m 755 "${FRESHVPS_TG_BIN}" "${dest}"
-    info "Telegram bot: using FRESHVPS_TG_BIN=${FRESHVPS_TG_BIN}"
+  if [[ -n "${NETDUCTOR_TG_BIN:-${FRESHVPS_TG_BIN:-}}" && -f "${NETDUCTOR_TG_BIN:-${FRESHVPS_TG_BIN}}" ]]; then
+    local pre="${NETDUCTOR_TG_BIN:-${FRESHVPS_TG_BIN}}"
+    install -m 755 "${pre}" "${dest}"
+    ln -sfn "${dest}" "${legacy}"
+    info "Telegram bot: using prebuilt ${pre}"
     printf '%s\n' "${dest}"
     return 0
   fi
 
   if [[ -x "${dest}" ]]; then
-    info "Telegram bot: reusing existing ${dest}"
+    ln -sfn "${dest}" "${legacy}" 2>/dev/null || true
+    info "Telegram bot: reusing ${dest}"
     printf '%s\n' "${dest}"
     return 0
   fi
-
-  src="${FRESHVPS_ROOT}/dist/freshvps-tg-linux-${arch}"
-  if [[ -f "${src}" ]]; then
-    install -m 755 "${src}" "${dest}"
-    info "Telegram bot: installed prebuilt from dist/ (linux-${arch})"
-    printf '%s\n' "${dest}"
+  if [[ -x "${legacy}" ]]; then
+    info "Telegram bot: reusing legacy ${legacy}"
+    printf '%s\n' "${legacy}"
     return 0
   fi
 
-  ver="$(cat "${FRESHVPS_ROOT}/VERSION" 2>/dev/null || echo "")"
-  if [[ -n "${ver}" ]]; then
-    local url="https://github.com/PavelNeyman/FreshVPS/releases/download/v${ver}/freshvps-tg-linux-${arch}"
+  for src in \
+    "${FRESHVPS_ROOT}/dist/netductor-tg-linux-${arch}" \
+    "${FRESHVPS_ROOT}/dist/freshvps-tg-linux-${arch}"; do
+    if [[ -f "${src}" ]]; then
+      install -m 755 "${src}" "${dest}"
+      ln -sfn "${dest}" "${legacy}"
+      info "Telegram bot: installed from dist/ $(basename "${src}")"
+      printf '%s\n' "${dest}"
+      return 0
+    fi
+  done
+
+  ver="$(tr -d '[:space:]' <"${FRESHVPS_ROOT}/VERSION" 2>/dev/null || echo "0.7.0-dev")"
+  for name in "netductor-tg-linux-${arch}" "freshvps-tg-linux-${arch}"; do
+    local url="https://github.com/PavelNeyman/netductor/releases/download/v${ver}/${name}"
     if curl -fsSL "${url}" -o "${dest}.tmp" 2>/dev/null; then
       chmod 755 "${dest}.tmp"
       mv "${dest}.tmp" "${dest}"
-      info "Telegram bot: downloaded release v${ver} linux-${arch}"
+      ln -sfn "${dest}" "${legacy}"
+      info "Telegram bot: downloaded ${name}"
       printf '%s\n' "${dest}"
       return 0
     fi
     rm -f "${dest}.tmp"
-  fi
+  done
 
   if command -v go >/dev/null 2>&1 || pkg_install golang-go 2>/dev/null; then
-    info "Telegram bot: building with Go on VPS (slow)"
-    ( cd "${FRESHVPS_ROOT}/cmd/freshvps-tg" && go build -o "${dest}" -trimpath -ldflags='-s -w' . )
+    local srcdir
+    if [[ -d "${FRESHVPS_ROOT}/cmd/netductor-tg" ]]; then
+      srcdir="${FRESHVPS_ROOT}/cmd/netductor-tg"
+    else
+      srcdir="${FRESHVPS_ROOT}/cmd/freshvps-tg"
+    fi
+    info "Telegram bot: building ${srcdir}"
+    ( cd "${srcdir}" && go build -o "${dest}" -trimpath -ldflags='-s -w' . )
     chmod 755 "${dest}"
+    ln -sfn "${dest}" "${legacy}"
     printf '%s\n' "${dest}"
     return 0
   fi
 
   if [[ -f "${FRESHVPS_ROOT}/runtime/telegram/bot.sh" ]]; then
-    warn "Telegram bot: no prebuilt/Go — bash fallback"
+    warn "Telegram bot: bash fallback"
     printf '%s\n' /opt/freshvps/runtime/telegram/bot.sh
     return 0
   fi
@@ -89,9 +110,11 @@ module_telegram_install() {
   local bin
   bin="$(_telegram_install_binary)"
 
-  cat >/etc/systemd/system/freshvps-telegram-bot.service <<EOF
+  # Primary unit (new name) + legacy alias
+  for unit in netductor-telegram-bot freshvps-telegram-bot; do
+    cat >"/etc/systemd/system/${unit}.service" <<EOF
 [Unit]
-Description=FreshVPS Telegram operator bot
+Description=Netductor Telegram operator bot
 After=network-online.target
 
 [Service]
@@ -102,18 +125,3 @@ RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-EOF
-
-  if [[ -f "${FRESHVPS_ETC}/secrets/telegram_bot_token" && -f "${FRESHVPS_ETC}/secrets/telegram_admin_id" ]]; then
-    systemd_enable_start freshvps-telegram-bot
-    /opt/freshvps/runtime/telegram/notify.sh "FreshVPS: operator bot online on $(hostname)" || true
-  else
-    info "Telegram secrets incomplete — unit installed, not started"
-  fi
-}
-
-module_telegram_uninstall() {
-  systemctl disable --now freshvps-telegram-bot 2>/dev/null || true
-  rm -f /etc/systemd/system/freshvps-telegram-bot.service
-  systemctl daemon-reload 2>/dev/null || true
-}

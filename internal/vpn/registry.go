@@ -1,0 +1,306 @@
+package vpn
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/PavelNeyman/netductor/internal/paths"
+)
+
+type UserRecord struct {
+	Name        string `json:"name"`
+	UUID        string `json:"uuid"`
+	Hy2Password string `json:"hy2_password"`
+	Enabled     bool   `json:"enabled"`
+	Note        string `json:"note"`
+	Created     string `json:"created"`
+}
+
+type registry struct {
+	Users []UserRecord `json:"users"`
+}
+
+func usersFile() string {
+	return filepath.Join(paths.EtcDir(), "vpn-users.json")
+}
+
+func EnsureDirs() error {
+	etc := paths.EtcDir()
+	for _, d := range []string{
+		filepath.Join(etc, "secrets"),
+		Clients(),
+		filepath.Join(paths.EtcDir(), "sessions"),
+	} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(usersFile()); err != nil {
+		return writeRegistry(&registry{Users: []UserRecord{}})
+	}
+	return nil
+}
+
+func loadRegistry() (*registry, error) {
+	_ = EnsureDirs()
+	b, err := os.ReadFile(usersFile())
+	if err != nil {
+		return &registry{Users: []UserRecord{}}, nil
+	}
+	var r registry
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, err
+	}
+	if r.Users == nil {
+		r.Users = []UserRecord{}
+	}
+	return &r, nil
+}
+
+func writeRegistry(r *registry) error {
+	b, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := usersFile() + ".tmp"
+	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, usersFile())
+}
+
+func secret(name string) string {
+	b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "secrets", name))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+func publicIP() string {
+	if v := os.Getenv("PUBLIC_IP"); v != "" {
+		return v
+	}
+	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
+		return strings.TrimSpace(string(b))
+	}
+	out, err := exec.Command("curl", "-4", "-fsS", "--max-time", "5", "https://ifconfig.me").Output()
+	if err != nil {
+		return "YOUR_IP"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func sni() string {
+	if v := os.Getenv("SINGBOX_REALITY_SNI"); v != "" {
+		return v
+	}
+	return "www.cloudflare.com"
+}
+
+func vlessPort() int {
+	if v := os.Getenv("SINGBOX_VLESS_PORT"); v != "" {
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		if n > 0 {
+			return n
+		}
+	}
+	return 443
+}
+
+func hy2Port() int {
+	if v := os.Getenv("SINGBOX_HY2_PORT"); v != "" {
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		if n > 0 {
+			return n
+		}
+	}
+	return 8443
+}
+
+func genUUID() string {
+	if Bin() != "" {
+		if out, err := exec.Command(Bin(), "generate", "uuid").Output(); err == nil {
+			u := strings.TrimSpace(string(out))
+			if u != "" {
+				return u
+			}
+		}
+	}
+	b, err := os.ReadFile("/proc/sys/kernel/random/uuid")
+	if err == nil {
+		return strings.TrimSpace(string(b))
+	}
+	var raw [16]byte
+	_, _ = rand.Read(raw[:])
+	raw[6] = (raw[6] & 0x0f) | 0x40
+	raw[8] = (raw[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", raw[0:4], raw[4:6], raw[6:8], raw[8:10], raw[10:16])
+}
+
+func genHy2Pass() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
+
+func VLESSLink(name, uuid string) string {
+	return fmt.Sprintf(
+		"vless://%s@%s:%d?encryption=none&flow=xtls-rprx-vision&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp#%s",
+		uuid, publicIP(), vlessPort(), sni(), secret("singbox_reality_public"), secret("singbox_short_id"), name,
+	)
+}
+
+func Hy2Link(name, pass string) string {
+	return fmt.Sprintf("hysteria2://%s@%s:%d?sni=%s&insecure=1#%s-hy2",
+		pass, publicIP(), hy2Port(), sni(), name)
+}
+
+func writeArtifacts(name, uuid, hy2pass string) error {
+	dir := filepath.Join(Clients(), name)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	vless := VLESSLink(name, uuid)
+	hy2 := Hy2Link(name, hy2pass)
+	sub := vless + "\n" + hy2 + "\n"
+	_ = os.WriteFile(filepath.Join(dir, "link-vless.txt"), []byte(vless+"\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "link-hy2.txt"), []byte(hy2+"\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "subscription.txt"), []byte(sub), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "link.txt"), []byte(vless+"\n"), 0o600)
+	// base64 sub optional skip for simplicity or simple std encoding
+	if _, err := exec.LookPath("qrencode"); err == nil {
+		_ = exec.Command("qrencode", "-o", filepath.Join(dir, "qr.png"), "-t", "PNG", vless).Run()
+		_ = exec.Command("qrencode", "-o", filepath.Join(dir, "qr-subscription.png"), "-t", "PNG", sub).Run()
+	}
+	return nil
+}
+
+func findUser(r *registry, name string) *UserRecord {
+	for i := range r.Users {
+		if r.Users[i].Name == name {
+			return &r.Users[i]
+		}
+	}
+	return nil
+}
+
+func AddNative(name, note string) (string, error) {
+	if !ValidName(name) {
+		return "", fmt.Errorf("bad name")
+	}
+	r, err := loadRegistry()
+	if err != nil {
+		return "", err
+	}
+	if findUser(r, name) != nil {
+		return "", fmt.Errorf("user already exists: %s", name)
+	}
+	uuid := genUUID()
+	hy2 := genHy2Pass()
+	r.Users = append(r.Users, UserRecord{
+		Name: name, UUID: uuid, Hy2Password: hy2, Enabled: true, Note: note, Created: time.Now().Format(time.RFC3339),
+	})
+	if err := writeRegistry(r); err != nil {
+		return "", err
+	}
+	if err := writeArtifacts(name, uuid, hy2); err != nil {
+		return "", err
+	}
+	if err := ApplyConfig(); err != nil {
+		return name + " " + uuid, err
+	}
+	return name + " " + uuid, nil
+}
+
+func SetNoteNative(name, note string) error {
+	r, err := loadRegistry()
+	if err != nil {
+		return err
+	}
+	u := findUser(r, name)
+	if u == nil {
+		return fmt.Errorf("user not found: %s", name)
+	}
+	u.Note = note
+	return writeRegistry(r)
+}
+
+func SetEnabledNative(name string, enabled bool) error {
+	r, err := loadRegistry()
+	if err != nil {
+		return err
+	}
+	u := findUser(r, name)
+	if u == nil {
+		return fmt.Errorf("user not found: %s", name)
+	}
+	u.Enabled = enabled
+	if err := writeRegistry(r); err != nil {
+		return err
+	}
+	return ApplyConfig()
+}
+
+func RevokeNative(name string) error {
+	r, err := loadRegistry()
+	if err != nil {
+		return err
+	}
+	out := r.Users[:0]
+	found := false
+	for _, u := range r.Users {
+		if u.Name == name {
+			found = true
+			continue
+		}
+		out = append(out, u)
+	}
+	if !found {
+		return fmt.Errorf("user not found: %s", name)
+	}
+	r.Users = out
+	if err := writeRegistry(r); err != nil {
+		return err
+	}
+	_ = os.RemoveAll(filepath.Join(Clients(), name))
+	return ApplyConfig()
+}
+
+func ListNative() ([]User, error) {
+	r, err := loadRegistry()
+	if err != nil {
+		return nil, err
+	}
+	users := make([]User, 0, len(r.Users))
+	for _, u := range r.Users {
+		users = append(users, User{Name: u.Name, Enabled: u.Enabled, UUID: u.UUID, Note: u.Note, Created: u.Created})
+	}
+	return users, nil
+}
+
+func CreateSession(hours int) (token string, exp int64, err error) {
+	if hours <= 0 {
+		hours = 72
+	}
+	dir := filepath.Join(paths.EtcDir(), "sessions")
+	_ = os.MkdirAll(dir, 0o700)
+	var b [32]byte
+	_, _ = rand.Read(b[:])
+	token = hex.EncodeToString(b[:])
+	exp = time.Now().Unix() + int64(hours)*3600
+	path := filepath.Join(dir, token)
+	if err := os.WriteFile(path, []byte(fmt.Sprintf("%d\n", exp)), 0o600); err != nil {
+		return "", 0, err
+	}
+	return token, exp, nil
+}

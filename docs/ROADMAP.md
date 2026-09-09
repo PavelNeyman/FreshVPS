@@ -6,13 +6,21 @@ Repo: https://github.com/PavelNeyman/netductor
 
 | Step | Status |
 |------|--------|
-| G0 docs | done |
-| G1 CLI scaffold | done |
-| G2 release v0.7.0-dev | done |
-| G3 serve | in progress — `/health` + reverse-proxy to Python `:8787` |
+| G0–G2 | done (docs, CLI, release v0.7.0-dev) |
+| G3 serve | **in progress** — health, edge, session, metrics, admin static; proxy rest to Python |
 | G4 install | next |
 | G5 agent | |
 | G6 TG rename | |
 | G7 /opt/netductor | |
 
-Legacy `/opt/freshvps` until G7.
+### serve ownership
+
+| Path | Handler |
+|------|---------|
+| `/health` | Go |
+| `/api/edge/*` | Go |
+| `/api/session` | Go |
+| `/api/metrics*` | Go |
+| `/admin/*` | Go (files from admin root) |
+| other `/api/*` | proxy → Python :8787 |
+

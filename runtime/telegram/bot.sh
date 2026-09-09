@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# DEPRECATED: use netductor-tg (Go). Kept as emergency fallback only.
+#!/usr/bin/env bash
 # Operator-only long-poll bot
 set -euo pipefail
 TOKEN_FILE=/etc/freshvps/secrets/telegram_bot_token

@@ -9,12 +9,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PavelNeyman/netductor/internal/paths"
 )
 
-var (
-	Dir      = env("FRESHVPS_METRICS_DIR", "/var/lib/freshvps/metrics")
-	Services = []string{"sing-box", "blocky", "freshvps-api", "freshvps-telegram-bot", "netductor-api"}
-)
+var Services = []string{"sing-box", "blocky", "freshvps-api", "freshvps-telegram-bot", "netductor-api", "netductor-telegram-bot"}
+
+func Dir() string { return paths.MetricsDir() }
 
 func env(k, d string) string {
 	if v := os.Getenv(k); v != "" {
@@ -205,7 +206,7 @@ func History(limit int) []map[string]any {
 	if limit <= 0 {
 		limit = 180
 	}
-	path := filepath.Join(Dir, "history.jsonl")
+	path := filepath.Join(Dir(), "history.jsonl")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return []map[string]any{}

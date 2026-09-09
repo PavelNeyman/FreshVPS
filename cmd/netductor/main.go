@@ -17,6 +17,7 @@ import (
 	"github.com/PavelNeyman/netductor/internal/edge"
 	"github.com/PavelNeyman/netductor/internal/metrics"
 	"github.com/PavelNeyman/netductor/internal/session"
+	"github.com/PavelNeyman/netductor/internal/vpn"
 )
 
 var version = "0.7.0-dev"
@@ -43,6 +44,8 @@ func main() {
 		runEdgeCLI(os.Args[2:])
 	case "status":
 		runStatus()
+	case "install":
+		runInstall(os.Args[2:])
 	case "serve":
 		runServe(os.Args[2:])
 	default:
@@ -54,7 +57,7 @@ func main() {
 func printHelp() {
 	fmt.Print(`netductor — network control plane
 
-  version | doctor | status | vpn | edge | serve | help
+  version | doctor | status | vpn | edge | serve | install | help
 
 serve:
   --bind ADDR   (default 127.0.0.1)
@@ -174,6 +177,31 @@ func adminRoot() string {
 		return "runtime/api/admin"
 	}
 	return "/opt/freshvps/runtime/api/admin"
+}
+
+func runInstall(args []string) {
+	// G4 scaffold: bridge to legacy install.sh if present in cwd or /opt/freshvps
+	candidates := []string{"install.sh", "/opt/freshvps/install.sh", "/opt/netductor/install.sh"}
+	var script string
+	for _, c := range candidates {
+		if st, err := os.Stat(c); err == nil && !st.IsDir() {
+			script = c
+			break
+		}
+	}
+	if script == "" {
+		fmt.Fprintln(os.Stderr, "install.sh not found — clone repo or use bootstrap.sh")
+		os.Exit(1)
+	}
+	a := append([]string{script}, args...)
+	c := exec.Command("bash", a...)
+	c.Stdout, c.Stderr, c.Stdin = os.Stdout, os.Stderr, os.Stdin
+	if err := c.Run(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			os.Exit(ee.ExitCode())
+		}
+		os.Exit(1)
+	}
 }
 
 func runServe(args []string) {
@@ -304,6 +332,109 @@ func runServe(args []string) {
 		writeJSON(w, 200, map[string]any{"points": metrics.History(limit)})
 	})
 
+
+	// --- VPN users (operator session) ---
+	mux.HandleFunc("/vpn/users", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			users, err := vpn.List()
+			if err != nil {
+				writeJSON(w, 500, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, 200, map[string]any{"users": users})
+		case http.MethodPost:
+			body := readJSON(r)
+			name, _ := body["name"].(string)
+			note, _ := body["note"].(string)
+			name = strings.TrimSpace(name)
+			note = strings.TrimSpace(note)
+			if !vpn.ValidName(name) {
+				writeJSON(w, 400, map[string]string{"error": "bad name"})
+				return
+			}
+			out, err := vpn.Add(name, note)
+			if err != nil {
+				writeJSON(w, 500, map[string]string{"error": strings.TrimSpace(out)})
+				return
+			}
+			writeJSON(w, 200, map[string]any{"ok": true, "output": strings.TrimSpace(out), "name": name})
+		default:
+			writeJSON(w, 405, map[string]string{"error": "method"})
+		}
+	})
+	mux.HandleFunc("/vpn/users/", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/vpn/users/")
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) < 2 {
+			writeJSON(w, 404, map[string]string{"error": "not found"})
+			return
+		}
+		name, action := parts[0], parts[1]
+		if !vpn.ValidName(name) {
+			writeJSON(w, 400, map[string]string{"error": "bad name"})
+			return
+		}
+		switch {
+		case action == "qr" && r.Method == http.MethodGet:
+			qp := vpn.QRPath(name)
+			b, err := os.ReadFile(qp)
+			if err != nil {
+				writeJSON(w, 404, map[string]string{"error": "no qr"})
+				return
+			}
+			w.Header().Set("Content-Type", "image/png")
+			w.WriteHeader(200)
+			_, _ = w.Write(b)
+		case action == "link" && r.Method == http.MethodGet:
+			sub, ok := vpn.ReadClient(name, "subscription.txt", "link.txt")
+			if !ok {
+				writeJSON(w, 404, map[string]string{"error": "not found"})
+				return
+			}
+			vless, _ := vpn.ReadClient(name, "link-vless.txt", "link.txt")
+			hy2, _ := vpn.ReadClient(name, "link-hy2.txt")
+			writeJSON(w, 200, map[string]any{"name": name, "subscription": sub, "vless": vless, "hy2": hy2})
+		case action == "note" && r.Method == http.MethodPost:
+			note, _ := readJSON(r)["note"].(string)
+			out, err := vpn.Note(name, note)
+			if err != nil {
+				writeJSON(w, 500, map[string]string{"error": strings.TrimSpace(out)})
+				return
+			}
+			writeJSON(w, 200, map[string]any{"ok": true, "output": strings.TrimSpace(out)})
+		case action == "disable" && r.Method == http.MethodPost:
+			out, err := vpn.Disable(name)
+			if err != nil {
+				writeJSON(w, 500, map[string]string{"error": strings.TrimSpace(out)})
+				return
+			}
+			writeJSON(w, 200, map[string]any{"ok": true, "output": strings.TrimSpace(out)})
+		case action == "enable" && r.Method == http.MethodPost:
+			out, err := vpn.Enable(name)
+			if err != nil {
+				writeJSON(w, 500, map[string]string{"error": strings.TrimSpace(out)})
+				return
+			}
+			writeJSON(w, 200, map[string]any{"ok": true, "output": strings.TrimSpace(out)})
+		case action == "revoke" && r.Method == http.MethodPost:
+			out, err := vpn.Revoke(name)
+			if err != nil {
+				writeJSON(w, 500, map[string]string{"error": strings.TrimSpace(out)})
+				return
+			}
+			writeJSON(w, 200, map[string]any{"ok": true, "output": strings.TrimSpace(out)})
+		default:
+			writeJSON(w, 404, map[string]string{"error": "not found"})
+		}
+	})
+
 	// --- Admin SPA ---
 	root := adminRoot()
 	mux.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
@@ -326,7 +457,7 @@ func runServe(args []string) {
 			p := r.URL.Path
 			if p == "/health" || strings.HasPrefix(p, "/api/edge/") || p == "/api/session" ||
 				p == "/api/metrics" || p == "/api/metrics/history" || p == "/metrics" ||
-				strings.HasPrefix(p, "/admin") {
+				strings.HasPrefix(p, "/admin") || strings.HasPrefix(p, "/vpn/") {
 				http.NotFound(w, r)
 				return
 			}

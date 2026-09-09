@@ -1,14 +1,12 @@
 [Unit]
-Description=Netductor API (Go)
+Description=Netductor API (Go) parallel :8790
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-Environment=VPN_API_BIND=127.0.0.1
-Environment=VPN_API_PORT=8790
-Environment=NETDUCTOR_LEGACY_API=http://127.0.0.1:8787
 Environment=FRESHVPS_ADMIN_ROOT=/opt/freshvps/runtime/api/admin
+Environment=NETDUCTOR_LEGACY_API=http://127.0.0.1:8787
 ExecStart=/usr/local/bin/netductor serve --bind 127.0.0.1 --port 8790
 Restart=on-failure
 RestartSec=3

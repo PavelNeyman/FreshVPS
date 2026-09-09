@@ -35,7 +35,11 @@ func main() {
 	case "help", "-h", "--help":
 		printHelp()
 	case "doctor":
-		runBridge(lookPath("freshvps-doctor"), os.Args[2:])
+		if len(os.Args) > 2 && os.Args[2] == "--legacy" {
+			runBridge(lookPath("freshvps-doctor"), os.Args[3:])
+			return
+		}
+		os.Exit(runDoctorNative())
 	case "vpn":
 		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "usage: netductor vpn ...")
@@ -50,6 +54,8 @@ func main() {
 		runInstall(os.Args[2:])
 	case "probe":
 		runProbe(os.Args[2:])
+	case "collect":
+		os.Exit(runCollect())
 	case "serve":
 		runServe(os.Args[2:])
 	default:
@@ -61,7 +67,7 @@ func main() {
 func printHelp() {
 	fmt.Print(`netductor — network control plane
 
-  version | doctor | status | vpn | edge | serve | install | probe | help
+  version | doctor | status | vpn | edge | serve | install | probe | collect | help
 
 serve:
   --bind ADDR   (default 127.0.0.1)

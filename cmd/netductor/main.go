@@ -1,16 +1,16 @@
 // Netductor — network control plane CLI (orchestrator).
-// During migration this binary bridges to legacy FreshVPS tools where needed.
 package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
-// Set via -ldflags "-X main.version=..."
 var version = "0.7.0-dev"
 
 func main() {
@@ -33,6 +33,8 @@ func main() {
 		runEdge(args)
 	case "status":
 		runStatus()
+	case "serve":
+		runServe(args)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", cmd)
 		printHelp()
@@ -48,16 +50,14 @@ Usage:
 
 Commands:
   version          Print version
-  doctor           Run health checks (bridges to freshvps-doctor if present)
-  status           Short local status (systemd units if available)
-  vpn list         List VPN users
-  vpn <args...>    Pass through to freshvps-vpn
-  edge list        List edge agents
-  edge cmd ...     Enqueue edge command
+  doctor           Health checks (bridge to freshvps-doctor)
+  status           Short systemd status
+  vpn list|...     VPN users (bridge to freshvps-vpn)
+  edge list|cmd    Edge agents (bridge)
+  serve            HTTP API (Go; experimental)
   help             This help
 
 Legacy FreshVPS CLIs remain supported during migration.
-Docs: https://github.com/PavelNeyman/FreshVPS
 `)
 }
 
@@ -79,7 +79,7 @@ func lookPath(names ...string) string {
 func runDoctor(args []string) {
 	bin := lookPath("freshvps-doctor", "netductor-doctor")
 	if bin == "" {
-		fmt.Fprintln(os.Stderr, "doctor: freshvps-doctor not found; install stack first or wait for native doctor")
+		fmt.Fprintln(os.Stderr, "doctor: freshvps-doctor not found")
 		os.Exit(1)
 	}
 	c := exec.Command(bin, args...)
@@ -113,7 +113,7 @@ func runEdge(args []string) {
 	}
 	bin := lookPath("freshvps-vpn")
 	if bin == "" {
-		fmt.Fprintln(os.Stderr, "edge: freshvps-vpn not found (edge-list/cmd bridge)")
+		fmt.Fprintln(os.Stderr, "edge: freshvps-vpn not found")
 		os.Exit(1)
 	}
 	var vpnArgs []string
@@ -144,6 +144,48 @@ func runStatus() {
 		}
 		fmt.Printf("  %s: %s\n", u, st)
 	}
+}
+
+// runServe: G3 scaffold. Default :8790 so Python API can keep :8787 until cutover.
+func runServe(args []string) {
+	bind := envOr("NETDUCTOR_API_BIND", "127.0.0.1")
+	port := envOr("NETDUCTOR_API_PORT", "8790")
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--bind":
+			if i+1 < len(args) {
+				bind = args[i+1]
+				i++
+			}
+		case "--port":
+			if i+1 < len(args) {
+				port = args[i+1]
+				i++
+			}
+		case "--help", "-h":
+			fmt.Println("netductor serve [--bind ADDR] [--port PORT]\n")
+			fmt.Println("  Experimental Go API (health). Python still owns :8787 until cutover.\n")
+			return
+		}
+	}
+	addr := bind + ":" + port
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"ok":true,"service":"netductor","version":%q,"time":%q}`, version, time.Now().UTC().Format(time.RFC3339))
+	})
+	fmt.Fprintf(os.Stderr, "netductor serve listening on http://%s\n", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
 }
 
 func exitCode(err error) int {

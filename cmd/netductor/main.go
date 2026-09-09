@@ -105,25 +105,25 @@ func runBridge(bin string, args []string) {
 
 func runEdgeCLI(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: netductor edge list|cmd ...")
+		fmt.Fprintln(os.Stderr, "usage: netductor edge list|cmd <device_id> <action> [arg]")
 		os.Exit(2)
 	}
-	if args[0] == "list" {
-		if bin := lookPath("freshvps-vpn"); bin != "" {
-			runBridge(bin, []string{"edge-list"})
-			return
+	switch args[0] {
+	case "list":
+		runEdgeList()
+	case "cmd":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: netductor edge cmd <device_id> <action> [arg]")
+			os.Exit(2)
 		}
-		enc := json.NewEncoder(os.Stdout)
-		for _, d := range edge.ListDevices() {
-			_ = enc.Encode(d)
+		arg := ""
+		if len(args) > 3 {
+			arg = args[3]
 		}
-		return
+		fmt.Println(edge.EnqueueCmd(args[1], args[2], arg))
+	default:
+		os.Exit(2)
 	}
-	if args[0] == "cmd" {
-		runBridge(lookPath("freshvps-vpn"), append([]string{"edge-cmd"}, args[1:]...))
-		return
-	}
-	os.Exit(2)
 }
 
 func runStatus() {
@@ -324,12 +324,63 @@ func runVPN(args []string) {
 		}
 		fmt.Println(tok)
 		fmt.Fprintf(os.Stderr, "expires_unix=%d hours=%d\n", exp, hours)
-	case "edge-list", "edge-cmd":
-		// still bridge for edge if shell has extra
-		runBridge(lookPath("freshvps-vpn"), args)
+	case "edge-list":
+		runEdgeList()
+	case "edge-cmd":
+		if len(rest) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: netductor vpn edge-cmd <device_id> <action> [arg]")
+			os.Exit(2)
+		}
+		arg := ""
+		if len(rest) > 2 {
+			arg = rest[2]
+		}
+		id := edge.EnqueueCmd(rest[0], rest[1], arg)
+		fmt.Println(id)
+	case "api-bind":
+		mode := "localhost"
+		ufw := false
+		for _, a := range rest {
+			if a == "--ufw" {
+				ufw = true
+				continue
+			}
+			mode = a
+		}
+		if err := vpn.APIBind(mode, ufw); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	default:
-		// unknown: try legacy binary
 		runBridge(lookPath("freshvps-vpn"), args)
+	}
+}
+
+func runEdgeList() {
+	now := time.Now().Unix()
+	devs := edge.ListDevices()
+	// sort by last_seen desc roughly
+	for _, d := range devs {
+		did, _ := d["device_id"].(string)
+		var last int64
+		switch v := d["last_seen"].(type) {
+		case float64:
+			last = int64(v)
+		case int64:
+			last = v
+		}
+		st := "offline"
+		if healthy, _ := d["healthy"].(bool); healthy {
+			st = "online"
+		}
+		host, _ := d["hostname"].(string)
+		wan, _ := d["wan_ip"].(string)
+		board, _ := d["board"].(string)
+		age := now - last
+		if last == 0 {
+			age = -1
+		}
+		fmt.Printf("%s\t%s\t%ds\t%s\t%s\t%s\n", did, st, age, host, wan, board)
 	}
 }
 

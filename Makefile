@@ -1,0 +1,12 @@
+VERSION ?= 0.7.0-dev
+LDFLAGS := -s -w -X main.version=$(VERSION)
+
+.PHONY: netductor netductor-release
+netductor:
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/netductor ./cmd/netductor
+
+netductor-release:
+	mkdir -p dist
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/netductor-linux-amd64 ./cmd/netductor
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/netductor-linux-arm64 ./cmd/netductor
+	cd dist && sha256sum netductor-linux-* > SHA256SUMS-netductor

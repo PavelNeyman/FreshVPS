@@ -1,5 +1,4 @@
-# Build and publish netductor (+ legacy tg bot) on version tags.
-# Trigger: git tag v0.7.0 && git push origin v0.7.0
+# Build and publish netductor + netductor-tg + netductor-agent on version tags.
 name: Release netductor
 
 on:
@@ -28,10 +27,14 @@ jobs:
             -o dist/netductor-linux-amd64 ./cmd/netductor
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=${VER}" \
             -o dist/netductor-linux-arm64 ./cmd/netductor
-          if [ -d cmd/freshvps-tg ]; then
-            (cd cmd/freshvps-tg && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../../dist/freshvps-tg-linux-amd64 .)
-            (cd cmd/freshvps-tg && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o ../../dist/freshvps-tg-linux-arm64 .)
-          fi
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags "-s -w" \
+              -o dist/netductor-tg-linux-$arch ./cmd/netductor-tg
+          done
+          for arch in amd64 arm64 arm mipsle; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${VER}" \
+              -o dist/netductor-agent-linux-$arch ./cmd/netductor-agent || true
+          done
           cd dist && sha256sum * > SHA256SUMS
 
       - name: Create GitHub Release
@@ -39,23 +42,11 @@ jobs:
         with:
           draft: false
           prerelease: ${{ contains(github.ref_name, 'dev') || contains(github.ref_name, 'rc') }}
-          files: |
-            dist/netductor-linux-amd64
-            dist/netductor-linux-arm64
-            dist/freshvps-tg-linux-amd64
-            dist/freshvps-tg-linux-arm64
-            dist/SHA256SUMS
+          files: dist/*
           body: |
             ## Netductor ${{ github.ref_name }}
-
-            ### Binaries
-            - `netductor-linux-amd64` / `netductor-linux-arm64` — CLI orchestrator
-            - `freshvps-tg-linux-*` — Telegram bot (legacy name during migration)
-
-            ```bash
-            curl -fsSL -o netductor "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/netductor-linux-amd64"
-            chmod +x netductor
-            ./netductor version
-            ```
+            - `netductor-linux-*` — CLI / serve
+            - `netductor-tg-linux-*` — Telegram bot
+            - `netductor-agent-linux-*` — OpenWrt edge agent
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

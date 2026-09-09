@@ -4,28 +4,18 @@ Former name: FreshVPS.
 
 ## Done (FreshVPS 0.5.x–0.6.x)
 
-- Admin UI + metrics/probes + TG alerts (no Prometheus; Kuma/Beszel off by default)
-- Multi-user VPN (VLESS+HY2), Telegram bot, API sessions
-- Edge hub + OpenWrt shell agent (MVP), `api-bind`, optional OpenSOHO
-- Release: `freshvps-tg` linux amd64/arm64
+- Admin UI + metrics/probes + TG alerts
+- Multi-user VPN, Telegram, edge hub
+- Release: `freshvps-tg` (manual REST once)
 
-## Phase G — Netductor + Go orchestrator (active)
-
-**Name fixed: Netductor.** Parallel Go migration; bash remains until replaced.
+## Phase G — Netductor + Go (active)
 
 | Step | Status | Deliverable |
 |------|--------|-------------|
-| G0 | **done** | AGENTS.md 2.0, ARCHITECTURE.md (EN+RU), roadmap |
-| G1 | **done** | `cmd/netductor` scaffold: version, doctor, vpn, edge, status |
-| G2 | next | `netductor` in GitHub Releases; `freshvps-*` still work |
-| G3 | | `netductor serve` — port API from Python to Go |
-| G4 | | `install/upgrade` by planes |
-| G5 | | `netductor-agent` |
-| G6 | | TG rename; **GitHub repo rename → netductor** (owner) |
-| G7 | | `/opt/netductor`; deprecate bash |
+| G0 | **done** | AGENTS 2.0, ARCHITECTURE, roadmap |
+| G1 | **done** | `cmd/netductor` CLI scaffold |
+| G2 | **CI ready** | Workflow `release-netductor.yml` on `v*` tags; docs/RELEASES.md. **Owner:** `git tag v0.7.0-dev && git push origin v0.7.0-dev` then rename repo when assets appear |
+| G3 | **started** | `netductor serve` → `:8790/health` only; Python still on `:8787` |
+| G4–G7 | | install, agent, TG, `/opt/netductor` |
 
-**Repo rename:** after **G2** (first `netductor` release assets published), not at G7.
-
-## Later / out of scope
-
-Mini App, per-user traffic, Prometheus, full OpenSOHO parity — unchanged.
+**Repo rename:** after first successful tag release (G2 assets live).

@@ -8,27 +8,18 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/PavelNeyman/netductor/internal/paths"
 )
 
-var (
-	mu       sync.Mutex
-	EdgeDir  = env("FRESHVPS_EDGE_DIR", "/var/lib/freshvps/edge")
-	TokenFile = env("NETDUCTOR_EDGE_TOKEN_FILE", "/etc/freshvps/secrets/edge_token")
-)
-
-func env(k, d string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return d
-}
+var mu sync.Mutex
 
 func ensure() error {
-	return os.MkdirAll(EdgeDir, 0o700)
+	return os.MkdirAll(paths.EdgeDir(), 0o700)
 }
 
 func Token() string {
-	b, err := os.ReadFile(TokenFile)
+	b, err := os.ReadFile(paths.EdgeTokenFile())
 	if err != nil {
 		return ""
 	}
@@ -56,9 +47,9 @@ func ValidBearer(auth string) bool {
 
 type Device map[string]any
 
-func devicesPath() string { return filepath.Join(EdgeDir, "devices.json") }
-func commandsPath() string { return filepath.Join(EdgeDir, "commands.json") }
-func resultsPath() string { return filepath.Join(EdgeDir, "results.jsonl") }
+func devicesPath() string  { return filepath.Join(paths.EdgeDir(), "devices.json") }
+func commandsPath() string { return filepath.Join(paths.EdgeDir(), "commands.json") }
+func resultsPath() string  { return filepath.Join(paths.EdgeDir(), "results.jsonl") }
 
 func loadDevices() map[string]Device {
 	_ = ensure()

@@ -3,7 +3,10 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,7 +57,7 @@ Commands:
   status           Short systemd status
   vpn list|...     VPN users (bridge to freshvps-vpn)
   edge list|cmd    Edge agents (bridge)
-  serve            HTTP API (Go; experimental)
+  serve            HTTP API (Go; proxies legacy Python API)
   help             This help
 
 Legacy FreshVPS CLIs remain supported during migration.
@@ -146,10 +149,12 @@ func runStatus() {
 	}
 }
 
-// runServe: G3 scaffold. Default :8790 so Python API can keep :8787 until cutover.
+// runServe: G3 — Go front door. /health is native; everything else can proxy to legacy Python API.
 func runServe(args []string) {
 	bind := envOr("NETDUCTOR_API_BIND", "127.0.0.1")
 	port := envOr("NETDUCTOR_API_PORT", "8790")
+	legacy := envOr("NETDUCTOR_LEGACY_API", "http://127.0.0.1:8787")
+	proxyOn := true
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--bind":
@@ -162,9 +167,17 @@ func runServe(args []string) {
 				port = args[i+1]
 				i++
 			}
+		case "--legacy":
+			if i+1 < len(args) {
+				legacy = args[i+1]
+				i++
+			}
+		case "--no-proxy":
+			proxyOn = false
 		case "--help", "-h":
-			fmt.Println("netductor serve [--bind ADDR] [--port PORT]\n")
-			fmt.Println("  Experimental Go API (health). Python still owns :8787 until cutover.\n")
+			fmt.Println("netductor serve [--bind ADDR] [--port PORT] [--legacy URL] [--no-proxy]")
+			fmt.Println("  /health — native Go")
+			fmt.Println("  other paths — reverse-proxy to legacy Python API (default http://127.0.0.1:8787)")
 			return
 		}
 	}
@@ -174,7 +187,32 @@ func runServe(args []string) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"ok":true,"service":"netductor","version":%q,"time":%q}`, version, time.Now().UTC().Format(time.RFC3339))
 	})
-	fmt.Fprintf(os.Stderr, "netductor serve listening on http://%s\n", addr)
+	if proxyOn {
+		u, err := url.Parse(legacy)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "bad --legacy URL:", err)
+			os.Exit(1)
+		}
+		rp := httputil.NewSingleHostReverseProxy(u)
+		rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, e error) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprintf(w, `{"error":"legacy_api_unreachable","detail":%q,"legacy":%q}`, e.Error(), legacy)
+		}
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/health" {
+				return
+			}
+			rp.ServeHTTP(w, r)
+		})
+	} else {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			io.WriteString(w, `{"error":"not_implemented","hint":"enable proxy or use Python :8787"}`)
+		})
+	}
+	fmt.Fprintf(os.Stderr, "netductor serve on http://%s (legacy proxy %v → %s)\n", addr, proxyOn, legacy)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

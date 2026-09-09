@@ -8,6 +8,11 @@ FRESHVPS_ROOT="${FRESHVPS_ROOT:-}"
 FRESHVPS_STATE_DIR="${FRESHVPS_STATE_DIR:-/var/lib/freshvps}"
 FRESHVPS_ETC="${FRESHVPS_ETC:-/etc/freshvps}"
 FRESHVPS_LOG="${FRESHVPS_LOG:-/var/log/freshvps.log}"
+# G7: Netductor preferred names (default still legacy paths until full cutover)
+NETDUCTOR_ETC="${NETDUCTOR_ETC:-${FRESHVPS_ETC}}"
+NETDUCTOR_STATE="${NETDUCTOR_STATE:-${FRESHVPS_STATE_DIR}}"
+NETDUCTOR_ROOT="${NETDUCTOR_ROOT:-/opt/netductor}"
+NETDUCTOR_LOG="${NETDUCTOR_LOG:-/var/log/netductor.log}"
 
 log()  { printf '[%s] %s\n' "$(date -Iseconds)" "$*" | tee -a "${FRESHVPS_LOG}" 2>/dev/null || printf '[%s] %s\n' "$(date -Iseconds)" "$*"; }
 info() { log "INFO  $*"; }
@@ -30,6 +35,16 @@ require_debian() {
 ensure_dirs() {
   mkdir -p "${FRESHVPS_STATE_DIR}" "${FRESHVPS_ETC}" "${FRESHVPS_ETC}/secrets"
   chmod 700 "${FRESHVPS_ETC}/secrets"
+  # G7 dual layout: /opt/netductor → live tree when install root is /opt/freshvps
+  if [[ -d /opt/freshvps && ! -e /opt/netductor ]]; then
+    ln -sfn /opt/freshvps /opt/netductor
+  fi
+  if [[ -d /etc/freshvps && ! -e /etc/netductor ]]; then
+    ln -sfn /etc/freshvps /etc/netductor
+  fi
+  if [[ -d /var/lib/freshvps && ! -e /var/lib/netductor ]]; then
+    ln -sfn /var/lib/freshvps /var/lib/netductor
+  fi
 }
 
 apt_update_once() {

@@ -10,3 +10,12 @@ netductor-release:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/netductor-linux-amd64 ./cmd/netductor
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/netductor-linux-arm64 ./cmd/netductor
 	cd dist && sha256sum netductor-linux-* > SHA256SUMS-netductor
+
+
+.PHONY: agent-release
+agent-release:
+	mkdir -p dist
+	@for arch in amd64 arm64 arm mipsle; do \
+	  CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" \
+	    -o dist/netductor-agent-linux-$$arch ./cmd/netductor-agent; \
+	done

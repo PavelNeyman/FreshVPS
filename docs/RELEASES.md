@@ -1,34 +1,23 @@
 # Releases
 
+Repo: **https://github.com/PavelNeyman/netductor**
+
 ## How releases are published
 
-### Preferred (CI)
+### CI (preferred)
 
-1. Bump `VERSION` on `main`.
-2. Tag: `git tag v0.7.0 && git push origin v0.7.0`
-3. Workflow [`.github/workflows/release-netductor.yml`](../.github/workflows/release-netductor.yml) builds Linux amd64/arm64 and creates a GitHub Release with assets via **`GITHUB_TOKEN`** (Actions — not a personal PAT in chat).
+Tag `v*` → `.github/workflows/release-netductor.yml` → assets via `GITHUB_TOKEN`.
 
-### Manual / agent (REST API)
+### REST API
 
-When CI is not available:
+`POST /repos/PavelNeyman/netductor/releases` + upload assets (`contents: write`).
 
-1. `POST https://api.github.com/repos/{owner}/{repo}/releases` with JSON `{tag_name, name, body, prerelease}`.
-2. Upload each file to `upload_url` from the response:
-   `POST https://uploads.github.com/.../assets?name=netductor-linux-amd64`
-   headers: `Authorization: Bearer <token>`, `Content-Type: application/octet-stream`.
-
-Token needs **`contents: write`**. Same method was used earlier for `freshvps-tg` v0.5.7.
-
-The in-chat GitHub **connector** can edit files but **cannot** create releases or upload assets — use CI or PAT+REST.
-
-## Install CLI from a release
+## Install
 
 ```bash
-TAG=v0.7.0
+TAG=v0.7.0-dev
 curl -fsSL -o /usr/local/bin/netductor \
-  "https://github.com/PavelNeyman/FreshVPS/releases/download/${TAG}/netductor-linux-amd64"
+  "https://github.com/PavelNeyman/netductor/releases/download/${TAG}/netductor-linux-amd64"
 chmod 755 /usr/local/bin/netductor
 netductor version
 ```
-
-After the repository is renamed to `netductor`, update the URL path.

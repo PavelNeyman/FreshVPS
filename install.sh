@@ -13,7 +13,7 @@ source "${FRESHVPS_ROOT}/lib/prepare.sh"
 VERSION="$(cat "${FRESHVPS_ROOT}/VERSION" 2>/dev/null || echo 0.0.0)"
 
 ENABLE_HARDENING=1 ENABLE_SINGBOX=1 ENABLE_BLOCKY=1 ENABLE_VPN_USERS=1
-ENABLE_VPN_API=1 ENABLE_OPENSOHO=1 ENABLE_KUMA=0 ENABLE_BESZEL=0 ENABLE_METRICS=1
+ENABLE_VPN_API=1 ENABLE_OPENSOHO=1 ENABLE_KUMA=0 ENABLE_BESZEL=0 ENABLE_METRICS=1 ENABLE_EDGE_HUB=1
 ENABLE_TELEGRAM=1 ENABLE_BACKUP=1 ENABLE_LAMPAC=0 ENABLE_METRICS=1
 
 PUBLIC_IP="" SSH_PORT=22
@@ -103,6 +103,7 @@ pick_components_checklist() {
       telegram) ENABLE_TELEGRAM=1 ;;
       backup) ENABLE_BACKUP=1 ;;
       metrics) ENABLE_METRICS=1 ;;
+      edge_hub) ENABLE_EDGE_HUB=1 ;;
       lampac) ENABLE_LAMPAC=1 ;;
     esac
   done
@@ -220,6 +221,7 @@ run_install_modules() {
   [[ "${ENABLE_BLOCKY}" -eq 1 ]] && run_module_idempotent blocky
   [[ "${ENABLE_VPN_USERS}" -eq 1 && "${ENABLE_SINGBOX}" -eq 1 ]] && run_module_idempotent vpn-users
   [[ "${ENABLE_VPN_API}" -eq 1 ]] && run_module_idempotent vpn-api
+  [[ "${ENABLE_EDGE_HUB:-1}" -eq 1 && "${ENABLE_VPN_API}" -eq 1 ]] && run_module_idempotent edge-hub
   [[ "${ENABLE_OPENSOHO}" -eq 1 ]] && run_module_idempotent opensoho
   [[ "${ENABLE_KUMA}" -eq 1 ]] && run_module_idempotent kuma
   [[ "${ENABLE_BESZEL}" -eq 1 ]] && run_module_idempotent beszel

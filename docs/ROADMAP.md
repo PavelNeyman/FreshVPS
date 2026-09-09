@@ -1,14 +1,8 @@
 # Netductor Roadmap
 
-Repo: https://github.com/PavelNeyman/netductor
-
 | Step | Status |
 |------|--------|
-| G0–G2 | done |
-| G3 serve | mostly done |
-| G4 install | started (ENABLE_NETDUCTOR_API) |
-| G5 agent | **done** — `netductor-agent` (amd64/arm64/arm/mipsle) |
-| G6 TG rename | next |
-| G7 /opt/netductor | pending |
+| G0–G6 | done |
+| G7 paths | **done** — dual layout + `internal/paths` + symlinks |
 
-Agent install: [edge/openwrt/INSTALL.md](../edge/openwrt/INSTALL.md)
+See [MIGRATION-G7.md](MIGRATION-G7.md).

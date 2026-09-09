@@ -13,7 +13,7 @@ source "${FRESHVPS_ROOT}/lib/prepare.sh"
 VERSION="$(cat "${FRESHVPS_ROOT}/VERSION" 2>/dev/null || echo 0.0.0)"
 
 ENABLE_HARDENING=1 ENABLE_SINGBOX=1 ENABLE_BLOCKY=1 ENABLE_VPN_USERS=1
-ENABLE_VPN_API=1 ENABLE_OPENSOHO=1 ENABLE_KUMA=0 ENABLE_BESZEL=0 ENABLE_METRICS=1 ENABLE_EDGE_HUB=1
+ENABLE_VPN_API=1 ENABLE_NETDUCTOR_API=1 ENABLE_OPENSOHO=1 ENABLE_KUMA=0 ENABLE_BESZEL=0 ENABLE_METRICS=1 ENABLE_EDGE_HUB=1
 ENABLE_TELEGRAM=1 ENABLE_BACKUP=1 ENABLE_LAMPAC=0 ENABLE_METRICS=1
 
 PUBLIC_IP="" SSH_PORT=22
@@ -76,7 +76,8 @@ pick_components_checklist() {
     singbox "sing-box VLESS+Reality + HY2" 1 \
     blocky "Blocky DNS" 1 \
     vpn_users "Multi-user VPN CLI" 1 \
-    vpn_api "Admin API (session auth)" 1 \
+    vpn_api "Admin API Python (session auth)" 1 \
+    netductor_api "Netductor Go API (parallel :8790)" 1 \
     opensoho "OpenSOHO (needs Docker)" 1 \
     kuma "Uptime Kuma (optional Docker)" 0 \
     beszel "Beszel (optional Docker)" 0 \
@@ -87,7 +88,7 @@ pick_components_checklist() {
     )" || true
 
   ENABLE_HARDENING=0 ENABLE_SINGBOX=0 ENABLE_BLOCKY=0 ENABLE_VPN_USERS=0
-  ENABLE_VPN_API=0 ENABLE_OPENSOHO=0 ENABLE_KUMA=0 ENABLE_BESZEL=0
+  ENABLE_VPN_API=0 ENABLE_NETDUCTOR_API=0 ENABLE_OPENSOHO=0 ENABLE_KUMA=0 ENABLE_BESZEL=0
   ENABLE_TELEGRAM=0 ENABLE_BACKUP=0 ENABLE_LAMPAC=0 ENABLE_METRICS=0
 
   for item in ${result}; do
@@ -97,6 +98,7 @@ pick_components_checklist() {
       blocky) ENABLE_BLOCKY=1 ;;
       vpn_users) ENABLE_VPN_USERS=1 ;;
       vpn_api) ENABLE_VPN_API=1 ;;
+      netductor_api) ENABLE_NETDUCTOR_API=1 ;;
       opensoho) ENABLE_OPENSOHO=1 ;;
       kuma) ENABLE_KUMA=1 ;;
       beszel) ENABLE_BESZEL=1 ;;
@@ -221,6 +223,7 @@ run_install_modules() {
   [[ "${ENABLE_BLOCKY}" -eq 1 ]] && run_module_idempotent blocky
   [[ "${ENABLE_VPN_USERS}" -eq 1 && "${ENABLE_SINGBOX}" -eq 1 ]] && run_module_idempotent vpn-users
   [[ "${ENABLE_VPN_API}" -eq 1 ]] && run_module_idempotent vpn-api
+  [[ "${ENABLE_NETDUCTOR_API:-1}" -eq 1 ]] && run_module_idempotent netductor-api
   [[ "${ENABLE_EDGE_HUB:-1}" -eq 1 && "${ENABLE_VPN_API}" -eq 1 ]] && run_module_idempotent edge-hub
   [[ "${ENABLE_OPENSOHO}" -eq 1 ]] && run_module_idempotent opensoho
   [[ "${ENABLE_KUMA}" -eq 1 ]] && run_module_idempotent kuma

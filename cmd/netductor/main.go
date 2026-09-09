@@ -26,12 +26,19 @@ var version = "0.7.0-dev"
 
 func main() {
 	if len(os.Args) < 2 {
+		// interactive when terminal; else help
+		if fi, err := os.Stdin.Stat(); err == nil && (fi.Mode()&os.ModeCharDevice) != 0 {
+			runTUI(nil)
+			return
+		}
 		printHelp()
 		os.Exit(0)
 	}
 	switch os.Args[1] {
 	case "version", "-v", "--version":
 		fmt.Printf("netductor %s\n", version)
+	case "tui", "menu":
+		runTUI(os.Args[2:])
 	case "help", "-h", "--help":
 		printHelp()
 	case "doctor":
@@ -63,7 +70,9 @@ func main() {
 func printHelp() {
 	fmt.Print(`netductor — network control plane
 
-  version | doctor | status | vpn | edge | serve | install | probe | collect | help
+  tui|menu | version | doctor | status | vpn | edge | serve | install | probe | collect | help
+
+  (no args on a TTY → interactive menu)
 
 serve:
   --bind ADDR   (default 127.0.0.1)

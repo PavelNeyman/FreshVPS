@@ -1,151 +1,91 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="color-scheme" content="dark light" />
-  <title>Netductor Admin</title>
+  <meta name="color-scheme" content="dark" />
+  <title>Netductor</title>
   <link rel="stylesheet" href="/admin/style.css" />
 </head>
 <body>
   <div id="toast" class="toast hide"></div>
-  <div id="app">
-    <header class="top">
-      <div class="brand">Netductor</div>
-      <div id="host-line" class="muted"></div>
-      <div id="session-line" class="muted hide"></div>
-      <button type="button" id="btn-lang" class="ghost">RU/EN</button>
-      <button type="button" id="btn-logout" class="ghost hide">Logout</button>
-    </header>
+  <header class="top">
+    <div class="brand">Netductor</div>
+    <div id="host-line" class="muted"></div>
+    <button type="button" id="btn-lang" class="ghost">RU/EN</button>
+    <button type="button" id="btn-logout" class="ghost hide">Logout</button>
+  </header>
 
-    <section id="login" class="card">
-      <h1 id="t-login-title">Вход оператора</h1>
-      <p class="muted">Token: <code>netductor vpn session</code> or Telegram /session</p>
-      <label>Session token<input id="token" type="password" autocomplete="off" /></label>
-      <button type="button" id="btn-login" class="primary">Sign in</button>
-      <p id="login-err" class="err"></p>
+  <main id="login" class="card narrow">
+    <h1 data-i18n="login_title">Operator sign-in</h1>
+    <p class="muted" data-i18n="login_hint">Token from: netductor vpn session 72</p>
+    <label>Session token<input id="token" type="password" autocomplete="off" /></label>
+    <button type="button" id="btn-login" class="primary" data-i18n="sign_in">Sign in</button>
+    <p id="login-err" class="err"></p>
+  </main>
+
+  <main id="dash" class="hide">
+    <div id="probe-strip" class="strip"></div>
+    <nav class="tabs">
+      <button data-tab="overview" class="tab active">Overview</button>
+      <button data-tab="users" class="tab">VPN</button>
+      <button data-tab="metrics" class="tab">Metrics</button>
+      <button data-tab="routers" class="tab">Routers</button>
+      <button data-tab="probes" class="tab">Probes</button>
+    </nav>
+
+    <section id="tab-overview" class="tab-panel">
+      <div class="grid">
+        <div class="card metric"><div class="label">CPU</div><div id="m-cpu" class="value">—</div></div>
+        <div class="card metric"><div class="label">RAM</div><div id="m-ram" class="value">—</div></div>
+        <div class="card metric"><div class="label">Disk</div><div id="m-disk" class="value">—</div></div>
+        <div class="card metric"><div class="label">Load</div><div id="m-load" class="value">—</div></div>
+      </div>
+      <div class="grid two">
+        <div class="card metric"><div class="label">RX</div><div id="m-rx" class="value">—</div></div>
+        <div class="card metric"><div class="label">TX</div><div id="m-tx" class="value">—</div></div>
+      </div>
+      <p id="collector-warn" class="err hide">Collector stale</p>
     </section>
 
-    <section id="dash" class="hide">
-      <div id="probe-strip" class="strip card"></div>
-      <nav class="tabs">
-        <button data-tab="overview" class="tab active">Overview</button>
-        <button data-tab="users" class="tab">VPN</button>
-        <button data-tab="metrics" class="tab">Metrics</button>
-        <button data-tab="routers" class="tab">Routers</button>
-        <button data-tab="probes" class="tab">Probes</button>
-        <button data-tab="settings" class="tab">Settings</button>
-      </nav>
-
-      <div id="tab-overview" class="tab-panel">
-        <div class="grid">
-          <div class="card metric"><div class="label">CPU</div><div id="m-cpu" class="value">—</div></div>
-          <div class="card metric"><div class="label">RAM</div><div id="m-ram" class="value">—</div></div>
-          <div class="card metric"><div class="label">Disk</div><div id="m-disk" class="value">—</div></div>
-          <div class="card metric"><div class="label">Load</div><div id="m-load" class="value">—</div></div>
-        </div>
-        <div class="grid two">
-          <div class="card metric"><div class="label">Net RX</div><div id="m-rx" class="value">—</div></div>
-          <div class="card metric"><div class="label">Net TX</div><div id="m-tx" class="value">—</div></div>
-        </div>
-        <p id="collector-warn" class="err hide">Collector stale (&gt;3 min) — check netductor-metrics.timer</p>
-        <div class="card"><h2 id="t-services">Сервисы</h2><ul id="svc-list" class="list"></ul>
-          <h2 id="t-containers">Контейнеры</h2><ul id="ct-list" class="list"></ul></div>
+    <section id="tab-users" class="tab-panel hide">
+      <div class="row">
+        <input id="new-user" placeholder="name" />
+        <input id="new-note" placeholder="note" />
+        <button id="btn-add-user" class="primary">Add</button>
+        <button id="btn-refresh-users" class="ghost">Refresh</button>
       </div>
-
-      <div id="tab-users" class="tab-panel hide">
-        <div class="card row-actions">
-          <input id="user-filter" placeholder="Search…" />
-          <input id="new-name" placeholder="name" />
-          <input id="new-note" placeholder="note" />
-          <button type="button" id="btn-add" class="success">Add</button>
-          <button type="button" id="btn-refresh-users" class="ghost">Refresh</button>
+      <div class="card"><table class="table" id="users-table">
+        <thead><tr><th>Name</th><th>Status</th><th>Note</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div id="user-detail" class="card hide">
+        <h2 id="detail-title">User</h2>
+        <pre id="detail-sub" class="code"></pre>
+        <div class="row">
+          <button id="btn-copy-sub" class="primary">Copy subscription</button>
+          <button id="btn-copy-vless" class="ghost">VLESS</button>
+          <button id="btn-copy-hy2" class="ghost">HY2</button>
         </div>
-        <div class="card"><table class="table" id="users-table">
-          <thead><tr><th>Name</th><th>Status</th><th>Note</th><th>Actions</th></tr></thead>
-          <tbody></tbody>
-        </table></div>
-        <div id="user-detail" class="card hide">
-          <h2 id="detail-title">User</h2>
-          <label>Note<input id="detail-note" /></label>
-          <button type="button" id="btn-save-note" class="ghost">Save note</button>
-          <pre id="detail-sub" class="code"></pre>
-          <div class="row-actions">
-            <button type="button" id="btn-copy-sub" class="primary">Copy subscription</button>
-            <button type="button" id="btn-copy-vless" class="ghost">Copy VLESS</button>
-            <button type="button" id="btn-copy-hy2" class="ghost">Copy HY2</button>
-          </div>
-          <img id="detail-qr" class="qr hide" alt="QR" />
-        </div>
-      </div>
-
-      <div id="tab-metrics" class="tab-panel hide">
-        <div class="card">
-          <h2>CPU &amp; RAM</h2>
-          <canvas id="chart" width="900" height="240"></canvas>
-          <p class="muted">Blue CPU% · Green RAM% · last points</p>
-        </div>
-      </div>
-
-      
-      <div id="tab-routers" class="tab-panel hide">
-        <div class="row" style="margin-bottom:0.75rem">
-          <button type="button" id="btn-refresh-routers">Обновить</button>
-          <span class="muted" id="routers-hint">Агенты OpenWrt → /api/edge</span>
-        </div>
-        <div class="card"><table class="table" id="routers-table">
-          <thead><tr><th>ID</th><th>Host</th><th>Board</th><th>OpenWrt</th><th>WAN</th><th>Wi‑Fi</th><th>Status</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table></div>
-        <div class="card" style="margin-top:0.75rem">
-          <h3 id="t-router-cmd">Команда</h3>
-          <div class="row">
-            <input id="edge-device-id" placeholder="device_id" />
-            <select id="edge-action">
-              <option value="ping">ping</option>
-              <option value="uci_show">uci_show</option>
-              <option value="uci_get">uci_get</option>
-              <option value="wifi_reload">wifi_reload</option>
-              <option value="network_reload">network_reload</option>
-              <option value="logread">logread</option>
-              <option value="reboot">reboot</option>
-            </select>
-            <input id="edge-arg" placeholder="arg (uci path)" />
-            <button type="button" id="btn-edge-cmd" class="primary">Enqueue</button>
-          </div>
-          <pre id="edge-cmd-out" class="muted" style="margin-top:0.5rem"></pre>
-        </div>
-      </div>
-
-      <div id="tab-probes" class="tab-panel hide">
-        <div class="card">
-          <h2>Probes</h2>
-          <table class="table" id="probes-table">
-            <thead><tr><th>Name</th><th>OK</th><th>ms</th><th>24h uptime</th><th>Detail</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <button type="button" id="btn-refresh-probes" class="ghost">Refresh</button>
-        </div>
-      </div>
-
-      <div id="tab-settings" class="tab-panel hide">
-        <div class="card">
-          <h2>Alert thresholds</h2>
-          <p class="muted">Writes <code>/etc/netductor/probes.json</code></p>
-          <label>CPU % <input id="al-cpu" type="number" /></label>
-          <label>RAM % <input id="al-mem" type="number" /></label>
-          <label>Disk % <input id="al-disk" type="number" /></label>
-          <label>Cooldownoldown sec <input id="al-cd" type="number" /></label>
-          <label class="check"><input id="al-svc" type="checkbox" /> Alert on service down</label>
-          <label class="check"><input id="al-probe" type="checkbox" /> Alert on probe fail</label>
-          <button type="button" id="btn-save-alerts" class="primary">Save alerts</button>
-          <h2>Probes JSON</h2>
-          <textarea id="probes-json" rows="12" class="code-area"></textarea>
-          <button type="button" id="btn-save-probes" class="ghost">Save probes list</button>
-        </div>
+        <img id="detail-qr" class="qr hide" alt="QR" />
       </div>
     </section>
-  </div>
+
+    <section id="tab-metrics" class="tab-panel hide">
+      <div class="card"><pre id="metrics-raw" class="code">—</pre></div>
+    </section>
+
+    <section id="tab-routers" class="tab-panel hide">
+      <div class="card"><table class="table" id="routers-table">
+        <thead><tr><th>ID</th><th>Host</th><th>Seen</th><th>WAN</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </section>
+
+    <section id="tab-probes" class="tab-panel hide">
+      <div class="card"><pre id="probes-raw" class="code">—</pre></div>
+    </section>
+  </main>
   <script src="/admin/app.js"></script>
 </body>
 </html>

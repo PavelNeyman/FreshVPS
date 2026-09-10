@@ -13,12 +13,12 @@
 ## Установка
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh -o /tmp/fv.sh
+curl -fsSL https://raw.githubusercontent.com/PavelNeyman/Netductor/main/bootstrap.sh -o /tmp/fv.sh
 sudo bash /tmp/fv.sh
 # или: curl … | sudo bash
 ```
 
-4. [ ] Установка без hard error; `cat /etc/freshvps/READY.txt` показывает строки subscription.
+4. [ ] Установка без hard error; `cat /etc/netductor/READY.txt` показывает строки subscription.
 5. [ ] SSH по-прежнему работает (пароль отключается **только** если ключ сработал).
 
 ## VPN с реальных клиентов
@@ -31,7 +31,7 @@ sudo bash /tmp/fv.sh
 
 ## Сценарии оператора
 
-11. [ ] `sudo freshvps-vpn add alice` → отдать ей subscription вне бота → она подключается.
+11. [ ] `sudo netductor-vpn add alice` → отдать ей subscription вне бота → она подключается.
 12. [ ] `disable` / `enable` / `revoke` по необходимости.
 13. [ ] Telegram-бот (если включён): команды только с **вашего** аккаунта.
 14. [ ] Shortcuts + API (если пользуетесь): session, Face ID, только через VPN/туннель.
@@ -40,7 +40,7 @@ sudo bash /tmp/fv.sh
 
 15. [ ] `ssh -L 3001:127.0.0.1:3001 -L 8090:127.0.0.1:8090 -L 8091:127.0.0.1:8091 root@VPS`
 16. [ ] Kuma: один раз создать admin, опционально мониторы.
-17. [ ] OpenSOHO / Beszel: логин секретами из `/etc/freshvps/secrets/`.
+17. [ ] OpenSOHO / Beszel: логин секретами из `/etc/netductor/secrets/`.
 
 ## OpenWrt (физический роутер)
 
@@ -51,9 +51,9 @@ sudo bash /tmp/fv.sh
 ## Субъективно / политика
 
 21. [ ] Задержка и стриминг приемлемы для вашего города.
-22. [ ] `freshvps-tests --default` согласуется с ожиданиями по провайдеру.
+22. [ ] `netductor-tests --default` согласуется с ожиданиями по провайдеру.
 23. [ ] Решить, приемлем ли HY2 `insecure=1` для вашей модели угроз.
 
 ## Обратная связь
 
-Пришлите: хвост лога установки, вывод `freshvps-doctor`, имя VPN-клиента, любые FAIL — по ним можно править код.
+Пришлите: хвост лога установки, вывод `netductor-doctor`, имя VPN-клиента, любые FAIL — по ним можно править код.

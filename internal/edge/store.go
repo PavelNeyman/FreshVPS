@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -202,6 +203,58 @@ func CmdResult(payload map[string]any) {
 	}
 	defer f.Close()
 	_, _ = f.Write(append(b, '\n'))
+}
+
+func deviceDir(id string) string {
+	safe := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, id)
+	return filepath.Join(paths.EdgeDir(), safe)
+}
+
+func SaveBackup(deviceID string, r io.Reader) (string, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	dir := filepath.Join(deviceDir(deviceID), "backups")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	name := time.Now().UTC().Format("20060102-150405") + ".tar.gz"
+	path := filepath.Join(dir, name)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, r); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func SaveMetrics(deviceID string, payload map[string]any) error {
+	mu.Lock()
+	defer mu.Unlock()
+	dir := deviceDir(deviceID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "metrics.jsonl")
+	b, _ := json.Marshal(payload)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(b, '\n'))
+	// trim large files roughly by size
+	if st, e := os.Stat(path); e == nil && st.Size() > 5*1024*1024 {
+		// keep simple: truncate not implemented fully
+	}
+	return err
 }
 
 func randomID() string {

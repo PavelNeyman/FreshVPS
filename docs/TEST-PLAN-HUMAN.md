@@ -13,12 +13,12 @@ What an AI **cannot** do without your hands / devices / accounts. Do these after
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh -o /tmp/fv.sh
+curl -fsSL https://raw.githubusercontent.com/PavelNeyman/Netductor/main/bootstrap.sh -o /tmp/fv.sh
 sudo bash /tmp/fv.sh
 # or: curl … | sudo bash
 ```
 
-4. [ ] Install finishes without hard error; `cat /etc/freshvps/READY.txt` shows subscription lines.
+4. [ ] Install finishes without hard error; `cat /etc/netductor/READY.txt` shows subscription lines.
 5. [ ] Still can SSH in (password auth should be off **only if** key worked).
 
 ## VPN from real clients
@@ -31,7 +31,7 @@ sudo bash /tmp/fv.sh
 
 ## Operator flows you own
 
-11. [ ] `sudo freshvps-vpn add alice` → send her subscription out-of-band → she connects.
+11. [ ] `sudo netductor-vpn add alice` → send her subscription out-of-band → she connects.
 12. [ ] `disable` / `enable` / `revoke` as you intend.
 13. [ ] Telegram bot (if enabled): only **your** account can run commands.
 14. [ ] Shortcuts + API (if you use them): session token, Face ID gate, only over VPN/tunnel.
@@ -40,7 +40,7 @@ sudo bash /tmp/fv.sh
 
 15. [ ] `ssh -L 3001:127.0.0.1:3001 -L 8090:127.0.0.1:8090 -L 8091:127.0.0.1:8091 root@VPS`
 16. [ ] Kuma: create admin once, optional monitors.
-17. [ ] OpenSOHO / Beszel: login with secrets under `/etc/freshvps/secrets/`.
+17. [ ] OpenSOHO / Beszel: login with secrets under `/etc/netductor/secrets/`.
 
 ## OpenWrt (physical router)
 
@@ -51,9 +51,9 @@ sudo bash /tmp/fv.sh
 ## Subjective / policy
 
 21. [ ] Latency and streaming quality acceptable for your city.
-22. [ ] `freshvps-tests --default` results make sense vs provider expectations.
+22. [ ] `netductor-tests --default` results make sense vs provider expectations.
 23. [ ] Decide whether HY2 `insecure=1` is acceptable for your threat model.
 
 ## Report back
 
-Paste: install log tail, `freshvps-doctor` output, client app name, any FAIL lines. AI can then fix code.
+Paste: install log tail, `netductor-doctor` output, client app name, any FAIL lines. AI can then fix code.

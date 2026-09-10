@@ -1,13 +1,16 @@
-# Netductor Roadmap
+# Roadmap
 
 ## Done
-- Go control plane only (`install|serve|vpn|doctor|collect|tui`)
-- No FreshVPS path compatibility
-- No Python API; no shell modules in main
-- Hardening component; Telegram notify in Go
-- Edge = Go agent docs only
+- Go-only control plane
+- install + hardening + backup timer
+- TUI (Bubble Tea / Huh)
+- Edge agent (Go)
+- Telegram bot (Go)
 
-## Optional later
-- backup/cloudflared Go components
-- richer admin SPA
-- VPS smoke
+## Optional
+- Richer admin SPA / Mini App
+- backup encrypt + offsite
+- more edge commands (uci apply)
+
+## Tests
+- Human/VPS smoke when owner provides host

@@ -4,14 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
-  <title>FreshVPS Admin</title>
+  <title>Netductor Admin</title>
   <link rel="stylesheet" href="/admin/style.css" />
 </head>
 <body>
   <div id="toast" class="toast hide"></div>
   <div id="app">
     <header class="top">
-      <div class="brand">FreshVPS</div>
+      <div class="brand">Netductor</div>
       <div id="host-line" class="muted"></div>
       <div id="session-line" class="muted hide"></div>
       <button type="button" id="btn-lang" class="ghost">RU/EN</button>
@@ -20,7 +20,7 @@
 
     <section id="login" class="card">
       <h1 id="t-login-title">Вход оператора</h1>
-      <p class="muted">Token: <code>freshvps-vpn session</code> or Telegram /session</p>
+      <p class="muted">Token: <code>netductor vpn session</code> or Telegram /session</p>
       <label>Session token<input id="token" type="password" autocomplete="off" /></label>
       <button type="button" id="btn-login" class="primary">Sign in</button>
       <p id="login-err" class="err"></p>
@@ -48,7 +48,7 @@
           <div class="card metric"><div class="label">Net RX</div><div id="m-rx" class="value">—</div></div>
           <div class="card metric"><div class="label">Net TX</div><div id="m-tx" class="value">—</div></div>
         </div>
-        <p id="collector-warn" class="err hide">Collector stale (&gt;3 min) — check freshvps-metrics.timer</p>
+        <p id="collector-warn" class="err hide">Collector stale (&gt;3 min) — check netductor-metrics.timer</p>
         <div class="card"><h2 id="t-services">Сервисы</h2><ul id="svc-list" class="list"></ul>
           <h2 id="t-containers">Контейнеры</h2><ul id="ct-list" class="list"></ul></div>
       </div>
@@ -131,7 +131,7 @@
       <div id="tab-settings" class="tab-panel hide">
         <div class="card">
           <h2>Alert thresholds</h2>
-          <p class="muted">Writes <code>/etc/freshvps/probes.json</code></p>
+          <p class="muted">Writes <code>/etc/netductor/probes.json</code></p>
           <label>CPU % <input id="al-cpu" type="number" /></label>
           <label>RAM % <input id="al-mem" type="number" /></label>
           <label>Disk % <input id="al-disk" type="number" /></label>

@@ -17,7 +17,7 @@ type Options struct {
 }
 
 func DefaultComponents() []string {
-	return []string{"dirs", "singbox", "blocky", "vpn-users", "api", "metrics", "telegram"}
+	return []string{"dirs", "hardening", "singbox", "blocky", "vpn-users", "api", "metrics", "telegram"}
 }
 
 func Run(opts Options) error {
@@ -40,6 +40,8 @@ func Run(opts Options) error {
 		switch c {
 		case "dirs":
 			err = paths.EnsureLayout()
+		case "hardening":
+			err = InstallHardening()
 		case "singbox", "sing-box":
 			err = InstallSingBox()
 		case "blocky":

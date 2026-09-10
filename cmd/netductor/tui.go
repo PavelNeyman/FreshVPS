@@ -402,7 +402,11 @@ func formVpnAdd() {
 		fmt.Println(errStyle.Render(err.Error()))
 	} else {
 		fmt.Println(okStyle.Render("user created"))
-		fmt.Println(subStyle.Render("QR: "+vpn.QRPath(name)+"  (subscription.png sibling)"))
+		fmt.Println(subStyle.Render("QR file: "+vpn.QRPath(name)))
+		if s, ok := vpn.ReadClient(name, "link-vless.txt", "link.txt"); ok {
+			fmt.Println(subStyle.Render("VLESS QR (terminal):"))
+			vpn.PrintASCIIQR(s)
+		}
 	}
 }
 

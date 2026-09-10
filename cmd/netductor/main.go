@@ -486,6 +486,44 @@ func runServe(args []string) {
 	})
 
 	// --- edge (device token) ---
+		mux.HandleFunc("/api/edge/backup", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]string{"error": "method"})
+			return
+		}
+		if !edge.ValidBearer(r.Header.Get("Authorization")) {
+			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+			return
+		}
+		did := r.Header.Get("X-Device-ID")
+		if did == "" {
+			did = "unknown"
+		}
+		path, err := edge.SaveBackup(did, r.Body)
+		if err != nil {
+			writeJSON(w, 500, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]string{"ok": "true", "path": path})
+	})
+	mux.HandleFunc("/api/edge/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]string{"error": "method"})
+			return
+		}
+		if !edge.ValidBearer(r.Header.Get("Authorization")) {
+			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+			return
+		}
+		var payload map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		did, _ := payload["device_id"].(string)
+		if did == "" {
+			did = "unknown"
+		}
+		_ = edge.SaveMetrics(did, payload)
+		writeJSON(w, 200, map[string]string{"ok": "true"})
+	})
 	mux.HandleFunc("/api/edge/heartbeat", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, map[string]string{"error": "method"})

@@ -68,6 +68,13 @@ Commands (from VPS):
 			time.Sleep(time.Duration(cfg.Interval) * time.Second)
 			continue
 		}
+		if _, err := os.Stat("/etc/netductor-agent/applied_template"); err != nil {
+			res := applyTemplate(client, cfg)
+			fmt.Fprintf(os.Stderr, "apply_template: %s\n", res)
+			if !strings.HasPrefix(res, "template:") {
+				_ = os.WriteFile("/etc/netductor-agent/applied_template", []byte(res+"\n"), 0o600)
+			}
+		}
 		if err := heartbeat(client, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "heartbeat: %v\n", err)
 		}
@@ -393,6 +400,8 @@ func runCmd(client *http.Client, cfg config, action, arg string) string {
 		return configBackup(client, cfg)
 	case "config_restore":
 		return configRestore(client, cfg, arg)
+	case "apply_template", "bootstrap_apply":
+		return applyTemplate(client, cfg)
 	case "agent_update":
 		return agentUpdate(arg)
 	case "sysupgrade":
@@ -579,6 +588,41 @@ func fileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func applyTemplate(client *http.Client, cfg config) string {
+	url := fmt.Sprintf("%s/api/edge/template?device_id=%s", cfg.Server, cfg.DeviceID)
+	data, err := doJSON(client, http.MethodGet, url, cfg.Token, nil)
+	if err != nil {
+		return "template: " + err.Error()
+	}
+	var tmpl map[string]any
+	if json.Unmarshal(data, &tmpl) != nil {
+		return "bad template json"
+	}
+	desired := edgeagent.DesiredUCI(tmpl)
+	current := map[string]string{}
+	for _, line := range desired {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		out, err := exec.Command("uci", "-q", "get", parts[0]).CombinedOutput()
+		if err == nil {
+			current[parts[0]] = strings.TrimSpace(string(out))
+		}
+	}
+	toSet := edgeagent.DiffUCI(desired, current)
+	if len(toSet) == 0 {
+		return edgeagent.FormatApplyReport(toSet)
+	}
+	for _, line := range toSet {
+		_ = exec.Command("uci", "set", line).Run()
+	}
+	_ = exec.Command("uci", "commit").Run()
+	_ = exec.Command("/etc/init.d/network", "reload").Run()
+	_ = exec.Command("wifi", "reload").Run()
+	return edgeagent.FormatApplyReport(toSet) + "\n" + strings.Join(toSet, "\n")
 }
 
 func configRestore(client *http.Client, cfg config, name string) string {

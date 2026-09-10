@@ -1,4 +1,4 @@
-# Документация FreshVPS (русский)
+# Документация Netductor (русский)
 
 **EN:** [../README.md](../README.md)
 

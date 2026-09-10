@@ -1,2 +1,2 @@
-Legacy `freshvps-vpn` / `freshvps-doctor` removed.
+Legacy `netductor-vpn` / `netductor-doctor` removed.
 Use: `netductor vpn …` and `netductor doctor`

@@ -2,11 +2,14 @@ package install
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/PavelNeyman/netductor/internal/paths"
 )
@@ -126,15 +129,41 @@ func enableStart(unit string) error {
 	return run("systemctl", "restart", unit)
 }
 
-func writeReady() {
-	ip := ""
+func detectPublicIP() string {
 	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
-		ip = strings.TrimSpace(string(b))
+		if ip := strings.TrimSpace(string(b)); ip != "" {
+			return ip
+		}
 	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	for _, u := range []string{
+		"https://api.ipify.org",
+		"https://ifconfig.me/ip",
+		"https://icanhazip.com",
+	} {
+		resp, err := client.Get(u)
+		if err != nil {
+			continue
+		}
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64))
+		resp.Body.Close()
+		ip := strings.TrimSpace(string(b))
+		if ip != "" && !strings.Contains(ip, "<") {
+			_ = os.MkdirAll(paths.EtcDir(), 0o755)
+			_ = os.WriteFile(filepath.Join(paths.EtcDir(), "public_ip"), []byte(ip+"\n"), 0o644)
+			return ip
+		}
+	}
+	return ""
+}
+
+func writeReady() {
+	ip := detectPublicIP()
 	txt := fmt.Sprintf("Netductor ready\nETC=%s\nSTATE=%s\nOPT=%s\nIP=%s\n",
 		paths.EtcDir(), paths.StateDir(), paths.OptDir(), ip)
 	_ = os.WriteFile(filepath.Join(paths.EtcDir(), "READY.txt"), []byte(txt), 0o644)
 }
+
 
 
 func copySelfToLocalBin() error {

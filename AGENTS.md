@@ -2,7 +2,7 @@
 
 > Document Version: **2.1**  
 > Status: **Approved**  
-> GitHub: **https://github.com/PavelNeyman/netductor** (renamed from FreshVPS)
+> GitHub: **https://github.com/PavelNeyman/netductor** (renamed from Netductor)
 
 **Single source of truth for project rules and architecture.**  
 **Conversation history must never replace this document.**
@@ -21,7 +21,7 @@ Progress: [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/ru/ROADMAP.md](docs/ru/ROA
 
 1. Read this AGENTS.md entirely.
 2. Read ROADMAP + ARCHITECTURE.
-3. Inspect **github.com/PavelNeyman/netductor** (legacy paths `/opt/freshvps` may still exist on hosts).
+3. Inspect **github.com/PavelNeyman/netductor** (legacy paths `/opt/netductor` may still exist on hosts).
 4. Respect Forbidden / Frozen Architecture.
 5. If ambiguous → **STOP** and ask the owner.
 6. Implement only the requested task.
@@ -64,7 +64,7 @@ Simplicity, idempotent installs, no secrets in repo, releases ship binaries, evo
 | Monitoring | built-in metrics/probes |
 | Docs | EN + RU |
 
-**Legacy:** `/opt/freshvps`, `freshvps-*` until G7 cutover.
+**Legacy:** `/opt/netductor`, `netductor-*` until G7 cutover.
 
 **Forbidden without approval:** replace sing-box/Blocky; default-on Kuma/Beszel/Lampac; secrets in git; multi-tenant SaaS; delete bash without Go replacement.
 

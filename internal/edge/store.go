@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -213,6 +214,69 @@ func deviceDir(id string) string {
 		return '_'
 	}, id)
 	return filepath.Join(paths.EdgeDir(), safe)
+}
+
+func ListBackups(deviceID string) []map[string]any {
+	dir := filepath.Join(deviceDir(deviceID), "backups")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []map[string]any{}
+	}
+	var out []map[string]any
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		out = append(out, map[string]any{
+			"name": e.Name(),
+			"size": info.Size(),
+			"mod":  info.ModTime().Unix(),
+		})
+	}
+	return out
+}
+
+func BackupPath(deviceID, name string) (string, error) {
+	if name == "" || strings.Contains(name, "..") || strings.Contains(name, "/") {
+		return "", fmt.Errorf("invalid name")
+	}
+	path := filepath.Join(deviceDir(deviceID), "backups", name)
+	if _, err := os.Stat(path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func ListMetricsTail(deviceID string, max int) []map[string]any {
+	if max <= 0 {
+		max = 50
+	}
+	path := filepath.Join(deviceDir(deviceID), "metrics.jsonl")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return []map[string]any{}
+	}
+	lines := strings.Split(string(b), "\n")
+	start := 0
+	if len(lines) > max {
+		start = len(lines) - max
+	}
+	var out []map[string]any
+	for _, line := range lines[start:] {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func SaveBackup(deviceID string, r io.Reader) (string, error) {

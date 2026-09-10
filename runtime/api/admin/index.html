@@ -87,28 +87,51 @@
         <button id="btn-refresh-tmpl" class="ghost">Refresh</button>
         <button id="btn-save-default" class="primary">Ensure default</button>
       </div>
-      <div class="card"><pre id="templates-raw" class="code">—</pre></div>
       <div class="card">
-        <h3>Edit template JSON</h3>
-        <label>id <input id="tmpl-id" value="default" /></label>
-        <textarea id="tmpl-editor" class="code" rows="16" style="width:100%"></textarea>
+        <h3>Template</h3>
+        <label>ID <input id="f-id" value="default" /></label>
+        <label>Role <input id="f-role" value="site" /></label>
+        <h4>Network</h4>
+        <label>LAN IP <input id="f-lan-ip" placeholder="192.168.50.1" /></label>
+        <label>LAN mask <input id="f-lan-mask" placeholder="255.255.255.0" /></label>
+        <label class="row"><input type="checkbox" id="f-dhcp" checked /> DHCP</label>
+        <h4>Wi‑Fi</h4>
+        <label>SSID <input id="f-ssid" placeholder="Netductor" /></label>
+        <label>Password <input id="f-wkey" type="password" /></label>
+        <label>Encryption
+          <select id="f-enc"><option value="psk2">psk2</option><option value="sae">sae</option><option value="psk-mixed">psk-mixed</option></select>
+        </label>
+        <h4>VPN client</h4>
+        <label class="row"><input type="checkbox" id="f-vpn" checked /> Enable VPN to VPS</label>
+        <label>Mode
+          <select id="f-vpn-mode"><option value="socks">socks (no TUN, recommended)</option><option value="tun">tun (full tunnel)</option></select>
+        </label>
         <div class="row">
-          <button id="btn-load-tmpl" class="ghost">Load</button>
-          <button id="btn-save-tmpl" class="primary">Save</button>
+          <button id="btn-form-save" class="primary">Save template</button>
+          <button id="btn-form-load" class="ghost">Load into form</button>
         </div>
       </div>
       <div class="card">
-        <h3>Bind template</h3>
+        <h3>Bind to device</h3>
         <div class="row">
           <input id="bind-device" placeholder="device_id" />
           <input id="bind-tmpl" placeholder="template_id" value="default" />
           <button id="btn-bind" class="primary">Bind</button>
         </div>
         <div class="row">
-          <input id="bind-ssid" placeholder="overlay ssid" />
-          <input id="bind-lan" placeholder="overlay lan_ip" />
+          <input id="bind-ssid" placeholder="overlay ssid (optional)" />
+          <input id="bind-lan" placeholder="overlay lan_ip (optional)" />
         </div>
       </div>
+      <details class="card">
+        <summary>Advanced: raw JSON</summary>
+        <textarea id="tmpl-editor" class="code" rows="12" style="width:100%"></textarea>
+        <div class="row">
+          <button id="btn-load-tmpl" class="ghost">Load JSON</button>
+          <button id="btn-save-tmpl" class="ghost">Save JSON</button>
+        </div>
+        <pre id="templates-raw" class="code">—</pre>
+      </details>
     </section>
 
     <section id="tab-metrics" class="tab-panel hide">

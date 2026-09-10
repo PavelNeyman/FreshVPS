@@ -1,7 +1,12 @@
 package install
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,14 +47,10 @@ WantedBy=timers.target
 	}
 	_ = run("systemctl", "enable", "netductor-backup.timer")
 	_ = run("systemctl", "start", "netductor-backup.timer")
-	fmt.Fprintln(os.Stderr, "backup timer: daily → local (+ offsite if configured)")
+	fmt.Fprintln(os.Stderr, "backup timer enabled")
 	return nil
 }
 
-// Offsite config: /etc/netductor/backup.offsite
-//   method=scp|http|rsync
-//   target=user@host:/path   OR  https://example/upload
-//   scp_opts=-i /root/.ssh/id_ed25519
 func loadOffsite() (method, target, extra string) {
 	b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "backup.offsite"))
 	if err != nil {
@@ -97,11 +98,60 @@ func uploadOffsite(localPath string) error {
 		args = append(args, localPath, target)
 		return run("rsync", args...)
 	case "http", "https", "curl":
-		// POST file as body
 		return run("curl", "-fsS", "-X", "PUT", "--data-binary", "@"+localPath, target)
 	default:
 		return fmt.Errorf("unknown offsite method %s", method)
 	}
+}
+
+func keyBytes(pass string) []byte {
+	h := sha256.Sum256([]byte(pass))
+	return h[:]
+}
+
+func encryptFile(inPath, outPath, pass string) error {
+	in, err := os.ReadFile(inPath)
+	if err != nil {
+		return err
+	}
+	block, err := aes.NewCipher(keyBytes(pass))
+	if err != nil {
+		return err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return err
+	}
+	out := gcm.Seal(nonce, nonce, in, nil)
+	return os.WriteFile(outPath, out, 0o600)
+}
+
+func decryptFile(inPath, outPath, pass string) error {
+	in, err := os.ReadFile(inPath)
+	if err != nil {
+		return err
+	}
+	block, err := aes.NewCipher(keyBytes(pass))
+	if err != nil {
+		return err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return err
+	}
+	if len(in) < gcm.NonceSize() {
+		return fmt.Errorf("ciphertext too short")
+	}
+	nonce, ct := in[:gcm.NonceSize()], in[gcm.NonceSize():]
+	plain, err := gcm.Open(nil, nonce, ct, nil)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(outPath, plain, 0o600)
 }
 
 func Backup() (string, error) {
@@ -119,21 +169,42 @@ func Backup() (string, error) {
 	key := readSecret("backup_key")
 	out := plain
 	if key != "" {
-		enc := plain + ".enc"
-		err := run("openssl", "enc", "-aes-256-cbc", "-salt", "-pbkdf2",
-			"-in", plain, "-out", enc, "-pass", "pass:"+key)
-		_ = os.Remove(plain)
-		if err != nil {
+		enc := plain + ".ndenc"
+		if err := encryptFile(plain, enc, key); err != nil {
 			return "", err
 		}
+		_ = os.Remove(plain)
 		out = enc
 	}
 	_ = os.Chmod(out, 0o600)
 	if err := uploadOffsite(out); err != nil {
-		fmt.Fprintf(os.Stderr, "offsite upload: %v\n", err)
+		fmt.Fprintf(os.Stderr, "offsite: %v\n", err)
 	}
 	pruneBackups(dir, 14)
 	return out, nil
+}
+
+// Restore unpacks backup into paths.EtcDir parent (expects tar of etc dir name).
+func Restore(archive string) error {
+	if archive == "" {
+		return fmt.Errorf("usage: netductor restore <file.tar.gz|.ndenc>")
+	}
+	src := archive
+	tmp := ""
+	if strings.HasSuffix(archive, ".ndenc") {
+		key := readSecret("backup_key")
+		if key == "" {
+			return fmt.Errorf("backup_key missing")
+		}
+		tmp = filepath.Join(os.TempDir(), "netductor-restore.tar.gz")
+		if err := decryptFile(archive, tmp, key); err != nil {
+			return err
+		}
+		src = tmp
+		defer os.Remove(tmp)
+	}
+	parent := filepath.Dir(paths.EtcDir())
+	return run("tar", "-xzf", src, "-C", parent)
 }
 
 func pruneBackups(dir string, keep int) {

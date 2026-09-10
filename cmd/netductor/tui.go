@@ -9,12 +9,11 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
-
-// ── modes ──────────────────────────────────────────────────
 
 type runMode string
 
@@ -80,23 +79,14 @@ func parseModeFlags(args []string) runMode {
 	return ""
 }
 
-// ── styles ─────────────────────────────────────────────────
-
 var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("205")).
-			MarginLeft(1)
-	subtitleStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			MarginLeft(1)
-	docStyle = lipgloss.NewStyle().Margin(1, 2)
-	helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	okStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	errStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).MarginLeft(1)
+	subStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241")).MarginLeft(1)
+	docStyle   = lipgloss.NewStyle().Margin(1, 2)
+	helpStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	okStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	errStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 )
-
-// ── list items ─────────────────────────────────────────────
 
 type menuItem struct {
 	title, desc, id string
@@ -106,8 +96,6 @@ func (i menuItem) Title() string       { return i.title }
 func (i menuItem) Description() string { return i.desc }
 func (i menuItem) FilterValue() string { return i.title }
 
-// ── model ──────────────────────────────────────────────────
-
 type screen int
 
 const (
@@ -116,14 +104,22 @@ const (
 	screenOutput
 )
 
+// result after tea.Quit — forms run outside alt-screen
+type tuiResult struct {
+	action string
+	mode   runMode
+	output string
+}
+
 type model struct {
 	screen   screen
 	mode     runMode
 	list     list.Model
 	output   string
-	quitting bool
+	result   tuiResult
 	width    int
 	height   int
+	quitting bool
 }
 
 func modeItems(sug runMode) []list.Item {
@@ -132,7 +128,7 @@ func modeItems(sug runMode) []list.Item {
 	for _, m := range order {
 		t, d := describeMode(m)
 		if m == sug {
-			t = t + "  ← suggested"
+			t += "  ← suggested"
 		}
 		items = append(items, menuItem{title: t, desc: d, id: string(m)})
 	}
@@ -143,8 +139,8 @@ func menuItemsFor(mode runMode) []list.Item {
 	switch mode {
 	case modeVPS:
 		return []list.Item{
-			menuItem{"Full install / upgrade", "bash install.sh (root + repo)", "install"},
-			menuItem{"Prepare only", "install.sh --prepare", "prepare"},
+			menuItem{"Full install / upgrade", "confirm → bash install.sh", "install"},
+			menuItem{"Prepare only", "confirm → install.sh --prepare", "prepare"},
 			menuItem{"Doctor", "health checks", "doctor"},
 			menuItem{"Status", "systemd units", "status"},
 			menuItem{"Operator tools…", "VPN, edge, probes", "to-operator"},
@@ -154,7 +150,7 @@ func menuItemsFor(mode runMode) []list.Item {
 	case modeOpenWRT:
 		return []list.Item{
 			menuItem{"Agent install instructions", "outbound netductor-agent", "agent-help"},
-			menuItem{"Run install-openwrt.sh", "if present on device", "owrt-install"},
+			menuItem{"Run install-openwrt.sh", "confirm if present", "owrt-install"},
 			menuItem{"Check agent config", "", "agent-cfg"},
 			menuItem{"Change mode…", "", "change-mode"},
 			menuItem{"Quit", "", "quit"},
@@ -172,8 +168,8 @@ func menuItemsFor(mode runMode) []list.Item {
 			menuItem{"Status", "systemd units", "status"},
 			menuItem{"Doctor", "health checks", "doctor"},
 			menuItem{"VPN — list users", "", "vpn-list"},
-			menuItem{"VPN — add user", "prompt name", "vpn-add"},
-			menuItem{"Session token", "admin API Bearer", "session"},
+			menuItem{"VPN — add user", "form: name + note", "vpn-add"},
+			menuItem{"Session token", "hours form", "session"},
 			menuItem{"Edge — list devices", "", "edge-list"},
 			menuItem{"Live probes", "", "probe"},
 			menuItem{"Collect metrics", "", "collect"},
@@ -192,7 +188,6 @@ func newList(title string, items []list.Item, w, h int) list.Model {
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
 	l.Styles.Title = titleStyle
-	l.SetShowHelp(true)
 	return l
 }
 
@@ -201,14 +196,14 @@ func (m model) Init() tea.Cmd { return nil }
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m.list.SetSize(msg.Width-4, msg.Height-6)
+		m.width, m.height = msg.Width, msg.Height
+		m.list.SetSize(msg.Width-4, msg.Height-8)
 		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			m.quitting = true
+			m.result = tuiResult{action: "quit", mode: m.mode}
 			return m, tea.Quit
 		case "esc":
 			if m.screen == screenOutput {
@@ -217,9 +212,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.screen == screenMenu {
-				m.screen = screenMode
 				sug, _ := detectSuggestedMode()
-				m.list = newList("Select mode", modeItems(sug), m.width-4, m.height-6)
+				m.list = newList("Select mode", modeItems(sug), m.width-4, m.height-8)
+				m.screen = screenMode
 				return m, nil
 			}
 		case "enter":
@@ -235,12 +230,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.screen == screenMode {
 				m.mode = runMode(it.id)
 				t, _ := describeMode(m.mode)
-				m.list = newList("Netductor · "+t, menuItemsFor(m.mode), m.width-4, m.height-6)
+				m.list = newList("Netductor · "+t, menuItemsFor(m.mode), m.width-4, m.height-8)
 				m.screen = screenMenu
 				return m, nil
 			}
-			// screenMenu action
-			return m.runAction(it.id)
+			return m.handleAction(it.id)
 		}
 	}
 	var cmd tea.Cmd
@@ -248,41 +242,41 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) runAction(id string) (tea.Model, tea.Cmd) {
+func (m model) handleAction(id string) (tea.Model, tea.Cmd) {
+	// actions that need Huh forms → leave TUI
 	switch id {
 	case "quit":
 		m.quitting = true
+		m.result = tuiResult{action: "quit", mode: m.mode}
+		return m, tea.Quit
+	case "vpn-add", "session", "install", "prepare", "owrt-install", "build":
+		m.result = tuiResult{action: id, mode: m.mode}
 		return m, tea.Quit
 	case "change-mode":
 		sug, _ := detectSuggestedMode()
-		m.list = newList("Select mode", modeItems(sug), m.width-4, m.height-6)
+		m.list = newList("Select mode", modeItems(sug), m.width-4, m.height-8)
 		m.screen = screenMode
 		return m, nil
 	case "to-operator":
 		m.mode = modeOperator
 		t, _ := describeMode(m.mode)
-		m.list = newList("Netductor · "+t, menuItemsFor(m.mode), m.width-4, m.height-6)
+		m.list = newList("Netductor · "+t, menuItemsFor(m.mode), m.width-4, m.height-8)
 		return m, nil
 	case "status":
 		m.output = capture(func() { runStatus() })
 		m.screen = screenOutput
-		return m, nil
 	case "doctor":
 		m.output = capture(func() { _ = runDoctorNative() })
 		m.screen = screenOutput
-		return m, nil
 	case "probe":
 		m.output = capture(func() { runProbe(nil) })
 		m.screen = screenOutput
-		return m, nil
 	case "collect":
 		m.output = capture(func() { _ = runCollect() })
 		m.screen = screenOutput
-		return m, nil
 	case "edge-list":
 		m.output = capture(runEdgeList)
 		m.screen = screenOutput
-		return m, nil
 	case "vpn-list":
 		m.output = capture(func() {
 			users, err := vpn.List()
@@ -302,68 +296,18 @@ func (m model) runAction(id string) (tea.Model, tea.Cmd) {
 			}
 		})
 		m.screen = screenOutput
-		return m, nil
-	case "vpn-add":
-		m.output = "VPN add requires a name.\n\nUse:  netductor vpn add <name> [note]\n\nInteractive prompt will be added later."
-		m.screen = screenOutput
-		return m, nil
-	case "session":
-		tok, exp, err := vpn.CreateSession(72)
-		if err != nil {
-			m.output = err.Error()
-		} else {
-			m.output = fmt.Sprintf("%s\n\nexpires_unix=%d hours=72", tok, exp)
-		}
-		m.screen = screenOutput
-		return m, nil
-	case "install":
-		m.output = "Will run: bash install.sh\nExit TUI and run:\n  netductor install\nor confirm from shell as root."
-		m.screen = screenOutput
-		return m, nil
-	case "prepare":
-		m.output = "Will run: bash install.sh --prepare\nUse: netductor install --prepare"
-		m.screen = screenOutput
-		return m, nil
 	case "bootstrap":
 		m.output = `curl -fsSL -o /usr/local/bin/netductor \
   https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64
 chmod 755 /usr/local/bin/netductor
 netductor tui --mode vps`
 		m.screen = screenOutput
-		return m, nil
-	case "build":
-		m.output = capture(func() {
-			cmd := exec.Command("go", "build", "-o", "netductor", "./cmd/netductor")
-			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-			if err := cmd.Run(); err != nil {
-				fmt.Println("error:", err)
-			} else {
-				fmt.Println("ok: ./netductor")
-			}
-		})
-		m.screen = screenOutput
-		return m, nil
 	case "agent-help":
 		m.output = `mkdir -p /etc/netductor-agent
-# SERVER= TOKEN= DEVICE_ID= INTERVAL=60 → config
-# binary: netductor-agent-linux-arm64|mipsle|arm from releases
+# SERVER= TOKEN= DEVICE_ID= INTERVAL=60 → /etc/netductor-agent/config
+# binary: netductor-agent-linux-arm64|mipsle|arm from GitHub releases
 # docs: edge/openwrt/INSTALL.md`
 		m.screen = screenOutput
-		return m, nil
-	case "owrt-install":
-		m.output = capture(func() {
-			for _, c := range []string{"install-openwrt.sh", "/opt/freshvps/install-openwrt.sh", "/opt/netductor/install-openwrt.sh"} {
-				if st, err := os.Stat(c); err == nil && !st.IsDir() {
-					cmd := exec.Command("sh", c)
-					cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-					_ = cmd.Run()
-					return
-				}
-			}
-			fmt.Println("install-openwrt.sh not found")
-		})
-		m.screen = screenOutput
-		return m, nil
 	case "agent-cfg":
 		m.output = capture(func() {
 			for _, p := range []string{"/etc/netductor-agent/config", "/etc/freshvps-agent/config"} {
@@ -373,7 +317,6 @@ netductor tui --mode vps`
 			}
 		})
 		m.screen = screenOutput
-		return m, nil
 	}
 	return m, nil
 }
@@ -405,47 +348,202 @@ func capture(fn func()) string {
 }
 
 func (m model) View() string {
-	if m.quitting {
-		return subtitleStyle.Render("bye") + "\n"
+	if m.quitting && m.result.action == "quit" {
+		return subStyle.Render("bye") + "\n"
 	}
 	if m.screen == screenOutput {
-		body := lipgloss.NewStyle().Width(m.width - 4).Render(m.output)
+		body := lipgloss.NewStyle().Width(max(20, m.width-4)).Render(m.output)
 		return docStyle.Render(
 			titleStyle.Render("Output") + "\n\n" + body + "\n\n" +
 				helpStyle.Render("enter/esc back · ctrl+c quit"),
 		)
 	}
-	sug, why := detectSuggestedMode()
 	header := ""
 	if m.screen == screenMode {
+		sug, why := detectSuggestedMode()
 		st, _ := describeMode(sug)
-		header = subtitleStyle.Render(fmt.Sprintf("Suggested: %s (%s)", st, why)) + "\n" +
-			subtitleStyle.Render("↑↓ select · enter confirm · nothing runs until you choose") + "\n\n"
+		header = subStyle.Render(fmt.Sprintf("Suggested: %s (%s)", st, why)) + "\n" +
+			subStyle.Render("↑↓ select · enter · nothing installs until you confirm") + "\n\n"
 	}
 	return docStyle.Render(header + m.list.View())
 }
 
-// runTUI — Bubble Tea UI for VPS / PC / operator. Agent stays separate & light.
-func runTUI(args []string) {
-	forced := parseModeFlags(args)
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// ── Huh forms (outside alt-screen) ─────────────────────────
+
+func formVpnAdd() {
+	var name, note string
+	var ok bool
+	f := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Title("VPN user name").Description("letters, digits, _ -").Value(&name).Validate(func(s string) error {
+				if !vpn.ValidName(s) {
+					return fmt.Errorf("invalid name")
+				}
+				return nil
+			}),
+			huh.NewInput().Title("Note (optional)").Value(&note),
+			huh.NewConfirm().Title("Create user and apply sing-box?").Affirmative("Yes").Negative("Cancel").Value(&ok),
+		),
+	).WithTheme(huh.ThemeCharm())
+	if err := f.Run(); err != nil || !ok {
+		fmt.Println(subStyle.Render("cancelled"))
+		return
+	}
+	out, err := vpn.Add(name, note)
+	fmt.Println(out)
+	if err != nil {
+		fmt.Println(errStyle.Render(err.Error()))
+	} else {
+		fmt.Println(okStyle.Render("user created"))
+	}
+}
+
+func formSession() {
+	var hoursStr = "72"
+	var ok bool
+	f := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Title("Session lifetime (hours)").Value(&hoursStr),
+			huh.NewConfirm().Title("Generate admin session token?").Affirmative("Yes").Negative("No").Value(&ok),
+		),
+	).WithTheme(huh.ThemeCharm())
+	if err := f.Run(); err != nil || !ok {
+		fmt.Println(subStyle.Render("cancelled"))
+		return
+	}
+	hours := 72
+	fmt.Sscanf(hoursStr, "%d", &hours)
+	tok, exp, err := vpn.CreateSession(hours)
+	if err != nil {
+		fmt.Println(errStyle.Render(err.Error()))
+		return
+	}
+	fmt.Println(okStyle.Render(tok))
+	fmt.Printf("expires_unix=%d hours=%d\n", exp, hours)
+}
+
+func formConfirm(title, desc string) bool {
+	var ok bool
+	f := huh.NewForm(
+		huh.NewGroup(
+			huh.NewNote().Title(title).Description(desc),
+			huh.NewConfirm().Title("Proceed?").Affirmative("Yes").Negative("No").Value(&ok),
+		),
+	).WithTheme(huh.ThemeCharm())
+	_ = f.Run()
+	return ok
+}
+
+func formInstall(prepare bool) {
+	title := "Full install / upgrade"
+	cmdHint := "bash install.sh"
+	if prepare {
+		title = "Prepare only"
+		cmdHint = "bash install.sh --prepare"
+	}
+	if !formConfirm(title, "Runs on this host as current user.\nCommand: "+cmdHint+"\nRequires root + checkout or /opt/freshvps.") {
+		fmt.Println(subStyle.Render("cancelled"))
+		return
+	}
+	if prepare {
+		runInstall([]string{"--prepare"})
+	} else {
+		runInstall(nil)
+	}
+}
+
+func formOwrtInstall() {
+	if !formConfirm("OpenWrt installer", "Looks for install-openwrt.sh and runs it.") {
+		fmt.Println(subStyle.Render("cancelled"))
+		return
+	}
+	for _, c := range []string{"install-openwrt.sh", "/opt/freshvps/install-openwrt.sh", "/opt/netductor/install-openwrt.sh"} {
+		if st, err := os.Stat(c); err == nil && !st.IsDir() {
+			cmd := exec.Command("sh", c)
+			cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
+			_ = cmd.Run()
+			return
+		}
+	}
+	fmt.Println(errStyle.Render("install-openwrt.sh not found"))
+}
+
+func formBuild() {
+	if !formConfirm("Local Go build", "go build -o netductor ./cmd/netductor") {
+		fmt.Println(subStyle.Render("cancelled"))
+		return
+	}
+	cmd := exec.Command("go", "build", "-o", "netductor", "./cmd/netductor")
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Println(errStyle.Render(err.Error()))
+	} else {
+		fmt.Println(okStyle.Render("ok: ./netductor"))
+	}
+}
+
+func runBubbleSession(mode runMode, startMenu bool) tuiResult {
 	w, h := 80, 24
 	sug, _ := detectSuggestedMode()
-
-	var m model
-	m.width, m.height = w, h
-	if forced == modeVPS || forced == modeOpenWRT || forced == modeWorkstation || forced == modeOperator {
-		m.mode = forced
+	m := model{width: w, height: h, mode: mode}
+	if startMenu && mode != "" {
 		m.screen = screenMenu
-		t, _ := describeMode(forced)
-		m.list = newList("Netductor · "+t, menuItemsFor(forced), w-4, h-6)
+		t, _ := describeMode(mode)
+		m.list = newList("Netductor · "+t, menuItemsFor(mode), w-4, h-8)
 	} else {
 		m.screen = screenMode
-		m.list = newList("Select mode", modeItems(sug), w-4, h-6)
+		m.list = newList("Select mode", modeItems(sug), w-4, h-8)
 	}
-
 	p := tea.NewProgram(m, tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
+	final, err := p.Run()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return tuiResult{action: "quit"}
+	}
+	fm, ok := final.(model)
+	if !ok {
+		return tuiResult{action: "quit"}
+	}
+	return fm.result
+}
+
+// runTUI — Bubble Tea menus + Huh forms for confirm/add/session.
+func runTUI(args []string) {
+	forced := parseModeFlags(args)
+	mode := forced
+	startMenu := forced == modeVPS || forced == modeOpenWRT || forced == modeWorkstation || forced == modeOperator
+
+	for {
+		res := runBubbleSession(mode, startMenu)
+		startMenu = true
+		if res.mode != "" {
+			mode = res.mode
+		}
+		switch res.action {
+		case "", "quit":
+			fmt.Println(subStyle.Render("bye"))
+			return
+		case "vpn-add":
+			formVpnAdd()
+		case "session":
+			formSession()
+		case "install":
+			formInstall(false)
+		case "prepare":
+			formInstall(true)
+		case "owrt-install":
+			formOwrtInstall()
+		case "build":
+			formBuild()
+		default:
+			return
+		}
 	}
 }

@@ -7,11 +7,11 @@
 ## Запуск
 
 ```bash
-sudo freshvps-tests                 # меню checklist
-sudo freshvps-tests --list
-sudo freshvps-tests --default        # отобранный набор
-sudo freshvps-tests --all            # долго
-sudo freshvps-tests yabs sysbench
+sudo netductor-tests                 # меню checklist
+sudo netductor-tests --list
+sudo netductor-tests --default        # отобранный набор
+sudo netductor-tests --all            # долго
+sudo netductor-tests yabs sysbench
 sudo bash install.sh --tests
 ```
 

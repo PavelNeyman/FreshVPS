@@ -1,40 +1,7 @@
-# Bootstrap (English)
-
-**RU:** [ru/BOOTSTRAP.md](ru/BOOTSTRAP.md)
-
-GitHub builds the repo `tar.gz` on the fly (no Actions required).
-
-> **Private repository:** `raw.githubusercontent.com` and unauthenticated `codeload` return **404**. Either make the repo public, or download with a PAT / copy the tree to the VPS (`git clone` with credentials, or `scp` a tarball).
-
-## VPS (Debian)
-
-**Preferred** (avoids curl|bash quirks):
+# Bootstrap
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/PavelNeyman/FreshVPS/main/bootstrap.sh -o /tmp/fv.sh
-sudo bash /tmp/fv.sh
+curl -fsSL https://raw.githubusercontent.com/PavelNeyman/netductor/main/bootstrap.sh | bash
 ```
 
-Also supported: `curl … | sudo bash` (must already be able to use sudo/root).
-
-Upgrade: `sudo bash /tmp/fv.sh --upgrade`
-
-After install: `freshvps-doctor` · `freshvps-smoke` · `freshvps-vpn link operator`
-
-## macOS (plan)
-
-```bash
-curl -fsSL …/bootstrap.sh | bash -s -- --mode plan --keep
-```
-
-Does not install VPN on the Mac.
-
-## Modes
-
-| OS | Default mode |
-|----|----------------|
-| Darwin | plan |
-| Debian Linux | vps |
-| OpenWrt | openwrt |
-
-Override: `--mode vps|edge-client|openwrt|plan`
+Installs `/usr/local/bin/netductor` from the `v0.7.0-dev` release (override `NETDUCTOR_VERSION`).

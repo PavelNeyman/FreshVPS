@@ -121,7 +121,7 @@ var dict = map[string]map[string]string{
 		"menu_title":    "🛡 <b>Панель оператора Netductor</b>",
 		"menu_hint":     "Кнопки ниже. Слеш-команды тоже работают.",
 		"status":        "📊 Статус",
-		"ready":         "📄 READY",
+		"ready":         "📄 Готово",
 		"vpn_list":      "👥 Список VPN",
 		"vpn_add":       "➕ Добавить",
 		"vpn_link":      "🔗 Ссылка / QR",
@@ -146,7 +146,7 @@ var dict = map[string]map[string]string{
 		"unknown":       "Неизвестное действие.",
 		"unknown_cmd":   "Неизвестно. Откройте меню:",
 		"no_ready":      "⚠️ Нет READY.txt",
-		"ready_title":   "📄 <b>Готово (READY)</b>",
+		"ready_title":   "📄 <b>Готово</b>",
 		"session_token": "🔑 Session-токен",
 		"lang_now":      "🌐 Язык: <b>%s</b>\n\nВыберите:",
 		"lang_en":       "English",
@@ -427,16 +427,41 @@ func formatVPNList(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+func netductorBin() string {
+	for _, p := range []string{"/usr/local/bin/netductor", "/usr/bin/netductor"} {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	return "netductor"
+}
+
 func runVPN(args ...string) string {
-	cmd := exec.Command("/usr/local/bin/netductor vpn", args...)
+	full := append([]string{"vpn"}, args...)
+	cmd := exec.Command(netductorBin(), full...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(out) + "\n" + err.Error()
+		msg := string(out)
+		if msg != "" {
+			msg += string([]byte{10})
+		}
+		return strings.TrimSpace(msg + err.Error())
 	}
 	return string(out)
 }
 
-
+func runND(args ...string) string {
+	cmd := exec.Command(netductorBin(), args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := string(out)
+		if msg != "" {
+			msg += string([]byte{10})
+		}
+		return strings.TrimSpace(msg + err.Error())
+	}
+	return string(out)
+}
 
 func statusInline() string {
 	var b strings.Builder
@@ -553,7 +578,7 @@ func readyText() string {
 
 
 func routersText() string {
-	out, err := exec.Command("netductor", "edge", "list").CombinedOutput()
+	out, err := exec.Command(netductorBin(), "edge", "list").CombinedOutput()
 	if err != nil {
 		return strings.TrimSpace(string(out) + " " + err.Error())
 	}
@@ -561,7 +586,7 @@ func routersText() string {
 }
 
 func pendingText() string {
-	out, err := exec.Command("netductor", "edge", "pending").CombinedOutput()
+	out, err := exec.Command(netductorBin(), "edge", "pending").CombinedOutput()
 	if err != nil {
 		return strings.TrimSpace(string(out))
 	}
@@ -569,7 +594,7 @@ func pendingText() string {
 }
 
 func templatesText() string {
-	out, err := exec.Command("netductor", "edge", "templates").CombinedOutput()
+	out, err := exec.Command(netductorBin(), "edge", "templates").CombinedOutput()
 	if err != nil {
 		return strings.TrimSpace(string(out))
 	}

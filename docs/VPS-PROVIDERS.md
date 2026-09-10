@@ -34,7 +34,7 @@ Summary from public rankings and tests. **Not a substitute** for your own `iperf
 
 \*Qualitative from reviews, not an SLA.
 
-## For FreshVPS
+## For Netductor
 
 - At least **2 GB RAM**, KVM, Debian 12/13, public IPv4.
 - Prefer **EU** (FI/NL/DE).

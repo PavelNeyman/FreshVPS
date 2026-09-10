@@ -402,6 +402,7 @@ func formVpnAdd() {
 		fmt.Println(errStyle.Render(err.Error()))
 	} else {
 		fmt.Println(okStyle.Render("user created"))
+		fmt.Println(subStyle.Render("QR: "+vpn.QRPath(name)+"  (subscription.png sibling)"))
 	}
 }
 

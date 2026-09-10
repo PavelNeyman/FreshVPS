@@ -10,8 +10,10 @@ import (
 )
 
 func InstallBackup() error {
-	// timer unit that runs netductor backup
 	bin := "/usr/local/bin/netductor"
+	if readSecret("backup_key") == "" {
+		_ = writeSecret("backup_key", randomHex(32))
+	}
 	unit := fmt.Sprintf(`[Unit]
 Description=Netductor backup once
 After=network-online.target
@@ -39,41 +41,47 @@ WantedBy=timers.target
 	}
 	_ = run("systemctl", "enable", "netductor-backup.timer")
 	_ = run("systemctl", "start", "netductor-backup.timer")
-	fmt.Fprintln(os.Stderr, "backup timer: daily → /var/lib/netductor/backups/")
+	fmt.Fprintln(os.Stderr, "backup timer: daily encrypted → /var/lib/netductor/backups/")
 	return nil
 }
 
-// Backup creates tar.gz of etc + selected state (not huge metrics history by default).
 func Backup() (string, error) {
 	dir := filepath.Join(paths.StateDir(), "backups")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	name := fmt.Sprintf("netductor-%s.tar.gz", time.Now().UTC().Format("20060102-150405"))
-	out := filepath.Join(dir, name)
+	stamp := time.Now().UTC().Format("20060102-150405")
+	plain := filepath.Join(dir, "netductor-"+stamp+".tar.gz")
 	etc := paths.EtcDir()
-	// pack etc + sing-box conf + blocky + secrets already under etc
-	args := []string{"-czf", out, "-C", "/", 
-		etc[1:], // strip leading /
-		"usr/local/etc/sing-box",
-		"etc/blocky",
+	_ = run("tar", "-czf", plain, "-C", filepath.Dir(etc), filepath.Base(etc))
+	if st, err := os.Stat(plain); err != nil || st.Size() == 0 {
+		return "", fmt.Errorf("tar failed")
 	}
-	// ignore missing
-	_ = run("tar", args...)
-	// verify file exists
-	if st, err := os.Stat(out); err != nil || st.Size() == 0 {
-		// fallback: only etc
-		out2 := filepath.Join(dir, name)
-		_ = run("tar", "-czf", out2, "-C", filepath.Dir(etc), filepath.Base(etc))
-		out = out2
-	}
-	// prune keep last 14
-	entries, _ := os.ReadDir(dir)
-	if len(entries) > 14 {
-		for i := 0; i < len(entries)-14; i++ {
-			_ = os.Remove(filepath.Join(dir, entries[i].Name()))
+	key := readSecret("backup_key")
+	out := plain + ".enc"
+	if key != "" {
+		// AES-256-CBC via openssl (portable, no extra Go crypto deps for stream)
+		err := run("openssl", "enc", "-aes-256-cbc", "-salt", "-pbkdf2",
+			"-in", plain, "-out", out, "-pass", "pass:"+key)
+		_ = os.Remove(plain)
+		if err != nil {
+			return "", err
 		}
+		_ = os.Chmod(out, 0o600)
+		pruneBackups(dir, 14)
+		return out, nil
 	}
-	_ = os.Chmod(out, 0o600)
-	return out, nil
+	_ = os.Chmod(plain, 0o600)
+	pruneBackups(dir, 14)
+	return plain, nil
+}
+
+func pruneBackups(dir string, keep int) {
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) <= keep {
+		return
+	}
+	for i := 0; i < len(entries)-keep; i++ {
+		_ = os.Remove(filepath.Join(dir, entries[i].Name()))
+	}
 }

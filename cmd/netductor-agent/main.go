@@ -654,30 +654,37 @@ func applyVPNClient(tmpl map[string]any) string {
 		_ = os.WriteFile("/etc/netductor-agent/vpn.hy2", []byte(hy2+"\n"), 0o600)
 	}
 	note := "\nvpn links saved"
-	if vless != "" {
-		if cfg, err := edgeagent.VLESSClientConfig(vless); err == nil {
-			path := "/etc/netductor-agent/sing-box-client.json"
-			_ = os.WriteFile(path, cfg, 0o600)
-			note += "; sing-box client config " + path
-			if _, err := exec.LookPath("sing-box"); err == nil {
-				// openwrt procd unit
-				init := "#!/bin/sh /etc/rc.common\nSTART=99\nUSE_PROCD=1\nstart_service() {\n  procd_open_instance\n  procd_set_param command /usr/bin/sing-box run -c /etc/netductor-agent/sing-box-client.json\n  procd_set_param respawn\n  procd_close_instance\n}\n"
-				if _, err := os.Stat("/etc/rc.common"); err == nil {
-					_ = os.WriteFile("/etc/init.d/netductor-vpn", []byte(init), 0o755)
-					_ = exec.Command("/etc/init.d/netductor-vpn", "enable").Run()
-					_ = exec.Command("/etc/init.d/netductor-vpn", "restart").Run()
-					note += "; netductor-vpn service restarted"
-				} else {
-					// try run in background
-					_ = exec.Command("sing-box", "run", "-c", path).Start()
-					note += "; sing-box started"
-				}
-			} else {
-				note += "; install sing-box on router to run client"
-			}
-		} else {
-			note += "; vless parse: " + err.Error()
-		}
+	if vless == "" {
+		return note
+	}
+	mode, _ := vpn["mode"].(string)
+	if mode == "" {
+		mode = "socks" // default: no TUN required
+	}
+	cfg, err := edgeagent.VLESSClientConfig(vless, mode)
+	if err != nil {
+		return note + "; vless parse: " + err.Error()
+	}
+	path := "/etc/netductor-agent/sing-box-client.json"
+	_ = os.WriteFile(path, cfg, 0o600)
+	note += "; config " + path + " mode=" + mode
+	bin, err := edgeagent.EnsureSingBox("/usr/sbin/sing-box")
+	if err != nil {
+		return note + "; sing-box download: " + err.Error()
+	}
+	note += "; bin " + bin
+	init := "#!/bin/sh /etc/rc.common\nSTART=99\nUSE_PROCD=1\nstart_service() {\n  procd_open_instance\n  procd_set_param command " + bin + " run -c /etc/netductor-agent/sing-box-client.json\n  procd_set_param respawn\n  procd_close_instance\n}\n"
+	if _, err := os.Stat("/etc/rc.common"); err == nil {
+		_ = os.WriteFile("/etc/init.d/netductor-vpn", []byte(init), 0o755)
+		_ = exec.Command("/etc/init.d/netductor-vpn", "enable").Run()
+		_ = exec.Command("/etc/init.d/netductor-vpn", "restart").Run()
+		note += "; netductor-vpn restarted"
+	} else {
+		_ = exec.Command(bin, "run", "-c", path).Start()
+		note += "; sing-box started"
+	}
+	if mode == "socks" {
+		note += "; local proxy 0.0.0.0:7890 (set LAN devices or transparent redirect manually)"
 	}
 	return note
 }

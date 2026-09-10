@@ -1,480 +1,151 @@
 (() => {
-  const $ = (id) => document.getElementById(id);
-  
-  const STR = {
-    en: {
-      loginTitle: "Operator login",
-      signIn: "Sign in",
-      logout: "Logout",
-      overview: "Overview",
-      users: "VPN",
-      metrics: "Metrics",
-      probes: "Probes",
-      routers: "Routers",
-      settings: "Settings",
-      signedIn: "Signed in",
-      loggedOut: "Logged out",
-      sessionSoon: "Session expires soon — renew via /session",
-      sessionLeft: "Session",
-      left: "left",
-      services: "Services",
-      containers: "Containers",
-    },
-    ru: {
-      loginTitle: "Вход оператора",
-      signIn: "Войти",
-      logout: "Выйти",
-      overview: "Обзор",
-      users: "VPN",
-      metrics: "Метрики",
-      probes: "Пробы",
-      routers: "Роутеры",
-      settings: "Настройки",
-      signedIn: "Вход выполнен",
-      loggedOut: "Вы вышли",
-      sessionSoon: "Сессия скоро истечёт — обновите через /session",
-      sessionLeft: "Сессия",
-      left: "осталось",
-      services: "Сервисы",
-      containers: "Контейнеры",
-    },
+  const $ = (s) => document.querySelector(s);
+  const state = { token: localStorage.getItem('nd_token') || '', lang: localStorage.getItem('nd_lang') || 'en' };
+  const i18n = {
+    en: { login_title: 'Operator sign-in', login_hint: 'Token: netductor vpn session 72', sign_in: 'Sign in' },
+    ru: { login_title: 'Вход оператора', login_hint: 'Токен: netductor vpn session 72', sign_in: 'Войти' },
   };
-  let lang = localStorage.getItem("fv_lang") || ((navigator.language || "ru").startsWith("en") ? "en" : "ru");
-  if (lang !== "ru" && lang !== "en") lang = "en";
-  function t(k) { return (STR[lang] && STR[lang][k]) || (STR.en[k] || k); }
-  function applyLang() {
-    const h1 = document.querySelector("#login h1");
-    if (h1) h1.textContent = t("loginTitle");
-    const bi = $("btn-login"); if (bi) bi.textContent = t("signIn");
-    const bo = $("btn-logout"); if (bo) bo.textContent = t("logout");
-    const setTxt = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = t(key); };
-    setTxt("t-services", "services");
-    setTxt("t-containers", "containers");
-    document.querySelectorAll(".tab").forEach((b) => {
-      const map = { overview: "overview", users: "users", metrics: "metrics", probes: "probes", routers: "routers", settings: "settings" };
-      if (map[b.dataset.tab]) b.textContent = t(map[b.dataset.tab]);
-    });
+  function t(k) { return (i18n[state.lang] || i18n.en)[k] || k; }
+  function applyI18n() {
+    document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
   }
-
-  const state = {
-    token: sessionStorage.getItem("fv_token") || "",
-    users: [],
-    linkCache: null,
-    timers: [],
-  };
-
-  function headers() {
-    return { Authorization: "Bearer " + state.token, "Content-Type": "application/json" };
+  function toast(msg) {
+    const el = $('#toast'); el.textContent = msg; el.classList.remove('hide');
+    setTimeout(() => el.classList.add('hide'), 2500);
   }
-
-  function toast(msg, kind) {
-    const el = $("toast");
-    el.textContent = msg;
-    el.classList.remove("hide", "err", "ok");
-    if (kind) el.classList.add(kind);
-    clearTimeout(el._t);
-    el._t = setTimeout(() => el.classList.add("hide"), 4000);
-  }
-
   async function api(path, opts = {}) {
-    let r;
-    try {
-      r = await fetch(path, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
-    } catch (e) {
-      toast(String(e.message || e), "err");
-      throw e;
-    }
-    if (r.status === 401) {
-      toast("Session expired — login again", "err");
-      logout(false);
-      throw new Error("unauthorized");
-    }
-    const ct = r.headers.get("content-type") || "";
-    if (ct.includes("application/json")) {
-      const j = await r.json();
-      if (!r.ok) {
-        toast(j.error || r.statusText, "err");
-        throw new Error(j.error || r.statusText);
-      }
-      return j;
-    }
-    if (!r.ok) {
-      toast(r.statusText, "err");
-      throw new Error(r.statusText);
-    }
+    const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+    if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+    const r = await fetch(path, { ...opts, headers });
+    if (r.status === 401) { logout(); throw new Error('unauthorized'); }
     return r;
   }
-
-  function fmtBytes(n) {
-    if (!n) return "0 B";
-    const u = ["B", "KB", "MB", "GB", "TB"];
-    let i = 0, x = n;
-    while (x >= 1024 && i < u.length - 1) { x /= 1024; i++; }
-    return x.toFixed(i ? 1 : 0) + " " + u[i];
+  function logout() {
+    state.token = ''; localStorage.removeItem('nd_token');
+    $('#dash').classList.add('hide'); $('#login').classList.remove('hide');
+    $('#btn-logout').classList.add('hide');
   }
-
-  function fmtDur(sec) {
-    if (sec < 60) return sec + "s";
-    if (sec < 3600) return Math.floor(sec / 60) + "m";
-    if (sec < 86400) return Math.floor(sec / 3600) + "h";
-    return Math.floor(sec / 86400) + "d";
+  function showDash() {
+    $('#login').classList.add('hide'); $('#dash').classList.remove('hide');
+    $('#btn-logout').classList.remove('hide');
+    refreshAll();
   }
-
-  function showDash(on) {
-    $("login").classList.toggle("hide", on);
-    $("dash").classList.toggle("hide", !on);
-    $("btn-logout").classList.toggle("hide", !on);
-    $("session-line").classList.toggle("hide", !on);
+  function tab(name) {
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('hide', p.id !== 'tab-' + name));
   }
-
-  function logout(clearMsg) {
-    state.token = "";
-    sessionStorage.removeItem("fv_token");
-    state.timers.forEach(clearInterval);
-    state.timers = [];
-    showDash(false);
-    if (clearMsg !== false) toast(t("loggedOut"), "ok");
-  }
-
-  function renderProbeStrip(probes) {
-    const el = $("probe-strip");
-    if (!probes || !probes.length) {
-      el.innerHTML = '<span class="muted">No probe data</span>';
-      return;
-    }
-    el.innerHTML = probes.map((p) => {
-      const cls = p.ok ? "ok" : "bad";
-      const ms = p.ms != null ? " " + p.ms + "ms" : "";
-      return '<span class="pill ' + cls + '">' + (p.name || "?") + (p.ok ? " ✓" : " ✗") + ms + "</span>";
-    }).join("");
-  }
-
-  async function refreshSession() {
+  async function refreshOverview() {
     try {
-      const s = await api("/api/session");
-      $("session-line").textContent = t("sessionLeft") + " " + fmtDur(s.expires_in_sec) + " " + t("left");
-      if (s.expires_in_sec < 600) toast(t("sessionSoon"), "err");
-    } catch (_) {}
-  }
-
-  async function refreshStatus() {
-    const s = await api("/api/status");
-    $("host-line").textContent = s.hostname + " · " + new Date(s.ts * 1000).toLocaleString();
-    $("m-cpu").textContent = s.cpu_pct + "%";
-    const mu = s.mem.used || 0, mt = s.mem.total || 1;
-    $("m-ram").textContent = Math.round((100 * mu) / mt) + "%";
-    $("m-ram").title = fmtBytes(mu) + " / " + fmtBytes(mt);
-    const du = s.disk.used || 0, dt = s.disk.total || 1;
-    $("m-disk").textContent = Math.round((100 * du) / dt) + "%";
-    $("m-load").textContent = (s.loadavg || []).map((x) => x.toFixed(2)).join(" · ");
-    if (s.net) {
-      $("m-rx").textContent = fmtBytes(s.net.rx_bytes || 0);
-      $("m-tx").textContent = fmtBytes(s.net.tx_bytes || 0);
-    }
-    $("collector-warn").classList.toggle("hide", !s.collector_stale);
-    renderProbeStrip(s.probes || []);
-    const ul = $("svc-list"); ul.innerHTML = "";
-    Object.entries(s.services || {}).forEach(([name, st]) => {
-      const li = document.createElement("li");
-      li.innerHTML = "<span>" + name + '</span><span class="' + (st === "active" ? "ok" : "bad") + '">' + st + "</span>";
-      ul.appendChild(li);
-    });
-    const cl = $("ct-list"); cl.innerHTML = "";
-    (s.containers || []).forEach((c) => {
-      const li = document.createElement("li");
-      li.innerHTML = "<span>" + c.name + "</span><span class='muted'>" + c.status + "</span>";
-      cl.appendChild(li);
-    });
-    if (!(s.containers || []).length) cl.innerHTML = "<li class='muted'>none</li>";
-  }
-
-  function renderUsers() {
-    const q = ($("user-filter").value || "").toLowerCase();
-    const tb = $("users-table").querySelector("tbody");
-    tb.innerHTML = "";
-    state.users.filter((u) => {
-      if (!q) return true;
-      return (u.name + " " + (u.note || "")).toLowerCase().includes(q);
-    }).forEach((u) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = "<td>" + u.name + "</td><td class='" + (u.enabled ? "ok" : "bad") + "'>" +
-        (u.enabled ? "on" : "off") + "</td><td class='muted'>" + (u.note || "") + "</td><td class='row-actions'></td>";
-      const actions = tr.querySelector("td:last-child");
-      const mk = (label, cls, fn) => {
-        const b = document.createElement("button");
-        b.textContent = label; b.className = cls; b.type = "button"; b.onclick = fn;
-        actions.appendChild(b);
-      };
-      mk("Open", "primary", () => showUser(u.name));
-      mk("On", "success", async () => {
-        await api("/vpn/users/" + encodeURIComponent(u.name) + "/enable", { method: "POST", body: "{}" });
-        toast("Enabled " + u.name, "ok"); refreshUsers();
+      const st = await (await api('/api/status')).json();
+      $('#host-line').textContent = st.hostname || st.host || '';
+      const m = await (await api('/api/metrics')).json().catch(() => ({}));
+      const mem = m.mem_pct != null ? m.mem_pct + '%' : '—';
+      const disk = m.disk_pct != null ? m.disk_pct + '%' : '—';
+      $('#m-cpu').textContent = m.cpu_pct != null ? m.cpu_pct + '%' : (m.cpu || '—');
+      $('#m-ram').textContent = mem;
+      $('#m-disk').textContent = disk;
+      $('#m-load').textContent = (m.load && (m.load['1'] || m.load[0])) || '—';
+      $('#m-rx').textContent = m.net_rx || m.rx || '—';
+      $('#m-tx').textContent = m.net_tx || m.tx || '—';
+      if (m.ts && Date.now()/1000 - m.ts > 180) $('#collector-warn').classList.remove('hide');
+      else $('#collector-warn').classList.add('hide');
+      const pr = await (await api('/api/probes')).json().catch(() => []);
+      const strip = $('#probe-strip'); strip.innerHTML = '';
+      (Array.isArray(pr) ? pr : (pr.probes || [])).forEach((p) => {
+        const s = document.createElement('span');
+        s.className = 'pill ' + (p.ok ? 'ok' : 'bad');
+        s.textContent = (p.name || p.id || 'probe') + (p.ok ? ' ✓' : ' ✗');
+        strip.appendChild(s);
       });
-      mk("Off", "ghost", async () => {
-        await api("/vpn/users/" + encodeURIComponent(u.name) + "/disable", { method: "POST", body: "{}" });
-        toast("Disabled " + u.name, "ok"); refreshUsers();
-      });
-      mk("Revoke", "danger", async () => {
-        if (!confirm("Revoke " + u.name + "?")) return;
-        await api("/vpn/users/" + encodeURIComponent(u.name) + "/revoke", { method: "POST", body: "{}" });
-        toast("Revoked " + u.name, "ok"); refreshUsers();
-      });
-      tb.appendChild(tr);
-    });
+    } catch (e) { console.warn(e); }
   }
-
   async function refreshUsers() {
-    const data = await api("/vpn/users");
-    state.users = data.users || [];
-    renderUsers();
-  }
-
-  async function showUser(name) {
-    const link = await api("/vpn/users/" + encodeURIComponent(name) + "/link");
-    state.linkCache = link;
-    const u = state.users.find((x) => x.name === name);
-    $("user-detail").classList.remove("hide");
-    $("detail-title").textContent = name;
-    $("detail-note").value = (u && u.note) || "";
-    $("detail-sub").textContent = link.subscription || "";
-    $("btn-copy-sub").onclick = async () => {
-      try { await navigator.clipboard.writeText(link.subscription || ""); toast("Copied subscription", "ok"); } catch (_) { toast("Copy failed", "err"); }
-    };
-    $("btn-copy-vless").onclick = async () => {
-      try { await navigator.clipboard.writeText(link.vless || ""); toast("Copied VLESS", "ok"); } catch (_) {}
-    };
-    $("btn-copy-hy2").onclick = async () => {
-      try { await navigator.clipboard.writeText(link.hy2 || ""); toast("Copied HY2", "ok"); } catch (_) {}
-    };
-    $("btn-save-note").onclick = async () => {
-      await api("/vpn/users/" + encodeURIComponent(name) + "/note", {
-        method: "POST", body: JSON.stringify({ note: $("detail-note").value }),
-      });
-      toast("Note saved", "ok");
+    const r = await api('/vpn/users');
+    const data = await r.json();
+    const users = data.users || data || [];
+    const tb = $('#users-table tbody'); tb.innerHTML = '';
+    users.forEach((u) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${u.name}</td><td>${u.enabled ? 'on' : 'off'}</td><td>${u.note || ''}</td>
+        <td><button class="ghost btn-open" data-name="${u.name}">Open</button>
+        <button class="ghost btn-dis" data-name="${u.name}">${u.enabled ? 'Disable' : 'Enable'}</button></td>`;
+      tb.appendChild(tr);
+    });
+    tb.querySelectorAll('.btn-open').forEach((b) => b.onclick = () => openUser(b.dataset.name));
+    tb.querySelectorAll('.btn-dis').forEach((b) => b.onclick = async () => {
+      await api('/vpn/users/' + b.dataset.name + '/' + (b.textContent === 'Disable' ? 'disable' : 'enable'), { method: 'POST' });
       refreshUsers();
-    };
-    const img = $("detail-qr");
-    img.classList.add("hide");
+    });
+  }
+  async function openUser(name) {
+    $('#user-detail').classList.remove('hide');
+    $('#detail-title').textContent = name;
+    const r = await api('/vpn/users/' + name + '/subscription');
+    const text = await r.text();
+    $('#detail-sub').textContent = text;
+    const img = $('#detail-qr');
+    img.classList.add('hide');
     try {
-      const r = await fetch("/vpn/users/" + encodeURIComponent(name) + "/qr", { headers: headers() });
-      if (r.ok) { img.src = URL.createObjectURL(await r.blob()); img.classList.remove("hide"); }
+      const qr = await api('/vpn/users/' + name + '/qr');
+      if (qr.ok) {
+        const blob = await qr.blob();
+        img.src = URL.createObjectURL(blob);
+        img.classList.remove('hide');
+      }
     } catch (_) {}
+    $('#btn-copy-sub').onclick = () => { navigator.clipboard.writeText(text); toast('copied'); };
   }
-
-  function drawChart(pts) {
-    const c = $("chart");
-    const ctx = c.getContext("2d");
-    const w = c.width, h = c.height, pad = 16;
-    const bg = getComputedStyle(document.body).getPropertyValue("--bg").trim() || "#0d1218";
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, w, h);
-    if (!pts.length) return;
-    ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--border").trim() || "#2a3548";
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      const y = pad + ((h - pad * 2) * i) / 4;
-      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
-    }
-    const draw = (key, color) => {
-      const vals = pts.map((p) => Number(p[key] || 0));
-      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-      vals.forEach((v, i) => {
-        const x = pad + (i / Math.max(1, vals.length - 1)) * (w - pad * 2);
-        const y = h - pad - (Math.min(100, v) / 100) * (h - pad * 2);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-    };
-    draw("cpu_pct", "#3b82f6");
-    draw("mem_pct", "#22c55e");
+  async function refreshMetrics() {
+    const m = await (await api('/api/metrics')).json();
+    $('#metrics-raw').textContent = JSON.stringify(m, null, 2);
   }
-
-  async function refreshHistory() {
-    const h = await api("/api/metrics/history?limit=180");
-    drawChart(h.points || []);
-  }
-
-  async function refreshProbes() {
-    const data = await api("/api/probes");
-    const up = data.uptime || {};
-    const tb = $("probes-table").querySelector("tbody");
-    tb.innerHTML = "";
-    (data.probes || []).forEach((p) => {
-      const u = up[p.name] || {};
-      const tr = document.createElement("tr");
-      const detail = p.error || (p.code != null ? "HTTP " + p.code : (p.via || ""));
-      tr.innerHTML = "<td>" + (p.name || "") + "</td><td class='" + (p.ok ? "ok" : "bad") + "'>" +
-        (p.ok ? "ok" : "fail") + "</td><td>" + (p.ms != null ? p.ms : "—") + "</td><td>" +
-        (u.uptime_pct != null ? u.uptime_pct + "%" : "—") + "</td><td class='muted'>" + detail + "</td>";
-      tb.appendChild(tr);
-    });
-    if (!(data.probes || []).length) tb.innerHTML = "<tr><td colspan='5' class='muted'>No data</td></tr>";
-    renderProbeStrip(data.probes || []);
-  }
-
-  async function loadSettings() {
-    const cfg = await api("/api/probes/config");
-    const al = cfg.alerts || {};
-    $("al-cpu").value = al.cpu_pct ?? 90;
-    $("al-mem").value = al.mem_pct ?? 92;
-    $("al-disk").value = al.disk_pct ?? 90;
-    $("al-cd").value = al.cooldown_sec ?? 1800;
-    $("al-svc").checked = al.service_not_active !== false;
-    $("al-probe").checked = al.probe_fail !== false;
-    $("probes-json").value = JSON.stringify(cfg.probes || [], null, 2);
-  }
-
-  async function saveAlerts() {
-    const cfg = await api("/api/probes/config");
-    cfg.alerts = {
-      cpu_pct: Number($("al-cpu").value),
-      mem_pct: Number($("al-mem").value),
-      disk_pct: Number($("al-disk").value),
-      cooldown_sec: Number($("al-cd").value),
-      service_not_active: $("al-svc").checked,
-      probe_fail: $("al-probe").checked,
-    };
-    await api("/api/probes/config", { method: "POST", body: JSON.stringify(cfg) });
-    toast("Alerts saved", "ok");
-  }
-
-  async function saveProbes() {
-    const cfg = await api("/api/probes/config");
-    try {
-      cfg.probes = JSON.parse($("probes-json").value);
-    } catch (e) {
-      toast("Invalid JSON", "err");
-      return;
-    }
-    await api("/api/probes/config", { method: "POST", body: JSON.stringify(cfg) });
-    toast("Probes saved", "ok");
-  }
-
-
   async function refreshRouters() {
-    const data = await api("/api/edge/devices");
-    const tb = $("routers-table") && $("routers-table").querySelector("tbody");
-    if (!tb) return;
-    tb.innerHTML = "";
-    const devices = data.devices || [];
-    if (!devices.length) {
-      tb.innerHTML = "<tr><td colspan='8' class='muted'>—</td></tr>";
-      return;
-    }
-    devices.sort((a, b) => (b.last_seen || 0) - (a.last_seen || 0));
-    for (const d of devices) {
-      const tr = document.createElement("tr");
-      const ok = d.healthy ? "ok" : "fail";
-      const ago = d.last_seen ? Math.max(0, Math.floor(Date.now() / 1000 - d.last_seen)) + "s" : "—";
-      tr.innerHTML = `<td><code>${d.device_id || ""}</code></td>
-        <td>${d.hostname || ""}</td>
-        <td>${d.board || ""}</td>
-        <td>${d.openwrt || ""}</td>
-        <td>${d.wan_ip || ""}</td>
-        <td>${d.wifi_clients ?? ""}</td>
-        <td class="${ok}">${d.healthy ? "online" : "offline"} (${ago})</td>
-        <td><button type="button" data-pick="${d.device_id}">Select</button></td>`;
+    const data = await (await api('/api/edge/devices')).json();
+    const list = data.devices || data || [];
+    const tb = $('#routers-table tbody'); tb.innerHTML = '';
+    list.forEach((d) => {
+      const tr = document.createElement('tr');
+      const id = d.device_id || d.id || '';
+      tr.innerHTML = `<td>${id}</td><td>${d.hostname || ''}</td><td>${d.last_seen || ''}</td><td>${d.wan_ip || ''}</td>
+        <td><button class="ghost btn-ping" data-id="${id}">ping</button></td>`;
       tb.appendChild(tr);
-    }
-    tb.querySelectorAll("button[data-pick]").forEach((b) => {
-      b.onclick = () => { $("edge-device-id").value = b.dataset.pick; };
+    });
+    tb.querySelectorAll('.btn-ping').forEach((b) => b.onclick = async () => {
+      await api('/api/edge/cmd', { method: 'POST', body: JSON.stringify({ device_id: b.dataset.id, action: 'ping' }) });
+      toast('queued');
     });
   }
-
-  async function enqueueEdgeCmd() {
-    const device_id = ($("edge-device-id").value || "").trim();
-    const action = $("edge-action").value;
-    const arg = ($("edge-arg").value || "").trim();
-    if (!device_id) { toast("device_id?", "err"); return; }
-    const r = await api("/api/edge/cmd", { method: "POST", body: JSON.stringify({ device_id, action, arg }) });
-    $("edge-cmd-out").textContent = JSON.stringify(r, null, 2);
-    toast("cmd " + (r.id || ""), "ok");
+  async function refreshProbes() {
+    const p = await (await api('/api/probes')).json();
+    $('#probes-raw').textContent = JSON.stringify(p, null, 2);
+  }
+  function refreshAll() {
+    refreshOverview(); refreshUsers(); refreshMetrics(); refreshRouters(); refreshProbes();
   }
 
-  function setTab(name) {
-    if (name === "routers") setTimeout(() => refreshRouters().catch(() => {}), 0);
-
-    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
-    ["overview", "users", "metrics", "probes", "routers", "settings"].forEach((t) => {
-      $("tab-" + t).classList.toggle("hide", t !== name);
-    });
-    if (name === "users") refreshUsers().catch(() => {});
-    if (name === "metrics") refreshHistory().catch(() => {});
-    if (name === "probes") refreshProbes().catch(() => {});
-    if (name === "overview") refreshStatus().catch(() => {});
-    if (name === "settings") loadSettings().catch(() => {});
-  }
-
-  function startTimers() {
-    state.timers.forEach(clearInterval);
-    state.timers = [
-      setInterval(() => {
-        if ($("dash").classList.contains("hide")) return;
-        refreshStatus().catch(() => {});
-        refreshSession().catch(() => {});
-      }, 20000),
-      setInterval(() => {
-        if ($("dash").classList.contains("hide")) return;
-        if (!$("tab-probes").classList.contains("hide")) refreshProbes().catch(() => {});
-        if ($("tab-routers") && !$("tab-routers").classList.contains("hide")) refreshRouters().catch(() => {});
-      }, 30000),
-    ];
-  }
-
-  $("btn-login").onclick = async () => {
-    state.token = $("token").value.trim();
-    $("login-err").textContent = "";
-    if (!state.token) { $("login-err").textContent = "Token required"; return; }
+  $('#btn-login').onclick = async () => {
+    state.token = $('#token').value.trim();
     try {
-      await api("/api/status");
-      sessionStorage.setItem("fv_token", state.token);
-      showDash(true);
-      setTab("overview");
-      startTimers();
-      refreshSession();
-      toast(t("signedIn"), "ok");
-    } catch (e) {
-      $("login-err").textContent = e.message || "Login failed";
-    }
+      const r = await api('/api/session');
+      if (!r.ok) throw new Error('bad token');
+      localStorage.setItem('nd_token', state.token);
+      showDash();
+    } catch (e) { $('#login-err').textContent = 'Invalid session'; }
   };
-
-  $("btn-logout").onclick = () => logout();
-  if ($("btn-lang")) {
-    $("btn-lang").onclick = () => {
-      lang = lang === "ru" ? "en" : "ru";
-      localStorage.setItem("fv_lang", lang);
-      applyLang();
-    };
-  }
-  applyLang();
-  const setTxt = (id, key) => { const el = document.getElementById(id); if (el) el.textContent = t(key); };
-    setTxt("t-services", "services");
-    setTxt("t-containers", "containers");
-    document.querySelectorAll(".tab").forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
-    const brr = $("btn-refresh-routers"); if (brr) brr.onclick = () => refreshRouters().catch((e) => toast(String(e), "err"));
-    const bec = $("btn-edge-cmd"); if (bec) bec.onclick = () => enqueueEdgeCmd().catch((e) => toast(String(e), "err"));
-    // when opening routers tab
-    const _setTab = setTab;
-    window.__fvSetTab = setTab;
-
-  $("btn-refresh-users").onclick = () => refreshUsers().catch(() => {});
-  $("btn-refresh-probes").onclick = () => refreshProbes().catch(() => {});
-  $("user-filter").oninput = () => renderUsers();
-  $("btn-save-alerts").onclick = () => saveAlerts().catch(() => {});
-  $("btn-save-probes").onclick = () => saveProbes().catch(() => {});
-  $("btn-add").onclick = async () => {
-    const name = $("new-name").value.trim(), note = $("new-note").value.trim();
+  $('#btn-logout').onclick = logout;
+  $('#btn-lang').onclick = () => {
+    state.lang = state.lang === 'en' ? 'ru' : 'en';
+    localStorage.setItem('nd_lang', state.lang); applyI18n();
+  };
+  document.querySelectorAll('.tab').forEach((b) => b.onclick = () => tab(b.dataset.tab));
+  $('#btn-refresh-users').onclick = refreshUsers;
+  $('#btn-add-user').onclick = async () => {
+    const name = $('#new-user').value.trim();
+    const note = $('#new-note').value.trim();
     if (!name) return;
-    await api("/vpn/users", { method: "POST", body: JSON.stringify({ name, note }) });
-    $("new-name").value = ""; $("new-note").value = "";
-    toast("User created", "ok");
-    await refreshUsers();
-    await showUser(name);
+    await api('/vpn/users', { method: 'POST', body: JSON.stringify({ name, note }) });
+    $('#new-user').value = ''; refreshUsers(); toast('added');
   };
-
-  if (state.token) {
-    api("/api/status")
-      .then(() => { showDash(true); setTab("overview"); startTimers(); refreshSession(); })
-      .catch(() => { sessionStorage.removeItem("fv_token"); state.token = ""; });
-  }
+  applyI18n();
+  if (state.token) showDash();
 })();

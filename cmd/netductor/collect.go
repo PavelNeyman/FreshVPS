@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/PavelNeyman/netductor/internal/metrics"
+	"github.com/PavelNeyman/netductor/internal/notify"
 	"github.com/PavelNeyman/netductor/internal/paths"
 	"github.com/PavelNeyman/netductor/internal/probes"
 )
@@ -110,24 +110,14 @@ func evaluateSimpleAlerts(m map[string]any, live []map[string]any, cfg map[strin
 	if al == nil {
 		return
 	}
-	notify := func(msg string) {
-		for _, p := range []string{
-			"/opt/freshvps/runtime/telegram/notify.sh",
-			"/opt/netductor/runtime/telegram/notify.sh",
-		} {
-			if st, err := os.Stat(p); err == nil && !st.IsDir() {
-				_ = exec.Command(p, msg).Run()
-				return
-			}
-		}
-	}
+	send := func(msg string) { _ = notify.Telegram(msg) }
 	// probe failures
 	if v, ok := al["probe_fail"].(bool); ok && v {
 		for _, p := range live {
 			if ok, _ := p["ok"].(bool); !ok {
 				name, _ := p["name"].(string)
 				err, _ := p["error"].(string)
-				notify(fmt.Sprintf("⚠️ Probe %s failed: %s", name, err))
+				send(fmt.Sprintf("⚠️ Probe %s failed: %s", name, err))
 			}
 		}
 	}

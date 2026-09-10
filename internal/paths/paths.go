@@ -1,4 +1,3 @@
-// Package paths resolves Netductor vs legacy FreshVPS filesystem locations.
 package paths
 
 import (
@@ -6,7 +5,6 @@ import (
 	"path/filepath"
 )
 
-// FirstExisting returns the first path that exists, or the first candidate if none exist.
 func FirstExisting(candidates ...string) string {
 	for _, p := range candidates {
 		if p == "" {
@@ -29,30 +27,45 @@ func env(k, d string) string {
 	return d
 }
 
-// EtcDir — /etc/netductor or /etc/freshvps
+// Prefer Netductor paths; legacy FreshVPS only if already present and netductor missing.
+
 func EtcDir() string {
-	return FirstExisting(
-		env("NETDUCTOR_ETC", ""),
-		"/etc/netductor",
-		env("FRESHVPS_ETC", "/etc/freshvps"),
-		"/etc/freshvps",
-	)
+	if v := os.Getenv("NETDUCTOR_ETC"); v != "" {
+		return v
+	}
+	if _, err := os.Stat("/etc/netductor"); err == nil {
+		return "/etc/netductor"
+	}
+	if _, err := os.Stat("/etc/freshvps"); err == nil {
+		return "/etc/freshvps"
+	}
+	return "/etc/netductor"
 }
 
 func StateDir() string {
-	return FirstExisting(
-		env("NETDUCTOR_STATE", ""),
-		"/var/lib/netductor",
-		"/var/lib/freshvps",
-	)
+	if v := os.Getenv("NETDUCTOR_STATE"); v != "" {
+		return v
+	}
+	if _, err := os.Stat("/var/lib/netductor"); err == nil {
+		return "/var/lib/netductor"
+	}
+	if _, err := os.Stat("/var/lib/freshvps"); err == nil {
+		return "/var/lib/freshvps"
+	}
+	return "/var/lib/netductor"
 }
 
 func OptDir() string {
-	return FirstExisting(
-		env("NETDUCTOR_ROOT", ""),
-		"/opt/netductor",
-		"/opt/freshvps",
-	)
+	if v := os.Getenv("NETDUCTOR_ROOT"); v != "" {
+		return v
+	}
+	if _, err := os.Stat("/opt/netductor"); err == nil {
+		return "/opt/netductor"
+	}
+	if _, err := os.Stat("/opt/freshvps"); err == nil {
+		return "/opt/freshvps"
+	}
+	return "/opt/netductor"
 }
 
 func SessionsDir() string {
@@ -73,27 +86,24 @@ func EdgeTokenFile() string {
 	if v := os.Getenv("NETDUCTOR_EDGE_TOKEN_FILE"); v != "" {
 		return v
 	}
-	return FirstExisting(
-		filepath.Join(EtcDir(), "secrets", "edge_token"),
-		"/etc/freshvps/secrets/edge_token",
-	)
+	return filepath.Join(EtcDir(), "secrets", "edge_token")
 }
 
 func EdgeDir() string {
-	if v := os.Getenv("FRESHVPS_EDGE_DIR"); v != "" {
+	if v := os.Getenv("NETDUCTOR_EDGE_DIR"); v != "" {
 		return v
 	}
-	if v := os.Getenv("NETDUCTOR_EDGE_DIR"); v != "" {
+	if v := os.Getenv("FRESHVPS_EDGE_DIR"); v != "" {
 		return v
 	}
 	return filepath.Join(StateDir(), "edge")
 }
 
 func MetricsDir() string {
-	if v := os.Getenv("FRESHVPS_METRICS_DIR"); v != "" {
+	if v := os.Getenv("NETDUCTOR_METRICS_DIR"); v != "" {
 		return v
 	}
-	if v := os.Getenv("NETDUCTOR_METRICS_DIR"); v != "" {
+	if v := os.Getenv("FRESHVPS_METRICS_DIR"); v != "" {
 		return v
 	}
 	return filepath.Join(StateDir(), "metrics")
@@ -126,8 +136,32 @@ func VPNBin() string {
 		return v
 	}
 	return FirstExisting(
+		"/usr/local/bin/netductor", // vpn subcommand preferred
 		"/usr/local/bin/freshvps-vpn",
-		"/usr/local/bin/netductor-vpn",
-		filepath.Join(OptDir(), "bin", "freshvps-vpn"),
+		filepath.Join(OptDir(), "bin", "netductor"),
 	)
+}
+
+func EnsureLayout() error {
+	for _, d := range []string{
+		EtcDir(),
+		filepath.Join(EtcDir(), "secrets"),
+		filepath.Join(EtcDir(), "sessions"),
+		filepath.Join(EtcDir(), "clients"),
+		StateDir(),
+		filepath.Join(StateDir(), "metrics"),
+		filepath.Join(StateDir(), "edge"),
+		OptDir(),
+		filepath.Join(OptDir(), "bin"),
+		filepath.Join(OptDir(), "runtime", "api", "admin"),
+		filepath.Join(OptDir(), "runtime", "telegram"),
+	} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+	_ = os.Chmod(filepath.Join(EtcDir(), "secrets"), 0o700)
+	_ = os.Chmod(filepath.Join(EtcDir(), "sessions"), 0o700)
+	_ = os.Chmod(filepath.Join(EtcDir(), "clients"), 0o700)
+	return nil
 }

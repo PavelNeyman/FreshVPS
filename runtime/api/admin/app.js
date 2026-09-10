@@ -146,13 +146,54 @@
       }
     } catch (_) {}
   }
+  
+  function formToTemplate() {
+    return {
+      id: $('#f-id').value.trim() || 'default',
+      role: $('#f-role').value.trim() || 'site',
+      network: {
+        lan_ip: $('#f-lan-ip').value.trim(),
+        lan_mask: $('#f-lan-mask').value.trim() || '255.255.255.0',
+        dhcp: $('#f-dhcp').checked,
+      },
+      wifi: {
+        ssid: $('#f-ssid').value.trim(),
+        key: $('#f-wkey').value,
+        encryption: $('#f-enc').value,
+      },
+      vpn: {
+        enabled: $('#f-vpn').checked,
+        mode: $('#f-vpn-mode').value,
+      },
+    };
+  }
+  function templateToForm(t) {
+    if (!t) return;
+    $('#f-id').value = t.id || 'default';
+    $('#f-role').value = t.role || 'site';
+    const net = t.network || {};
+    $('#f-lan-ip').value = net.lan_ip || '';
+    $('#f-lan-mask').value = net.lan_mask || '255.255.255.0';
+    $('#f-dhcp').checked = net.dhcp !== false;
+    const wifi = t.wifi || {};
+    $('#f-ssid').value = wifi.ssid || '';
+    $('#f-wkey').value = wifi.key || '';
+    if (wifi.encryption) $('#f-enc').value = wifi.encryption;
+    const vpn = t.vpn || {};
+    $('#f-vpn').checked = vpn.enabled !== false && vpn.enabled !== 'false';
+    if (vpn.mode) $('#f-vpn-mode').value = vpn.mode;
+    $('#tmpl-editor').value = JSON.stringify(t, null, 2);
+  }
+
   async function refreshTemplates() {
     const data = await (await api('/api/edge/templates')).json();
     const list = data.templates || data || [];
     $('#templates-raw').textContent = JSON.stringify(list, null, 2);
-    if (!$('#tmpl-editor').value && list.length) {
-      $('#tmpl-editor').value = JSON.stringify(list[0], null, 2);
-      $('#tmpl-id').value = list[0].id || 'default';
+    if (list.length) {
+      const id = ($('#f-id') && $('#f-id').value) || 'default';
+      const found = list.find((x) => x.id === id) || list[0];
+      if (found && !$('#f-lan-ip').value) templateToForm(found);
+      if ($('#tmpl-editor') && !$('#tmpl-editor').value) $('#tmpl-editor').value = JSON.stringify(found, null, 2);
     }
   }
   async function refreshMetrics() {
@@ -191,20 +232,33 @@
     $('#new-user').value = ''; refreshUsers(); toast('added');
   };
   $('#btn-refresh-tmpl').onclick = refreshTemplates;
+  $('#btn-form-save').onclick = async () => {
+    const body = formToTemplate();
+    await api('/api/edge/templates', { method: 'POST', body: JSON.stringify(body) });
+    toast('saved ' + body.id); refreshTemplates();
+  };
+  $('#btn-form-load').onclick = async () => {
+    const data = await (await api('/api/edge/templates')).json();
+    const list = data.templates || [];
+    const id = $('#f-id').value.trim() || 'default';
+    const found = list.find((x) => x.id === id) || list[0];
+    templateToForm(found);
+    toast(found ? 'loaded' : 'empty');
+  };
   $('#btn-load-tmpl').onclick = async () => {
-    const id = $('#tmpl-id').value.trim() || 'default';
+    const id = $('#f-id').value.trim() || 'default';
     const data = await (await api('/api/edge/templates')).json();
     const list = data.templates || [];
     const found = list.find((t) => t.id === id) || list[0];
     if (found) {
-      $('#tmpl-id').value = found.id || id;
+      $('#f-id').value = found.id || id;
       $('#tmpl-editor').value = JSON.stringify(found, null, 2);
     } else toast('not found');
   };
   $('#btn-save-tmpl').onclick = async () => {
     try {
       const body = JSON.parse($('#tmpl-editor').value);
-      body.id = $('#tmpl-id').value.trim() || body.id || 'default';
+      body.id = $('#f-id').value.trim() || body.id || 'default';
       await api('/api/edge/templates', { method: 'POST', body: JSON.stringify(body) });
       toast('saved'); refreshTemplates();
     } catch (e) { toast('JSON error: ' + e.message); }

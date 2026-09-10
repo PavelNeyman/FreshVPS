@@ -1,6 +1,6 @@
 # Removed
 
-- FreshVPS name and paths
+- Netductor name and paths
 - Python Admin API
 - Shell install modules (`modules/*.sh`, `lib/*.sh`)
 - Parallel API cutover units

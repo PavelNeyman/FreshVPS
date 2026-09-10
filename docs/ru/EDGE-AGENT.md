@@ -1,11 +1,9 @@
-# Edge-агент
+# Edge-агент (OpenWrt)
 
-Бинарник: релизы `netductor-agent-linux-*`.
+Установка и команды — см. EN. Кратко:
 
-Конфиг `/etc/netductor-agent/config`.
-
-Команды: `ping`, `status`, `reboot`, `wifi_reload`, `network_reload`, `uci_get`, `uci_show`, `uci_set`, `uci_commit`, `logread`.
-
-```bash
-netductor edge cmd site1 ping
-```
+- `config_backup` — конфиги на VPS
+- `metrics` — история на VPS
+- `uci_*` / `uci_batch` — конфигурация
+- `agent_update` — URL|sha256
+- `sysupgrade` — URL|sha256|confirm=yes

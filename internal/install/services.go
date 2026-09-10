@@ -35,6 +35,13 @@ func InstallVPNUsers() error {
 }
 
 func InstallAPI() error {
+	if readSecret("edge_bootstrap_token") == "" {
+		_ = writeSecret("edge_bootstrap_token", randomHex(24))
+	}
+	if readSecret("edge_token") == "" {
+		_ = writeSecret("edge_token", randomHex(24))
+	}
+
 	if out, _ := runOut("systemctl", "is-active", "netductor-api"); strings.TrimSpace(out) == "active" {
 		fmt.Fprintln(os.Stderr, "netductor-api already active — reconfigure unit only")
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/PavelNeyman/netductor/internal/metrics"
 	"github.com/PavelNeyman/netductor/internal/session"
 	"github.com/PavelNeyman/netductor/internal/vpn"
+	"github.com/PavelNeyman/netductor/internal/install"
 	"github.com/PavelNeyman/netductor/internal/paths"
 	"github.com/PavelNeyman/netductor/internal/probes"
 )
@@ -181,26 +182,24 @@ func adminRoot() string {
 }
 
 func runInstall(args []string) {
-	// G4 scaffold: bridge to legacy install.sh if present in cwd or /opt/freshvps
-	candidates := []string{"install.sh", "/opt/freshvps/install.sh", "/opt/netductor/install.sh"}
-	var script string
-	for _, c := range candidates {
-		if st, err := os.Stat(c); err == nil && !st.IsDir() {
-			script = c
-			break
+	comps := []string{}
+	for _, a := range args {
+		if a == "--help" || a == "-h" {
+			fmt.Println("netductor install [--component name ...]   default: core stack")
+			fmt.Println("components: dirs singbox blocky vpn-users api metrics telegram")
+			return
 		}
-	}
-	if script == "" {
-		fmt.Fprintln(os.Stderr, "install.sh not found — clone repo or use bootstrap.sh")
-		os.Exit(1)
-	}
-	a := append([]string{script}, args...)
-	c := exec.Command("bash", a...)
-	c.Stdout, c.Stderr, c.Stdin = os.Stdout, os.Stderr, os.Stdin
-	if err := c.Run(); err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			os.Exit(ee.ExitCode())
+		if a == "--component" || a == "-c" {
+			continue
 		}
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		comps = append(comps, a)
+	}
+	// allow: install singbox blocky
+	if err := install.Run(install.Options{Components: comps}); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }

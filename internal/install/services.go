@@ -54,7 +54,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=NETDUCTOR_ADMIN_ROOT=%s
-Environment=FRESHVPS_ADMIN_ROOT=%s
+Environment=NETDUCTOR_ADMIN_ROOT=%s
 ExecStart=%s serve --bind 127.0.0.1 --port 8787 --no-proxy
 Restart=on-failure
 RestartSec=3

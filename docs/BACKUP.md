@@ -1,20 +1,16 @@
-# Backup
+# Backup & restore
 
 ```bash
 netductor backup
+netductor restore /var/lib/netductor/backups/netductor-YYYYMMDD-HHMMSS.tar.gz.ndenc
 ```
 
-Local encrypted files under `/var/lib/netductor/backups/`.
-Key: `/etc/netductor/secrets/backup_key`.
+- Encryption: AES-256-GCM (Go), key `/etc/netductor/secrets/backup_key`
+- Extension `.ndenc` (not openssl)
+- Offsite: `/etc/netductor/backup.offsite` (`scp`|`rsync`|`http`)
 
-## Offsite
+## TLS for API
 
-`/etc/netductor/backup.offsite`:
-
+```bash
+netductor serve --bind 0.0.0.0 --port 8443   --tls-cert /etc/netductor/tls/cert.pem   --tls-key /etc/netductor/tls/key.pem
 ```
-method=scp
-target=user@host:/var/backups/netductor/
-scp_opts=-i /root/.ssh/id_ed25519
-```
-
-Methods: `scp`, `rsync`, `http` (curl PUT).

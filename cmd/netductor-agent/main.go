@@ -1,9 +1,11 @@
-// netductor-agent — outbound OpenWrt edge agent (G5).
+// netductor-agent — outbound OpenWrt edge agent
 package main
 
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,16 +34,21 @@ func main() {
 			fmt.Printf("netductor-agent %s\n", version)
 			return
 		case "help", "-h", "--help":
-			fmt.Print(`netductor-agent — outbound edge agent
+			fmt.Print(`netductor-agent — outbound edge agent for OpenWrt
 
-  Config file (key=value): /etc/netductor-agent/config
-    SERVER=https://vps.example
-    TOKEN=...
-    DEVICE_ID=site1
-    INTERVAL=60
+Config /etc/netductor-agent/config:
+  SERVER=http://vps:8787
+  TOKEN=...
+  DEVICE_ID=site1
+  INTERVAL=60
 
-  Env overrides: NETDUCTOR_SERVER, NETDUCTOR_TOKEN, NETDUCTOR_DEVICE_ID, NETDUCTOR_INTERVAL
-  Legacy path: 
+Commands (from VPS):
+  ping, status, metrics
+  config_backup          — tar /etc/config → VPS
+  uci_get|show|set|commit|batch
+  wifi_reload, network_reload, reboot
+  agent_update           — arg: URL or URL|sha256
+  sysupgrade             — arg: URL|sha256|confirm=yes
 `)
 			return
 		}
@@ -52,7 +59,7 @@ func main() {
 		os.Exit(1)
 	}
 	cfg.Server = strings.TrimRight(cfg.Server, "/")
-	client := &http.Client{Timeout: 20 * time.Second}
+	client := &http.Client{Timeout: 120 * time.Second}
 	for {
 		if err := heartbeat(client, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "heartbeat: %v\n", err)
@@ -66,11 +73,7 @@ func main() {
 
 func loadConfig() config {
 	c := config{Interval: 60, DeviceID: hostname()}
-	for _, path := range []string{
-		os.Getenv("NETDUCTOR_AGENT_CONF"),
-		"/etc/netductor-agent/config",
-		"",
-	} {
+	for _, path := range []string{os.Getenv("NETDUCTOR_AGENT_CONF"), "/etc/netductor-agent/config"} {
 		if path == "" {
 			continue
 		}
@@ -110,17 +113,15 @@ func parseKV(s string, c *config) {
 		if !ok {
 			continue
 		}
-		k = strings.TrimSpace(k)
-		v = strings.TrimSpace(v)
-		switch k {
+		switch strings.TrimSpace(k) {
 		case "SERVER":
-			c.Server = v
+			c.Server = strings.TrimSpace(v)
 		case "TOKEN":
-			c.Token = v
+			c.Token = strings.TrimSpace(v)
 		case "DEVICE_ID":
-			c.DeviceID = v
+			c.DeviceID = strings.TrimSpace(v)
 		case "INTERVAL":
-			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
 				c.Interval = n
 			}
 		}
@@ -128,116 +129,23 @@ func parseKV(s string, c *config) {
 }
 
 func hostname() string {
-	b, err := os.ReadFile("/proc/sys/kernel/hostname")
-	if err != nil {
-		h, _ := os.Hostname()
-		return h
-	}
-	return strings.TrimSpace(string(b))
+	h, _ := os.Hostname()
+	return h
 }
 
-func collect() map[string]any {
-	m := map[string]any{
-		"device_id": hostname(),
-		"hostname":  hostname(),
-		"ts":        time.Now().Unix(),
-	}
-	if b, err := os.ReadFile("/proc/uptime"); err == nil {
-		f := strings.Fields(string(b))
-		if len(f) > 0 {
-			if u, err := strconv.ParseFloat(f[0], 64); err == nil {
-				m["uptime"] = int64(u)
-			}
-		}
-	}
-	if b, err := os.ReadFile("/proc/loadavg"); err == nil {
-		f := strings.Fields(string(b))
-		if len(f) >= 3 {
-			m["load"] = strings.Join(f[:3], " ")
-		}
-	}
-	mem := map[string]int{}
-	if f, err := os.Open("/proc/meminfo"); err == nil {
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			fs := strings.Fields(sc.Text())
-			if len(fs) >= 2 {
-				n, _ := strconv.Atoi(fs[1])
-				mem[strings.TrimSuffix(fs[0], ":")] = n
-			}
-		}
-		f.Close()
-		m["mem_total_kb"] = mem["MemTotal"]
-		m["mem_avail_kb"] = mem["MemAvailable"]
-	}
-	if b, err := os.ReadFile("/etc/openwrt_release"); err == nil {
-		for _, line := range strings.Split(string(b), "\n") {
-			if strings.HasPrefix(line, "DISTRIB_RELEASE=") {
-				m["openwrt"] = strings.Trim(strings.TrimPrefix(line, "DISTRIB_RELEASE="), "'\"")
-			}
-		}
-	}
-	for _, p := range []string{"/tmp/sysinfo/model", "/tmp/sysinfo/board_name"} {
+func boardName() string {
+	for _, p := range []string{"/tmp/sysinfo/model", "/proc/device-tree/model"} {
 		if b, err := os.ReadFile(p); err == nil {
-			m["board"] = strings.TrimSpace(string(b))
-			break
-		}
-	}
-	m["wan_ip"] = wanIP()
-	m["wifi_clients"] = wifiClients()
-	return m
-}
-
-func wanIP() string {
-	out, err := exec.Command("ip", "-4", "route", "get", "1.1.1.1").Output()
-	if err != nil {
-		return ""
-	}
-	fs := strings.Fields(string(out))
-	for i, f := range fs {
-		if f == "src" && i+1 < len(fs) {
-			return fs[i+1]
+			return strings.TrimSpace(string(b))
 		}
 	}
 	return ""
 }
 
-func wifiClients() int {
-	if _, err := exec.LookPath("iwinfo"); err != nil {
-		return 0
-	}
-	out, err := exec.Command("iwinfo").Output()
-	if err != nil {
-		return 0
-	}
-	total := 0
-	var ifaces []string
-	sc := bufio.NewScanner(bytes.NewReader(out))
-	var prev string
-	for sc.Scan() {
-		line := sc.Text()
-		if strings.Contains(line, "ESSID") && prev != "" {
-			ifaces = append(ifaces, strings.Fields(prev)[0])
-		}
-		prev = line
-	}
-	for _, iface := range ifaces {
-		o, err := exec.Command("iwinfo", iface, "assoclist").Output()
-		if err != nil {
-			continue
-		}
-		total += bytes.Count(o, []byte("dBm"))
-	}
-	return total
-}
-
 func doJSON(client *http.Client, method, url, token string, body any) ([]byte, error) {
 	var rdr io.Reader
 	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
+		b, _ := json.Marshal(body)
 		rdr = bytes.NewReader(b)
 	}
 	req, err := http.NewRequest(method, url, rdr)
@@ -253,18 +161,79 @@ func doJSON(client *http.Client, method, url, token string, body any) ([]byte, e
 		return nil, err
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 300 {
-		return data, fmt.Errorf("HTTP %d: %s", resp.StatusCode, bytes.TrimSpace(data))
+		return data, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(data), 200))
 	}
 	return data, nil
 }
 
+func collectMetrics() map[string]any {
+	m := map[string]any{
+		"hostname": hostname(),
+		"board":    boardName(),
+		"agent":    version,
+		"ts":       time.Now().Unix(),
+	}
+	// uptime
+	if b, err := os.ReadFile("/proc/uptime"); err == nil {
+		fields := strings.Fields(string(b))
+		if len(fields) > 0 {
+			m["uptime_sec"], _ = strconv.ParseFloat(fields[0], 64)
+		}
+	}
+	// mem
+	if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+		var total, avail float64
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(line, "MemTotal:") {
+				fmt.Sscanf(line, "MemTotal: %f", &total)
+			}
+			if strings.HasPrefix(line, "MemAvailable:") {
+				fmt.Sscanf(line, "MemAvailable: %f", &avail)
+			}
+		}
+		if total > 0 {
+			m["mem_total_kb"] = total
+			m["mem_avail_kb"] = avail
+			m["mem_pct"] = (1 - avail/total) * 100
+		}
+	}
+	// load
+	if b, err := os.ReadFile("/proc/loadavg"); err == nil {
+		f := strings.Fields(string(b))
+		if len(f) >= 3 {
+			m["load"] = map[string]string{"1": f[0], "5": f[1], "15": f[2]}
+		}
+	}
+	// WAN IP
+	if out, err := exec.Command("ip", "-4", "route", "get", "1.1.1.1").Output(); err == nil {
+		// ... src x.x.x.x
+		parts := strings.Fields(string(out))
+		for i, p := range parts {
+			if p == "src" && i+1 < len(parts) {
+				m["wan_ip"] = parts[i+1]
+				break
+			}
+		}
+	}
+	// wifi clients rough
+	if out, err := exec.Command("iwinfo").Output(); err == nil {
+		m["iwinfo"] = truncate(string(out), 1500)
+	}
+	return m
+}
+
 func heartbeat(client *http.Client, cfg config) error {
-	payload := collect()
+	payload := collectMetrics()
 	payload["device_id"] = cfg.DeviceID
 	_, err := doJSON(client, http.MethodPost, cfg.Server+"/api/edge/heartbeat", cfg.Token, payload)
-	return err
+	if err != nil {
+		return err
+	}
+	// also store metrics history on VPS
+	_, _ = doJSON(client, http.MethodPost, cfg.Server+"/api/edge/metrics", cfg.Token, payload)
+	return nil
 }
 
 func pollCmds(client *http.Client, cfg config) error {
@@ -287,20 +256,25 @@ func pollCmds(client *http.Client, cfg config) error {
 		if c.ID == "" || c.Action == "" {
 			continue
 		}
-		res := runCmd(c.Action, c.Arg)
+		res := runCmd(client, cfg, c.Action, c.Arg)
 		_, _ = doJSON(client, http.MethodPost, cfg.Server+"/api/edge/cmd_result", cfg.Token, map[string]any{
 			"device_id": cfg.DeviceID,
 			"cmd_id":    c.ID,
+			"action":    c.Action,
 			"result":    res,
+			"ts":        time.Now().Unix(),
 		})
 	}
 	return nil
 }
 
-func runCmd(action, arg string) string {
+func runCmd(client *http.Client, cfg config, action, arg string) string {
 	switch action {
 	case "ping":
 		return "pong"
+	case "status", "metrics":
+		b, _ := json.Marshal(collectMetrics())
+		return string(b)
 	case "reboot":
 		go func() {
 			time.Sleep(2 * time.Second)
@@ -323,15 +297,7 @@ func runCmd(action, arg string) string {
 		}
 		out, _ := exec.Command("uci", args...).CombinedOutput()
 		return truncate(string(out), 8000)
-	case "logread":
-		out, _ := exec.Command("logread").CombinedOutput()
-		lines := strings.Split(string(out), "\n")
-		if len(lines) > 50 {
-			lines = lines[len(lines)-50:]
-		}
-		return strings.Join(lines, "\n")
 	case "uci_set":
-		// arg: path=value
 		parts := strings.SplitN(arg, "=", 2)
 		if len(parts) != 2 || parts[0] == "" {
 			return "uci_set: need path=value"
@@ -340,38 +306,227 @@ func runCmd(action, arg string) string {
 		if err != nil {
 			return truncate(string(out)+" "+err.Error(), 8000)
 		}
-		_ = exec.Command("uci", "commit").Run()
-		return "ok:" + truncate(string(out), 200)
+		return "ok"
 	case "uci_commit":
 		out, _ := exec.Command("uci", "commit").CombinedOutput()
-		return truncate(string(out), 8000)
-	case "status":
-		return collectStatusJSON()
+		return truncate(string(out), 4000)
+	case "uci_batch":
+		return uciBatch(arg)
+	case "logread":
+		out, _ := exec.Command("logread").CombinedOutput()
+		lines := strings.Split(string(out), "\n")
+		if len(lines) > 80 {
+			lines = lines[len(lines)-80:]
+		}
+		return strings.Join(lines, "\n")
+	case "config_backup":
+		return configBackup(client, cfg)
+	case "agent_update":
+		return agentUpdate(arg)
+	case "sysupgrade":
+		return doSysupgrade(arg)
 	default:
 		return "denied:" + action
 	}
 }
 
-func collectStatusJSON() string {
-	host, _ := os.Hostname()
-	return fmt.Sprintf(`{"hostname":%q,"board":%q,"ok":true}`, host, boardName())
+func uciBatch(arg string) string {
+	var ok, fail int
+	var logs []string
+	for _, line := range strings.Split(arg, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if line == "commit" {
+			out, err := exec.Command("uci", "commit").CombinedOutput()
+			logs = append(logs, "commit:"+truncate(string(out), 200))
+			if err != nil {
+				fail++
+			} else {
+				ok++
+			}
+			continue
+		}
+		if line == "network_reload" {
+			out, _ := exec.Command("/etc/init.d/network", "reload").CombinedOutput()
+			logs = append(logs, "network_reload:"+truncate(string(out), 200))
+			ok++
+			continue
+		}
+		if line == "wifi_reload" {
+			out, _ := exec.Command("wifi", "reload").CombinedOutput()
+			logs = append(logs, "wifi_reload:"+truncate(string(out), 200))
+			ok++
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			logs = append(logs, "bad:"+line)
+			fail++
+			continue
+		}
+		out, err := exec.Command("uci", "set", parts[0]+"="+parts[1]).CombinedOutput()
+		if err != nil {
+			logs = append(logs, "fail:"+parts[0]+":"+truncate(string(out), 100))
+			fail++
+		} else {
+			ok++
+		}
+	}
+	return fmt.Sprintf("ok=%d fail=%d\n%s", ok, fail, strings.Join(logs, "\n"))
+}
+
+func configBackup(client *http.Client, cfg config) string {
+	tmp := filepath.Join(os.TempDir(), "nd-cfg-"+cfg.DeviceID+".tar.gz")
+	_ = os.Remove(tmp)
+	cmd := exec.Command("tar", "-czf", tmp, "-C", "/etc", "config")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// fallback busybox
+		cmd = exec.Command("tar", "-czf", tmp, "/etc/config")
+		out2, err2 := cmd.CombinedOutput()
+		if err2 != nil {
+			return "tar failed: " + truncate(string(out)+" "+string(out2), 500)
+		}
+	}
+	defer os.Remove(tmp)
+	f, err := os.Open(tmp)
+	if err != nil {
+		return err.Error()
+	}
+	defer f.Close()
+	req, err := http.NewRequest(http.MethodPost, cfg.Server+"/api/edge/backup", f)
+	if err != nil {
+		return err.Error()
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.Token)
+	req.Header.Set("Content-Type", "application/gzip")
+	req.Header.Set("X-Device-ID", cfg.DeviceID)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err.Error()
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return fmt.Sprintf("upload HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+	return "uploaded: " + truncate(string(body), 300)
+}
+
+func agentUpdate(arg string) string {
+	url, wantSHA, _ := splitArg(arg)
+	if url == "" {
+		return "agent_update: need URL or URL|sha256"
+	}
+	tmp := filepath.Join(os.TempDir(), "netductor-agent.new")
+	if err := downloadFile(url, tmp); err != nil {
+		return "download: " + err.Error()
+	}
+	if wantSHA != "" {
+		sum, err := fileSHA256(tmp)
+		if err != nil || !strings.EqualFold(sum, wantSHA) {
+			_ = os.Remove(tmp)
+			return fmt.Sprintf("sha256 mismatch got=%s want=%s", sum, wantSHA)
+		}
+	}
+	_ = os.Chmod(tmp, 0o755)
+	dest := "/usr/sbin/netductor-agent"
+	if _, err := os.Stat(dest); err != nil {
+		dest = "/usr/bin/netductor-agent"
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		// cross-device
+		in, _ := os.ReadFile(tmp)
+		if err2 := os.WriteFile(dest, in, 0o755); err2 != nil {
+			return err2.Error()
+		}
+		_ = os.Remove(tmp)
+	}
+	return "updated " + dest + " — restart agent to run new binary"
+}
+
+func doSysupgrade(arg string) string {
+	// URL|sha256|confirm=yes
+	url, wantSHA, rest := splitArg(arg)
+	if url == "" {
+		return "sysupgrade: URL|sha256|confirm=yes"
+	}
+	if !strings.Contains(rest, "confirm=yes") && !strings.Contains(arg, "confirm=yes") {
+		return "sysupgrade refused: add confirm=yes"
+	}
+	if _, err := exec.LookPath("sysupgrade"); err != nil {
+		return "sysupgrade binary not found"
+	}
+	img := filepath.Join(os.TempDir(), "nd-firmware.bin")
+	if err := downloadFile(url, img); err != nil {
+		return "download: " + err.Error()
+	}
+	if wantSHA != "" {
+		sum, err := fileSHA256(img)
+		if err != nil || !strings.EqualFold(sum, wantSHA) {
+			_ = os.Remove(img)
+			return fmt.Sprintf("sha256 mismatch got=%s want=%s", sum, wantSHA)
+		}
+	}
+	// -n keep config by default
+	go func() {
+		time.Sleep(3 * time.Second)
+		_ = exec.Command("sysupgrade", "-n", img).Run()
+	}()
+	return "sysupgrade scheduled (keep config flags: default -n keep; image " + img + ")"
+}
+
+func splitArg(arg string) (url, sha, rest string) {
+	parts := strings.Split(arg, "|")
+	if len(parts) == 0 {
+		return "", "", ""
+	}
+	url = strings.TrimSpace(parts[0])
+	if len(parts) > 1 {
+		sha = strings.TrimSpace(parts[1])
+	}
+	if len(parts) > 2 {
+		rest = strings.Join(parts[2:], "|")
+	}
+	return url, sha, rest
+}
+
+func downloadFile(url, dest string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, resp.Body)
+	return err
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func truncate(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if len(s) > n {
-		return s[:n]
+		return s[:n] + "…"
 	}
 	return s
-}
-
-// silence unused on non-openwrt builds
-var _ = filepath.Join
-
-func boardName() string {
-	b, err := os.ReadFile("/tmp/sysinfo/model")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(b))
 }

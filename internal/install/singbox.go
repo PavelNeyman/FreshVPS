@@ -186,18 +186,22 @@ func httpDownload(url, dest string) error {
 }
 
 func randomHex(n int) string {
+	if n <= 0 {
+		n = 8
+	}
 	b := make([]byte, n)
-	_, _ = os.ReadFile("/dev/urandom") // noop touch
 	f, err := os.Open("/dev/urandom")
 	if err != nil {
-		return "abcd1234"
+		return "abcd1234abcd1234"[:n]
 	}
 	defer f.Close()
-	_, _ = f.Read(b)
-	const hex = "0123456789abcdef"
+	if _, err := io.ReadFull(f, b); err != nil {
+		return "abcd1234abcd1234"[:n]
+	}
+	const hexdigits = "0123456789abcdef"
 	out := make([]byte, n)
 	for i := 0; i < n; i++ {
-		out[i] = hex[int(b[i])%16]
+		out[i] = hexdigits[int(b[i])%16]
 	}
 	return string(out)
 }

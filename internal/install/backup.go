@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/PavelNeyman/netductor/internal/paths"
@@ -41,8 +42,66 @@ WantedBy=timers.target
 	}
 	_ = run("systemctl", "enable", "netductor-backup.timer")
 	_ = run("systemctl", "start", "netductor-backup.timer")
-	fmt.Fprintln(os.Stderr, "backup timer: daily encrypted → /var/lib/netductor/backups/")
+	fmt.Fprintln(os.Stderr, "backup timer: daily → local (+ offsite if configured)")
 	return nil
+}
+
+// Offsite config: /etc/netductor/backup.offsite
+//   method=scp|http|rsync
+//   target=user@host:/path   OR  https://example/upload
+//   scp_opts=-i /root/.ssh/id_ed25519
+func loadOffsite() (method, target, extra string) {
+	b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "backup.offsite"))
+	if err != nil {
+		return "", "", ""
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(k) {
+		case "method":
+			method = strings.TrimSpace(v)
+		case "target":
+			target = strings.TrimSpace(v)
+		case "scp_opts", "extra":
+			extra = strings.TrimSpace(v)
+		}
+	}
+	return method, target, extra
+}
+
+func uploadOffsite(localPath string) error {
+	method, target, extra := loadOffsite()
+	if method == "" || target == "" {
+		return nil
+	}
+	switch method {
+	case "scp":
+		args := []string{}
+		if extra != "" {
+			args = append(args, strings.Fields(extra)...)
+		}
+		args = append(args, localPath, target)
+		return run("scp", args...)
+	case "rsync":
+		args := []string{"-az"}
+		if extra != "" {
+			args = append(args, strings.Fields(extra)...)
+		}
+		args = append(args, localPath, target)
+		return run("rsync", args...)
+	case "http", "https", "curl":
+		// POST file as body
+		return run("curl", "-fsS", "-X", "PUT", "--data-binary", "@"+localPath, target)
+	default:
+		return fmt.Errorf("unknown offsite method %s", method)
+	}
 }
 
 func Backup() (string, error) {
@@ -58,22 +117,23 @@ func Backup() (string, error) {
 		return "", fmt.Errorf("tar failed")
 	}
 	key := readSecret("backup_key")
-	out := plain + ".enc"
+	out := plain
 	if key != "" {
-		// AES-256-CBC via openssl (portable, no extra Go crypto deps for stream)
+		enc := plain + ".enc"
 		err := run("openssl", "enc", "-aes-256-cbc", "-salt", "-pbkdf2",
-			"-in", plain, "-out", out, "-pass", "pass:"+key)
+			"-in", plain, "-out", enc, "-pass", "pass:"+key)
 		_ = os.Remove(plain)
 		if err != nil {
 			return "", err
 		}
-		_ = os.Chmod(out, 0o600)
-		pruneBackups(dir, 14)
-		return out, nil
+		out = enc
 	}
-	_ = os.Chmod(plain, 0o600)
+	_ = os.Chmod(out, 0o600)
+	if err := uploadOffsite(out); err != nil {
+		fmt.Fprintf(os.Stderr, "offsite upload: %v\n", err)
+	}
 	pruneBackups(dir, 14)
-	return plain, nil
+	return out, nil
 }
 
 func pruneBackups(dir string, keep int) {

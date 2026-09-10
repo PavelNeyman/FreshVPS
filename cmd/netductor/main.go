@@ -62,6 +62,16 @@ func main() {
 		os.Exit(runCollect())
 	case "backup":
 		runBackupCmd()
+	case "restore":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: netductor restore <archive>")
+			os.Exit(2)
+		}
+		if err := install.Restore(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("restored")
 	case "self-install":
 		runSelfInstall()
 	case "serve":
@@ -84,7 +94,8 @@ func printHelp() {
 serve:
   --bind ADDR   (default 127.0.0.1)
   --port PORT   (default 8787)
-  --legacy URL  (optional reverse-proxy target)
+  --tls-cert PATH --tls-key PATH
+  --legacy URL  (optional)
   --no-proxy
 `)
 }
@@ -432,10 +443,12 @@ func runEdgeList() {
 }
 
 func runServe(args []string) {
-	bind := envOr("NETDUCTOR_API_BIND", envOr("VPN_API_BIND", "127.0.0.1"))
-	port := envOr("NETDUCTOR_API_PORT", envOr("VPN_API_PORT", "8790"))
-	legacy := envOr("NETDUCTOR_LEGACY_API", "http://127.0.0.1:8787")
-	proxyOn := true
+	bind := envOr("NETDUCTOR_API_BIND", "127.0.0.1")
+	port := envOr("NETDUCTOR_API_PORT", "8787")
+	legacy := envOr("NETDUCTOR_LEGACY_API", "")
+	proxyOn := false
+	tlsCert := envOr("NETDUCTOR_TLS_CERT", "")
+	tlsKey := envOr("NETDUCTOR_TLS_KEY", "")
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--bind":
@@ -449,9 +462,18 @@ func runServe(args []string) {
 		case "--legacy":
 			if i+1 < len(args) {
 				legacy, i = args[i+1], i+1
+				proxyOn = true
 			}
 		case "--no-proxy":
 			proxyOn = false
+		case "--tls-cert":
+			if i+1 < len(args) {
+				tlsCert, i = args[i+1], i+1
+			}
+		case "--tls-key":
+			if i+1 < len(args) {
+				tlsKey, i = args[i+1], i+1
+			}
 		case "--help", "-h":
 			printHelp()
 			return
@@ -482,6 +504,12 @@ func runServe(args []string) {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"commands": edge.PollCommands(r.URL.Query().Get("device_id"))})
+	})
+	mux.HandleFunc("/api/edge/results", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		writeJSON(w, 200, map[string]any{"results": edge.ListResults()})
 	})
 	mux.HandleFunc("/api/edge/cmd_result", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -766,6 +794,14 @@ func runServe(args []string) {
 
 	addr := bind + ":" + port
 	fmt.Fprintf(os.Stderr, "netductor serve on http://%s admin=%s proxy=%v→%s\n", addr, root, proxyOn, legacy)
+	if tlsCert != "" && tlsKey != "" {
+		fmt.Fprintf(os.Stderr, "netductor serve TLS on https://%s\n", addr)
+		if err := http.ListenAndServeTLS(addr, tlsCert, tlsKey, mux); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

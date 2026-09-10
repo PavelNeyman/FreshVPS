@@ -1,15 +1,13 @@
 # Netductor Roadmap
 
 ## Done
+- Go control plane only (`install|serve|vpn|doctor|collect|tui`)
+- No FreshVPS path compatibility
+- No Python API; no shell modules in main
+- Hardening component; Telegram notify in Go
+- Edge = Go agent docs only
 
-- Phase G: Go CLI, API, agent, TG, dual paths
-- Bubble Tea + Huh TUI
-- **Native `netductor install`** (dirs, sing-box, blocky, vpn-users, api, metrics, telegram)
-- Python Admin API **removed** from main tree (`legacy/`)
-- Shell modules **moved to `legacy/modules`**
-
-## Next
-
-- VPS smoke tests
-- Optional: hardening/backup/cloudflared as Go components
-- OpenWrt site scripts → pure agent docs (Go binary)
+## Optional later
+- backup/cloudflared Go components
+- richer admin SPA
+- VPS smoke

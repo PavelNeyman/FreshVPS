@@ -99,6 +99,23 @@ var dict = map[string]map[string]string{
 		"label_disable": "Disable",
 		"label_enable":  "Enable",
 		"label_revoke":  "Revoke",
+		"cat_vpn":       "🔐 VPN",
+		"cat_routers":   "📡 Routers",
+		"cat_vpn_title": "🔐 <b>VPN</b>\nManage users, links, access.",
+		"cat_routers_title": "📡 <b>Routers</b>\nEdge devices, templates, enroll.",
+		"pending":       "⏳ Pending",
+		"templates":     "📋 Templates",
+		"bind_tmpl":     "🔗 Bind template",
+		"apply_tmpl":    "⚙️ Apply template",
+		"devices":       "📡 Devices",
+		"back_vpn":      "⬅️ VPN",
+		"back_routers":  "⬅️ Routers",
+		"pending_title": "⏳ <b>Pending</b>",
+		"pending_empty": "No pending devices.",
+		"templates_title": "📋 <b>Templates</b>",
+		"bind_prompt":   "Device id to bind template:",
+		"apply_prompt":  "Device id to enqueue <code>apply_template</code>:",
+		"menu_hint2":    "Choose a category — VPN or Routers open a submenu.",
 	},
 	"ru": {
 		"menu_title":    "🛡 <b>Панель оператора Netductor</b>",
@@ -143,6 +160,23 @@ var dict = map[string]map[string]string{
 		"label_disable": "Отключить",
 		"label_enable":  "Включить",
 		"label_revoke":  "Отозвать",
+		"cat_vpn":       "🔐 VPN",
+		"cat_routers":   "📡 Роутеры",
+		"cat_vpn_title": "🔐 <b>VPN</b>\nПользователи, ссылки, доступ.",
+		"cat_routers_title": "📡 <b>Роутеры</b>\nУстройства, шаблоны, enroll.",
+		"pending":       "⏳ Ожидают",
+		"templates":     "📋 Шаблоны",
+		"bind_tmpl":     "🔗 Привязать шаблон",
+		"apply_tmpl":    "⚙️ Применить шаблон",
+		"devices":       "📡 Устройства",
+		"back_vpn":      "⬅️ VPN",
+		"back_routers":  "⬅️ Роутеры",
+		"pending_title": "⏳ <b>Ожидают</b>",
+		"pending_empty": "Нет устройств в ожидании.",
+		"templates_title": "📋 <b>Шаблоны</b>",
+		"bind_prompt":   "ID устройства для привязки шаблона:",
+		"apply_prompt":  "ID устройства для <code>apply_template</code>:",
+		"menu_hint2":    "Выберите раздел — VPN или Роутеры откроют подменю.",
 	},
 }
 
@@ -258,10 +292,10 @@ func btnCopy(text, copyPayload string) map[string]any {
 func mainKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn("📊 Status", "m:status", "primary"), btn("📄 READY", "m:ready", "")},
-			{btn("🔐 VPN", "m:cat:vpn", "primary"), btn("📡 Routers", "m:cat:routers", "primary")},
-			{btn("🔑 Session", "m:session", ""), btn("🖥 Admin UI", "m:admin", "")},
-			{btn("🌐 Lang", "m:lang", ""), btn("❓ Help", "m:help", "")},
+			{btn(T("status"), "m:status", "primary"), btn(T("ready"), "m:ready", "")},
+			{btn(T("cat_vpn"), "m:cat:vpn", "primary"), btn(T("cat_routers"), "m:cat:routers", "primary")},
+			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "")},
+			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
 		},
 	}
 }
@@ -269,11 +303,11 @@ func mainKeyboard() map[string]any {
 func vpnKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn("👥 List", "m:vpn_list", "primary"), btn("➕ Add", "m:vpn_add", "success")},
-			{btn("🔗 Link / QR", "m:vpn_link", "primary")},
-			{btn("✅ Enable", "m:vpn_enable", "success"), btn("🚫 Disable", "m:vpn_disable", "danger")},
-			{btn("🗑 Revoke", "m:vpn_revoke", "danger")},
-			{btn("⬅️ Main", "m:menu", "")},
+			{btn(T("vpn_list"), "m:vpn_list", "primary"), btn(T("vpn_add"), "m:vpn_add", "success")},
+			{btn(T("vpn_link"), "m:vpn_link", "primary")},
+			{btn(T("vpn_enable"), "m:vpn_enable", "success"), btn(T("vpn_disable"), "m:vpn_disable", "danger")},
+			{btn(T("vpn_revoke"), "m:vpn_revoke", "danger")},
+			{btn(T("main_menu"), "m:menu", "")},
 		},
 	}
 }
@@ -281,10 +315,10 @@ func vpnKeyboard() map[string]any {
 func routersKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn("📡 Devices", "m:routers", "primary"), btn("⏳ Pending", "m:pending", "primary")},
-			{btn("📋 Templates", "m:templates", ""), btn("🔗 Bind template", "m:edge_bind", "")},
-			{btn("⚙️ Apply template", "m:edge_apply", "primary")},
-			{btn("⬅️ Main", "m:menu", "")},
+			{btn(T("devices"), "m:routers", "primary"), btn(T("pending"), "m:pending", "primary")},
+			{btn(T("templates"), "m:templates", ""), btn(T("bind_tmpl"), "m:edge_bind", "")},
+			{btn(T("apply_tmpl"), "m:edge_apply", "primary")},
+			{btn(T("main_menu"), "m:menu", "")},
 		},
 	}
 }
@@ -292,24 +326,23 @@ func routersKeyboard() map[string]any {
 func backKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn("⬅️ Main", "m:menu", "primary")},
+			{btn(T("main_menu"), "m:menu", "primary")},
 		},
 	}
 }
 
 func backTo(cat string) map[string]any {
-	// cat: vpn | routers | menu
 	up := "m:menu"
-	label := "⬅️ Main"
+	label := T("main_menu")
 	switch cat {
 	case "vpn":
-		up, label = "m:cat:vpn", "⬅️ VPN"
+		up, label = "m:cat:vpn", T("back_vpn")
 	case "routers":
-		up, label = "m:cat:routers", "⬅️ Routers"
+		up, label = "m:cat:routers", T("back_routers")
 	}
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn(label, up, "primary"), btn("🏠 Main", "m:menu", "")},
+			{btn(label, up, "primary"), btn(T("main_menu"), "m:menu", "")},
 		},
 	}
 }
@@ -556,12 +589,12 @@ func pendingKeyboard(lines string) map[string]any {
 			btn("🚫 "+id, "e:deny:"+id, "danger"),
 		})
 	}
-	rows = append(rows, []map[string]any{btn("⬅️ Routers", "m:cat:routers", "primary"), btn("🏠 Main", "m:menu", "")})
+	rows = append(rows, []map[string]any{btn(T("back_routers"), "m:cat:routers", "primary"), btn(T("main_menu"), "m:menu", "")})
 	return map[string]any{"inline_keyboard": rows}
 }
 
 func menuText() string {
-	return T("menu_title") + "\n\n" + "Choose a category — submenus open under VPN / Routers."
+	return T("menu_title") + "\n\n" + T("menu_hint2")
 }
 
 func helpText() string {
@@ -631,6 +664,12 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		} else {
 			reply(token, chat, msgID, menuText(), mainKeyboard())
 		}
+	case "m:cat:vpn":
+		setState(chat, "", "")
+		reply(token, chat, msgID, T("cat_vpn_title"), vpnKeyboard())
+	case "m:cat:routers":
+		setState(chat, "", "")
+		reply(token, chat, msgID, T("cat_routers_title"), routersKeyboard())
 	case "m:lang":
 		cur := getLang()
 		label := "Русский"
@@ -651,19 +690,22 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	case "m:pending":
 		t := pendingText()
 		if t == "" {
-			reply(token, chat, msgID, "⏳ <b>Pending</b>\n\nNo devices.", backKeyboard())
+			reply(token, chat, msgID, T("pending_title")+"\n\n"+T("pending_empty"), backTo("routers"))
 		} else {
-			reply(token, chat, msgID, "⏳ <b>Pending</b>\n\n<pre>"+esc(t)+"</pre>", pendingKeyboard(t))
+			reply(token, chat, msgID, T("pending_title")+"\n\n<pre>"+esc(t)+"</pre>", pendingKeyboard(t))
 		}
 	case "m:templates":
 		t := templatesText()
 		if t == "" {
 			t = "(none)"
 		}
-		reply(token, chat, msgID, "📋 <b>Templates</b>\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
+		reply(token, chat, msgID, T("templates_title")+"\n\n<pre>"+esc(t)+"</pre>", backTo("routers"))
 	case "m:edge_apply":
 		setState(chat, "wait_edge_apply", "")
-		reply(token, chat, msgID, "Device id to enqueue <code>apply_template</code>:", backKeyboard())
+		reply(token, chat, msgID, T("apply_prompt"), backTo("routers"))
+	case "m:edge_bind":
+		setState(chat, "wait_edge_bind_dev", "")
+		reply(token, chat, msgID, T("bind_prompt"), backTo("routers"))
 	case "m:status":
 		reply(token, chat, msgID, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
 	case "m:ready":

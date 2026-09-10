@@ -486,7 +486,51 @@ func runServe(args []string) {
 	})
 
 	// --- edge (device token) ---
-		mux.HandleFunc("/api/edge/backup", func(w http.ResponseWriter, r *http.Request) {
+			mux.HandleFunc("/api/edge/backups", func(w http.ResponseWriter, r *http.Request) {
+		// agent download with edge token OR operator session
+		auth := r.Header.Get("Authorization")
+		okEdge := edge.ValidBearer(auth)
+		okSess := false
+		if !okEdge {
+			okSess = requireSession(w, r)
+			if !okSess {
+				return
+			}
+		}
+		_ = okSess
+		did := r.URL.Query().Get("device_id")
+		if did == "" {
+			writeJSON(w, 400, map[string]string{"error": "device_id"})
+			return
+		}
+		name := r.URL.Query().Get("name")
+		if name != "" {
+			path, err := edge.BackupPath(did, name)
+			if err != nil {
+				writeJSON(w, 404, map[string]string{"error": "not found"})
+				return
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				writeJSON(w, 500, map[string]string{"error": err.Error()})
+				return
+			}
+			w.Header().Set("Content-Type", "application/gzip")
+			w.Header().Set("Content-Disposition", "attachment; filename="+name)
+			w.WriteHeader(200)
+			_, _ = w.Write(b)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"backups": edge.ListBackups(did)})
+	})
+	mux.HandleFunc("/api/edge/metrics/history", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		did := r.URL.Query().Get("device_id")
+		writeJSON(w, 200, map[string]any{"metrics": edge.ListMetricsTail(did, 100)})
+	})
+	mux.HandleFunc("/api/edge/backup", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, map[string]string{"error": "method"})
 			return

@@ -41,7 +41,7 @@ func main() {
     INTERVAL=60
 
   Env overrides: NETDUCTOR_SERVER, NETDUCTOR_TOKEN, NETDUCTOR_DEVICE_ID, NETDUCTOR_INTERVAL
-  Legacy path: /etc/freshvps-agent/config
+  Legacy path: 
 `)
 			return
 		}
@@ -69,7 +69,7 @@ func loadConfig() config {
 	for _, path := range []string{
 		os.Getenv("NETDUCTOR_AGENT_CONF"),
 		"/etc/netductor-agent/config",
-		"/etc/freshvps-agent/config",
+		"",
 	} {
 		if path == "" {
 			continue

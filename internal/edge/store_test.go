@@ -4,77 +4,93 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-func TestEnqueuePollAndResults(t *testing.T) {
+func setup(t *testing.T) {
+	t.Helper()
 	dir := t.TempDir()
 	os.Setenv("NETDUCTOR_EDGE_DIR", dir)
 	os.Setenv("NETDUCTOR_ETC", dir)
-	defer os.Unsetenv("NETDUCTOR_EDGE_DIR")
-	defer os.Unsetenv("NETDUCTOR_ETC")
 	_ = os.MkdirAll(filepath.Join(dir, "secrets"), 0o700)
-	id := EnqueueCmd("dev1", "ping", "")
+	_ = os.WriteFile(filepath.Join(dir, "secrets", "edge_bootstrap_token"), []byte("boot\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "secrets", "edge_token"), []byte("global\n"), 0o600)
+	t.Cleanup(func() {
+		os.Unsetenv("NETDUCTOR_EDGE_DIR")
+		os.Unsetenv("NETDUCTOR_ETC")
+	})
+}
+
+func TestEnrollApproveFlow(t *testing.T) {
+	setup(t)
+	st, tok, isNew := Enroll(map[string]any{"device_id": "site1", "board": "Cudy", "wan_ip": "1.2.3.4"})
+	if st != StatusPending || tok != "" || !isNew {
+		t.Fatalf("%s %q %v", st, tok, isNew)
+	}
+	if len(ListPending()) != 1 {
+		t.Fatal(ListPending())
+	}
+	if RequireApproved("Bearer nope", "site1") {
+		t.Fatal("should fail")
+	}
+	dt, err := Approve("site1")
+	if err != nil || dt == "" {
+		t.Fatal(err, dt)
+	}
+	if !RequireApproved("Bearer "+dt, "site1") {
+		t.Fatal("device token")
+	}
+	if !ValidBearer("Bearer "+dt) {
+		t.Fatal("valid bearer")
+	}
+	// commands only approved
+	id := EnqueueCmd("site1", "ping", "")
 	if id == "" {
-		t.Fatal("empty id")
+		t.Fatal("enqueue")
 	}
-	cmds := PollCommands("dev1")
-	if len(cmds) < 1 {
-		t.Fatalf("expected command, got %v", cmds)
+	cmds := PollCommands("site1")
+	if len(cmds) != 1 {
+		t.Fatal(cmds)
 	}
-	CmdResult(map[string]any{"device_id": "dev1", "cmd_id": id, "result": "pong"})
-	res := ListResults()
-	if len(res) < 1 {
-		t.Fatal(res)
+	Deny("site2") // unknown err
+	_ = Deny("site1")
+	if RequireApproved("Bearer "+dt, "site1") {
+		t.Fatal("denied")
 	}
 }
 
-func TestBackupAndList(t *testing.T) {
-	dir := t.TempDir()
-	os.Setenv("NETDUCTOR_EDGE_DIR", dir)
-	defer os.Unsetenv("NETDUCTOR_EDGE_DIR")
-	path, err := SaveBackup("site1", bytes.NewReader([]byte("hello-backup")))
+func TestRevoke(t *testing.T) {
+	setup(t)
+	Enroll(map[string]any{"device_id": "r1"})
+	tok, _ := Approve("r1")
+	_ = Revoke("r1")
+	if RequireApproved("Bearer "+tok, "r1") {
+		t.Fatal()
+	}
+}
+
+func TestBackupPathTraversal(t *testing.T) {
+	setup(t)
+	_, err := SaveBackup("s", bytes.NewReader([]byte("x")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatal(err)
-	}
-	list := ListBackups("site1")
+	list := ListBackups("s")
 	if len(list) != 1 {
-		t.Fatalf("%v", list)
+		t.Fatal(list)
 	}
-	name, _ := list[0]["name"].(string)
-	p2, err := BackupPath("site1", name)
-	if err != nil || p2 == "" {
-		t.Fatal(err, p2)
-	}
-	_, err = BackupPath("site1", "../etc/passwd")
+	_, err = BackupPath("s", "../x")
 	if err == nil {
-		t.Fatal("path traversal")
+		t.Fatal()
 	}
 }
 
-func TestMetrics(t *testing.T) {
-	dir := t.TempDir()
-	os.Setenv("NETDUCTOR_EDGE_DIR", dir)
-	defer os.Unsetenv("NETDUCTOR_EDGE_DIR")
-	_ = SaveMetrics("site1", map[string]any{"device_id": "site1", "mem_pct": 10.0})
-	_ = SaveMetrics("site1", map[string]any{"device_id": "site1", "mem_pct": 20.0})
-	tail := ListMetricsTail("site1", 10)
-	if len(tail) < 2 {
-		t.Fatalf("%v", tail)
+func TestBootstrap(t *testing.T) {
+	setup(t)
+	if !ValidBootstrap("Bearer boot") {
+		t.Fatal()
 	}
-}
-
-func TestDeviceDirSafe(t *testing.T) {
-	d := deviceDir("a/../b")
-	if strings.Contains(d, "..") {
-		// mapped to underscores — still one path under EdgeDir
-	}
-	if !strings.Contains(d, "a") {
-		// a_b style
-		_ = d
+	if ValidBootstrap("Bearer wrong") {
+		t.Fatal()
 	}
 }

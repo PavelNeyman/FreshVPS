@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/PavelNeyman/netductor/internal/paths"
 	"github.com/PavelNeyman/netductor/internal/vpn"
@@ -34,6 +35,9 @@ func InstallVPNUsers() error {
 }
 
 func InstallAPI() error {
+	if out, _ := runOut("systemctl", "is-active", "netductor-api"); strings.TrimSpace(out) == "active" {
+		fmt.Fprintln(os.Stderr, "netductor-api already active — reconfigure unit only")
+	}
 	// self binary already expected at /usr/local/bin/netductor
 	bin := "/usr/local/bin/netductor"
 	if _, err := os.Stat(bin); err != nil {

@@ -69,7 +69,7 @@ func runDoctorNative() int {
 	warnCheck("netductor-telegram-bot", active("netductor-telegram-bot"))
 
 	if active("netductor-api") {
-		warnCheck("api health :8790", curlOK("http://127.0.0.1:8790/health"))
+		warnCheck("api health :8787", curlOK("http://127.0.0.1:8787/health"))
 	}
 	if exists("/etc/systemd/system/netductor-metrics.timer") {
 		warnCheck("metrics timer", active("netductor-metrics.timer"))

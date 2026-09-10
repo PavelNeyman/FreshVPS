@@ -1,26 +1,31 @@
-# Edge agent (OpenWrt)
+# Edge agent — enrollment
 
-## Install
+Outbound only (NAT). No management VPN required.
 
-```sh
-curl -fsSL -o /usr/sbin/netductor-agent \
-  https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-agent-linux-arm64
-chmod 755 /usr/sbin/netductor-agent
-mkdir -p /etc/netductor-agent
-# SERVER TOKEN DEVICE_ID INTERVAL in config
-```
+## Tokens
 
-## Commands
+| Secret | Role |
+|--------|------|
+| `/etc/netductor/secrets/edge_bootstrap_token` | enroll only |
+| per-device `device_token` (after approve) | heartbeat, commands, backup |
+| `edge_token` | operator/global (legacy) |
+
+## Flow
+
+1. Agent starts with bootstrap token in config `TOKEN=…`
+2. `POST /api/edge/enroll` → `pending`
+3. Operator notified (Telegram) + `netductor edge pending`
+4. `netductor edge approve site1` → device token
+5. Agent stores `/etc/netductor-agent/device_token` and uses it
+6. `deny` / `revoke` cuts access
 
 ```bash
+netductor edge pending
+netductor edge approve site1
+netductor edge deny site1
+netductor edge revoke site1
+netductor edge list
 netductor edge cmd site1 config_backup
-netductor edge cmd site1 config_restore 20260310-120000.tar.gz
-netductor edge cmd site1 metrics
-netductor edge cmd site1 uci_batch $'network.lan.ipaddr=192.168.1.1\ncommit\nnetwork_reload'
-netductor edge cmd site1 agent_update 'https://…/agent|sha256'
-netductor edge cmd site1 sysupgrade 'https://…/fw.bin|sha256|confirm=yes'
 ```
 
-Backups on VPS: `/var/lib/netductor/edge/<id>/backups/`  
-API: `GET /api/edge/backups?device_id=site1`  
-Download: `GET /api/edge/backups?device_id=site1&name=….tar.gz` (session or edge token)
+Templates / provision (SSH install agent only) — next.

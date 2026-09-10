@@ -113,7 +113,19 @@
     tb.querySelectorAll('.btn-ping').forEach((b) => b.onclick = async () => {
       await api('/api/edge/cmd', { method: 'POST', body: JSON.stringify({ device_id: b.dataset.id, action: 'ping' }) });
       toast('queued');
+      setTimeout(refreshRouters, 1500);
     });
+    try {
+      const res = await (await api('/api/edge/results')).json();
+      let box = document.getElementById('edge-results');
+      if (!box) {
+        box = document.createElement('pre');
+        box.id = 'edge-results';
+        box.className = 'code';
+        $('#tab-routers').appendChild(box);
+      }
+      box.textContent = JSON.stringify(res.results || res, null, 2);
+    } catch (_) {}
   }
   async function refreshProbes() {
     const p = await (await api('/api/probes')).json();

@@ -44,7 +44,7 @@ func main() {
 		printHelp()
 	case "doctor":
 		if len(os.Args) > 2 && os.Args[2] == "--legacy" {
-			runBridge(lookPath("freshvps-doctor"), os.Args[3:])
+			fmt.Fprintln(os.Stderr, "legacy doctor removed"); os.Exit(2)
 			return
 		}
 		os.Exit(runDoctorNative())
@@ -60,6 +60,10 @@ func main() {
 		runProbe(os.Args[2:])
 	case "collect":
 		os.Exit(runCollect())
+	case "backup":
+		runBackupCmd()
+	case "self-install":
+		runSelfInstall()
 	case "serve":
 		runServe(os.Args[2:])
 	default:
@@ -72,14 +76,15 @@ func printHelp() {
 	fmt.Print(`netductor — network control plane
 
   tui|menu [--mode vps|openwrt|workstation|operator]
+  backup | self-install
   version | doctor | status | vpn | edge | serve | install | probe | collect | help
 
   (no args on a TTY → interactive menu)
 
 serve:
   --bind ADDR   (default 127.0.0.1)
-  --port PORT   (default 8790; use 8787 to replace Python)
-  --legacy URL  (default http://127.0.0.1:8787)
+  --port PORT   (default 8787)
+  --legacy URL  (optional reverse-proxy target)
   --no-proxy
 `)
 }
@@ -89,7 +94,7 @@ func lookPath(names ...string) string {
 		if p, err := exec.LookPath(n); err == nil {
 			return p
 		}
-		for _, d := range []string{"/usr/local/bin", "/opt/freshvps/bin", "/opt/netductor/bin"} {
+		for _, d := range []string{"/usr/local/bin", "/opt/netductor/bin"} {
 			c := filepath.Join(d, n)
 			if st, err := os.Stat(c); err == nil && !st.IsDir() {
 				return c
@@ -138,7 +143,7 @@ func runEdgeCLI(args []string) {
 }
 
 func runStatus() {
-	for _, u := range []string{"sing-box", "blocky", "freshvps-api", "freshvps-telegram-bot"} {
+	for _, u := range []string{"sing-box", "blocky", "netductor-api", "netductor-telegram-bot"} {
 		out, _ := exec.Command("systemctl", "is-active", u).Output()
 		st := strings.TrimSpace(string(out))
 		if st == "" {
@@ -179,6 +184,39 @@ func requireSession(w http.ResponseWriter, r *http.Request) bool {
 
 func adminRoot() string {
 	return paths.AdminRoot()
+}
+
+func runBackupCmd() {
+	path, err := install.Backup()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(path)
+}
+
+func runSelfInstall() {
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	dest := "/usr/local/bin/netductor"
+	data, err := os.ReadFile(exe)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	tmp := dest + ".new"
+	if err := os.WriteFile(tmp, data, 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println("installed", dest)
 }
 
 func runInstall(args []string) {
@@ -361,7 +399,7 @@ func runVPN(args []string) {
 			os.Exit(1)
 		}
 	default:
-		runBridge(lookPath("freshvps-vpn"), args)
+		fmt.Fprintln(os.Stderr, "unknown vpn subcommand"); os.Exit(2)
 	}
 }
 

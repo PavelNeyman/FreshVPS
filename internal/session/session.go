@@ -18,7 +18,7 @@ func TokenFromAuth(auth, cookie string) string {
 	}
 	for _, p := range strings.Split(cookie, ";") {
 		p = strings.TrimSpace(p)
-		if strings.HasPrefix(p, "fv_session=") || strings.HasPrefix(p, "nd_session=") {
+		if strings.HasPrefix(p, "nd_session=") {
 			if i := strings.Index(p, "="); i >= 0 {
 				return strings.TrimSpace(p[i+1:])
 			}

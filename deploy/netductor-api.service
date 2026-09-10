@@ -1,13 +1,12 @@
 [Unit]
-Description=Netductor API (Go) parallel :8790
+Description=Netductor API
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-Environment=FRESHVPS_ADMIN_ROOT=/opt/freshvps/runtime/api/admin
-Environment=NETDUCTOR_LEGACY_API=http://127.0.0.1:8787
-ExecStart=/usr/local/bin/netductor serve --bind 127.0.0.1 --port 8790
+Environment=NETDUCTOR_ADMIN_ROOT=/opt/netductor/runtime/api/admin
+ExecStart=/usr/local/bin/netductor serve --bind 127.0.0.1 --port 8787 --no-proxy
 Restart=on-failure
 RestartSec=3
 

@@ -29,8 +29,9 @@
     <nav class="tabs">
       <button data-tab="overview" class="tab active">Overview</button>
       <button data-tab="users" class="tab">VPN</button>
-      <button data-tab="metrics" class="tab">Metrics</button>
       <button data-tab="routers" class="tab">Routers</button>
+      <button data-tab="templates" class="tab">Templates</button>
+      <button data-tab="metrics" class="tab">Metrics</button>
       <button data-tab="probes" class="tab">Probes</button>
     </nav>
 
@@ -71,15 +72,38 @@
       </div>
     </section>
 
-    <section id="tab-metrics" class="tab-panel hide">
-      <div class="card"><pre id="metrics-raw" class="code">—</pre></div>
-    </section>
-
     <section id="tab-routers" class="tab-panel hide">
+      <div id="edge-pending" class="card"></div>
       <div class="card"><table class="table" id="routers-table">
-        <thead><tr><th>ID</th><th>Host</th><th>Seen</th><th>WAN</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Status</th><th>Host</th><th>WAN</th><th></th></tr></thead>
         <tbody></tbody>
       </table></div>
+      <pre id="edge-results" class="code"></pre>
+      <pre id="edge-backups" class="code"></pre>
+    </section>
+
+    <section id="tab-templates" class="tab-panel hide">
+      <div class="row">
+        <button id="btn-refresh-tmpl" class="ghost">Refresh</button>
+        <button id="btn-save-default" class="primary">Ensure default</button>
+      </div>
+      <div class="card"><pre id="templates-raw" class="code">—</pre></div>
+      <div class="card">
+        <h3>Bind template</h3>
+        <div class="row">
+          <input id="bind-device" placeholder="device_id" />
+          <input id="bind-tmpl" placeholder="template_id" value="default" />
+          <button id="btn-bind" class="primary">Bind</button>
+        </div>
+        <div class="row">
+          <input id="bind-ssid" placeholder="overlay ssid" />
+          <input id="bind-lan" placeholder="overlay lan_ip" />
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-metrics" class="tab-panel hide">
+      <div class="card"><pre id="metrics-raw" class="code">—</pre></div>
     </section>
 
     <section id="tab-probes" class="tab-panel hide">

@@ -173,7 +173,7 @@ func EnsureDefaultTemplate() {
 			"key":        "",
 		},
 		"vpn": map[string]any{
-			"enabled": false,
+			"enabled": true,
 		},
 	})
 }

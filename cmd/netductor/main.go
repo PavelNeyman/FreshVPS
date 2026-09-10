@@ -189,6 +189,61 @@ func runEdgeCLI(args []string) {
 			os.Exit(1)
 		}
 		fmt.Println(id)
+	case "provision":
+		// netductor edge provision root@host --id site1 --server https://vps --key path --agent path
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: netductor edge provision user@host --id DEVICE [--server URL] [--key KEY] [--agent BIN]")
+			os.Exit(2)
+		}
+		opts := edge.ProvisionOpts{SSHTarget: args[1], ServerURL: envOr("NETDUCTOR_PUBLIC_URL", "")}
+		for i := 2; i < len(args); i++ {
+			switch args[i] {
+			case "--id":
+				if i+1 < len(args) {
+					i++
+					opts.DeviceID = args[i]
+				}
+			case "--server":
+				if i+1 < len(args) {
+					i++
+					opts.ServerURL = args[i]
+				}
+			case "--key":
+				if i+1 < len(args) {
+					i++
+					opts.SSHKey = args[i]
+				}
+			case "--agent":
+				if i+1 < len(args) {
+					i++
+					opts.AgentBin = args[i]
+				}
+			}
+		}
+		if opts.DeviceID == "" || opts.ServerURL == "" {
+			fmt.Fprintln(os.Stderr, "--id and --server (or NETDUCTOR_PUBLIC_URL) required")
+			os.Exit(2)
+		}
+		if err := edge.Provision(opts); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("provisioned", opts.DeviceID, "→ pending enroll")
+	case "templates":
+		edge.EnsureDefaultTemplate()
+		for _, tmpl := range edge.ListTemplates() {
+			fmt.Println(tmpl["id"])
+		}
+	case "bind-template":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: netductor edge bind-template <device_id> <template_id>")
+			os.Exit(2)
+		}
+		if err := edge.BindTemplate(args[1], args[2], nil); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("bound")
 	default:
 		fmt.Fprintln(os.Stderr, "unknown edge subcommand")
 		os.Exit(2)
@@ -485,6 +540,7 @@ func runEdgeList() {
 }
 
 func runServe(args []string) {
+	edge.EnsureDefaultTemplate()
 	bind := envOr("NETDUCTOR_API_BIND", "127.0.0.1")
 	port := envOr("NETDUCTOR_API_PORT", "8787")
 	legacy := envOr("NETDUCTOR_LEGACY_API", "")
@@ -610,7 +666,66 @@ func runServe(args []string) {
 		_ = edge.SaveMetrics(did, payload)
 		writeJSON(w, 200, map[string]string{"ok": "true"})
 	})
-		mux.HandleFunc("/api/edge/enroll", func(w http.ResponseWriter, r *http.Request) {
+			mux.HandleFunc("/api/edge/template", func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		did := r.URL.Query().Get("device_id")
+		if did == "" {
+			did = edge.DeviceIDFromAuth(auth)
+		}
+		if r.Method == http.MethodGet {
+			if !edge.RequireApproved(auth, did) {
+				writeJSON(w, 403, map[string]string{"error": "not_approved"})
+				return
+			}
+			tmpl, err := edge.TemplateForDevice(did)
+			if err != nil {
+				writeJSON(w, 404, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, 200, tmpl)
+			return
+		}
+		writeJSON(w, 405, map[string]string{"error": "method"})
+	})
+	mux.HandleFunc("/api/edge/templates", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		edge.EnsureDefaultTemplate()
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, 200, map[string]any{"templates": edge.ListTemplates()})
+		case http.MethodPost:
+			body := readJSON(r)
+			id, _ := body["id"].(string)
+			if id == "" {
+				writeJSON(w, 400, map[string]string{"error": "id"})
+				return
+			}
+			if err := edge.SaveTemplate(id, edge.Template(body)); err != nil {
+				writeJSON(w, 500, map[string]string{"error": err.Error()})
+				return
+			}
+			writeJSON(w, 200, map[string]any{"ok": true})
+		default:
+			writeJSON(w, 405, map[string]string{"error": "method"})
+		}
+	})
+	mux.HandleFunc("/api/edge/bind-template", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !requireSession(w, r) {
+			return
+		}
+		body := readJSON(r)
+		did, _ := body["device_id"].(string)
+		tid, _ := body["template_id"].(string)
+		ov, _ := body["overlay"].(map[string]any)
+		if err := edge.BindTemplate(did, tid, ov); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/api/edge/enroll", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, map[string]string{"error": "method"})
 			return

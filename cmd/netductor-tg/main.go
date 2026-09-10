@@ -182,6 +182,11 @@ func Tf(key string, args ...any) string {
 	return fmt.Sprintf(T(key), args...)
 }
 
+func claimAdmin(chatID int64) {
+	_ = os.MkdirAll("/etc/netductor/secrets", 0o700)
+	_ = os.WriteFile(chatFile, []byte(fmt.Sprintf("%d\n", chatID)), 0o600)
+}
+
 func mustRead(path string) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -774,11 +779,14 @@ func setBotCommands(token string) {
 
 func main() {
 	token := mustRead(tokenFile)
-	adminStr := mustRead(chatFile)
-	admin, err := strconv.ParseInt(adminStr, 10, 64)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "bad admin id: %v\n", err)
+	if token == "" {
+		fmt.Fprintln(os.Stderr, "telegram_bot_token empty")
 		os.Exit(1)
+	}
+	adminStr := mustRead(chatFile)
+	admin, _ := strconv.ParseInt(adminStr, 10, 64)
+	if admin == 0 {
+		fmt.Fprintln(os.Stderr, "telegram_admin_id empty — waiting for first /start to claim admin")
 	}
 	// default language ru for this project
 	if _, err := os.Stat(langFile); err != nil {
@@ -811,10 +819,24 @@ func main() {
 			}
 			offset = u.UpdateID + 1
 			if u.CallbackQuery != nil {
+				if admin == 0 {
+					continue
+				}
 				handleCallback(token, u.CallbackQuery, admin)
 				continue
 			}
 			if u.Message != nil {
+				if admin == 0 {
+					txt := strings.TrimSpace(u.Message.Text)
+					if txt == "/start" || strings.HasPrefix(txt, "/start ") {
+						admin = u.Message.Chat.ID
+						claimAdmin(admin)
+						sendHTML(token, admin, "✅ Admin claimed for this chat. Use /menu", mainKeyboard())
+						continue
+					}
+					sendHTML(token, u.Message.Chat.ID, "Send /start once to claim operator admin.", nil)
+					continue
+				}
 				handleMessage(token, u.Message, admin)
 			}
 		}

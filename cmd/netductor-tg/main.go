@@ -211,7 +211,18 @@ func apiPost(token, method string, payload any) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 300 {
+		msg := string(data)
+		if len(msg) > 200 {
+			msg = msg[:200] + "…"
+		}
+		return data, fmt.Errorf("telegram %s HTTP %d: %s", method, resp.StatusCode, msg)
+	}
+	return data, nil
 }
 
 func apiGet(token, method string, v url.Values) ([]byte, error) {
@@ -335,6 +346,29 @@ func sendHTML(token string, chat int64, text string, kb map[string]any) {
 		payload["reply_markup"] = kb
 	}
 	_, _ = apiPost(token, "sendMessage", payload)
+}
+
+func editHTML(token string, chat int64, msgID int, text string, kb map[string]any) error {
+	payload := map[string]any{
+		"chat_id":    chat,
+		"message_id": msgID,
+		"text":       text,
+		"parse_mode": "HTML",
+	}
+	if kb != nil {
+		payload["reply_markup"] = kb
+	}
+	_, err := apiPost(token, "editMessageText", payload)
+	return err
+}
+
+func reply(token string, chat int64, msgID int, text string, kb map[string]any) {
+	if msgID > 0 {
+		if err := editHTML(token, chat, msgID, text, kb); err == nil {
+			return
+		}
+	}
+	sendHTML(token, chat, text, kb)
 }
 
 func answerCallback(token, id string) {
@@ -553,6 +587,10 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	}
 	answerCallback(token, cq.ID)
 	chat := cq.Message.Chat.ID
+	msgID := 0
+	if cq.Message != nil {
+		msgID = cq.Message.MessageID
+	}
 	data := cq.Data
 
 	if strings.HasPrefix(data, "u:") {
@@ -562,13 +600,13 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			switch action {
 			case "link":
 				sub := runVPN("link", name)
-				sendHTML(token, chat, "🔗 <b>"+esc(name)+"</b>\n\n<pre>"+esc(sub)+"</pre>", userCardKeyboard(name, strings.TrimSpace(sub)))
+				reply(token, chat, msgID, "🔗 <b>"+esc(name)+"</b>\n\n<pre>"+esc(sub)+"</pre>", userCardKeyboard(name, strings.TrimSpace(sub)))
 			case "enable":
-				sendHTML(token, chat, "✅ <pre>"+esc(runVPN("enable", name))+"</pre>", backKeyboard())
+				reply(token, chat, msgID, "✅ <pre>"+esc(runVPN("enable", name))+"</pre>", backKeyboard())
 			case "disable":
-				sendHTML(token, chat, "🚫 <pre>"+esc(runVPN("disable", name))+"</pre>", backKeyboard())
+				reply(token, chat, msgID, "🚫 <pre>"+esc(runVPN("disable", name))+"</pre>", backKeyboard())
 			case "revoke":
-				sendHTML(token, chat, "🗑 <pre>"+esc(runVPN("revoke", name))+"</pre>", backKeyboard())
+				reply(token, chat, msgID, "🗑 <pre>"+esc(runVPN("revoke", name))+"</pre>", backKeyboard())
 			}
 		}
 		return
@@ -581,7 +619,7 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		if l == "en" {
 			name = "English"
 		}
-		sendHTML(token, chat, Tf("lang_set", name), mainKeyboard())
+		reply(token, chat, msgID, Tf("lang_set", name), mainKeyboard())
 		return
 	}
 
@@ -589,9 +627,9 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	case "m:menu", "m:help":
 		setState(chat, "", "")
 		if data == "m:help" {
-			sendHTML(token, chat, helpText(), mainKeyboard())
+			reply(token, chat, msgID, helpText(), mainKeyboard())
 		} else {
-			sendHTML(token, chat, menuText(), mainKeyboard())
+			reply(token, chat, msgID, menuText(), mainKeyboard())
 		}
 	case "m:lang":
 		cur := getLang()
@@ -599,50 +637,50 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		if cur == "en" {
 			label = "English"
 		}
-		sendHTML(token, chat, Tf("lang_now", label), langKeyboard())
+		reply(token, chat, msgID, Tf("lang_now", label), langKeyboard())
 	case "m:routers":
 		t := strings.TrimSpace(routersText())
 		if t == "" {
-			sendHTML(token, chat, T("routers_title")+"\n\n"+T("routers_empty"), backTo("routers"))
+			reply(token, chat, msgID, T("routers_title")+"\n\n"+T("routers_empty"), backTo("routers"))
 		} else {
 			if len(t) > 3500 {
 				t = t[:3500] + "…"
 			}
-			sendHTML(token, chat, T("routers_title")+"\n\n<pre>"+esc(t)+"</pre>", backTo("routers"))
+			reply(token, chat, msgID, T("routers_title")+"\n\n<pre>"+esc(t)+"</pre>", backTo("routers"))
 		}
 	case "m:pending":
 		t := pendingText()
 		if t == "" {
-			sendHTML(token, chat, "⏳ <b>Pending</b>\n\nNo devices.", backKeyboard())
+			reply(token, chat, msgID, "⏳ <b>Pending</b>\n\nNo devices.", backKeyboard())
 		} else {
-			sendHTML(token, chat, "⏳ <b>Pending</b>\n\n<pre>"+esc(t)+"</pre>", pendingKeyboard(t))
+			reply(token, chat, msgID, "⏳ <b>Pending</b>\n\n<pre>"+esc(t)+"</pre>", pendingKeyboard(t))
 		}
 	case "m:templates":
 		t := templatesText()
 		if t == "" {
 			t = "(none)"
 		}
-		sendHTML(token, chat, "📋 <b>Templates</b>\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
+		reply(token, chat, msgID, "📋 <b>Templates</b>\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
 	case "m:edge_apply":
 		setState(chat, "wait_edge_apply", "")
-		sendHTML(token, chat, "Device id to enqueue <code>apply_template</code>:", backKeyboard())
+		reply(token, chat, msgID, "Device id to enqueue <code>apply_template</code>:", backKeyboard())
 	case "m:status":
-		sendHTML(token, chat, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
+		reply(token, chat, msgID, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
 	case "m:ready":
 		t := readyText()
 		if t == "" {
-			sendHTML(token, chat, T("no_ready"), backKeyboard())
+			reply(token, chat, msgID, T("no_ready"), backKeyboard())
 		} else {
 			if len(t) > 3500 {
 				t = t[:3500] + "\n…"
 			}
-			sendHTML(token, chat, T("ready_title")+"\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
+			reply(token, chat, msgID, T("ready_title")+"\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
 		}
 	case "m:vpn_list":
-		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(formatVPNList(runVPN("list")))+"</pre>", backTo("vpn"))
+		reply(token, chat, msgID, T("vpn_users")+"\n\n<pre>"+esc(formatVPNList(runVPN("list")))+"</pre>", backTo("vpn"))
 	case "m:vpn_add":
 		setState(chat, "wait_vpn_add_name", "")
-		sendHTML(token, chat, T("add_prompt"), backTo("vpn"))
+		reply(token, chat, msgID, T("add_prompt"), backTo("vpn"))
 	case "m:vpn_link", "m:vpn_disable", "m:vpn_enable", "m:vpn_revoke":
 		action := strings.TrimPrefix(data, "m:")
 		setState(chat, "wait_vpn_name:"+action, "")
@@ -650,14 +688,14 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			"vpn_link": T("label_link"), "vpn_disable": T("label_disable"),
 			"vpn_enable": T("label_enable"), "vpn_revoke": T("label_revoke"),
 		}[action]
-		sendHTML(token, chat, Tf("name_prompt", label), backTo("vpn"))
+		reply(token, chat, msgID, Tf("name_prompt", label), backTo("vpn"))
 	case "m:admin":
-		sendHTML(token, chat, T("admin_body"), backKeyboard())
+		reply(token, chat, msgID, T("admin_body"), backKeyboard())
 	case "m:session":
 		setState(chat, "wait_session_hours", "")
-		sendHTML(token, chat, T("session_prompt"), backKeyboard())
+		reply(token, chat, msgID, T("session_prompt"), backKeyboard())
 	default:
-		sendHTML(token, chat, T("unknown"), mainKeyboard())
+		reply(token, chat, msgID, T("unknown"), mainKeyboard())
 	}
 }
 

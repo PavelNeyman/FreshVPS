@@ -125,6 +125,19 @@
         $('#tab-routers').appendChild(box);
       }
       box.textContent = JSON.stringify(res.results || res, null, 2);
+      // per-device backups for first device
+      if (list.length) {
+        const id0 = list[0].device_id || list[0].id;
+        const bk = await (await api('/api/edge/backups?device_id=' + encodeURIComponent(id0))).json();
+        let bb = document.getElementById('edge-backups');
+        if (!bb) {
+          bb = document.createElement('pre');
+          bb.id = 'edge-backups';
+          bb.className = 'code';
+          $('#tab-routers').appendChild(bb);
+        }
+        bb.textContent = 'backups ' + id0 + ':\n' + JSON.stringify(bk.backups || bk, null, 2);
+      }
     } catch (_) {}
   }
   async function refreshProbes() {

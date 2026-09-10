@@ -8,6 +8,12 @@ import (
 )
 
 func InstallBlocky() error {
+	if _, err := os.Stat("/usr/local/bin/blocky"); err == nil {
+		if out, _ := runOut("systemctl", "is-active", "blocky"); strings.TrimSpace(out) == "active" {
+			fmt.Fprintln(os.Stderr, "blocky already active — skip")
+			return nil
+		}
+	}
 	_ = aptInstall("curl", "tar", "dnsutils")
 	tag, err := latestTag("0xERR0R/blocky")
 	if err != nil {

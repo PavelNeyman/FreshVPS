@@ -239,7 +239,8 @@ func mainKeyboard() map[string]any {
 			{btn(T("vpn_link"), "m:vpn_link", "primary"), btn(T("vpn_disable"), "m:vpn_disable", "danger")},
 			{btn(T("vpn_enable"), "m:vpn_enable", "success"), btn(T("vpn_revoke"), "m:vpn_revoke", "danger")},
 			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "primary")},
-			{btn(T("routers"), "m:routers", "primary")},
+			{btn(T("routers"), "m:routers", "primary"), btn("⏳ Pending", "m:pending", "primary")},
+			{btn("📋 Templates", "m:templates", ""), btn("📡 Apply tmpl", "m:edge_apply", "")},
 			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
 		},
 	}
@@ -436,28 +437,44 @@ func readyText() string {
 
 
 func routersText() string {
-	cmd := exec.Command("python3", "-c",
-		`import json,sys
-sys.path.insert(0,"/opt/netductor/runtime/api")
-import edge_store
-ds=edge_store.list_devices()
-if not ds:
- print("")
- sys.exit(0)
-import time
-now=int(time.time())
-for d in sorted(ds, key=lambda x: -int(x.get("last_seen") or 0)):
- ok="online" if d.get("healthy") else "offline"
- ago=now-int(d.get("last_seen") or 0)
- print("%s  %s  %s  wan=%s  wifi=%s  %s %ss" % (
-  d.get("device_id",""), d.get("hostname",""), d.get("board",""),
-  d.get("wan_ip",""), d.get("wifi_clients",""), ok, ago))
-`)
-	out, err := cmd.CombinedOutput()
+	out, err := exec.Command("netductor", "edge", "list").CombinedOutput()
 	if err != nil {
-		return string(out) + err.Error()
+		return strings.TrimSpace(string(out) + " " + err.Error())
 	}
-	return string(out)
+	return strings.TrimSpace(string(out))
+}
+
+func pendingText() string {
+	out, err := exec.Command("netductor", "edge", "pending").CombinedOutput()
+	if err != nil {
+		return strings.TrimSpace(string(out))
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func templatesText() string {
+	out, err := exec.Command("netductor", "edge", "templates").CombinedOutput()
+	if err != nil {
+		return strings.TrimSpace(string(out))
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func pendingKeyboard(lines string) map[string]any {
+	rows := [][]map[string]any{}
+	for _, line := range strings.Split(lines, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		id := strings.Fields(line)[0]
+		rows = append(rows, []map[string]any{
+			btn("✅ "+id, "e:appr:"+id, "success"),
+			btn("🚫 "+id, "e:deny:"+id, "danger"),
+		})
+	}
+	rows = append(rows, []map[string]any{btn(T("main_menu"), "m:menu", "primary")})
+	return map[string]any{"inline_keyboard": rows}
 }
 
 func menuText() string {
@@ -537,13 +554,29 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	case "m:routers":
 		t := strings.TrimSpace(routersText())
 		if t == "" {
-			sendHTML(token, chat, T("routers_title")+string([]byte{10, 10})+T("routers_empty"), backKeyboard())
+			sendHTML(token, chat, T("routers_title")+"\n\n"+T("routers_empty"), backKeyboard())
 		} else {
 			if len(t) > 3500 {
 				t = t[:3500] + "…"
 			}
-			sendHTML(token, chat, T("routers_title")+string([]byte{10, 10})+"<pre>"+esc(t)+"</pre>", backKeyboard())
+			sendHTML(token, chat, T("routers_title")+"\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
 		}
+	case "m:pending":
+		t := pendingText()
+		if t == "" {
+			sendHTML(token, chat, "⏳ <b>Pending</b>\n\nNo devices.", backKeyboard())
+		} else {
+			sendHTML(token, chat, "⏳ <b>Pending</b>\n\n<pre>"+esc(t)+"</pre>", pendingKeyboard(t))
+		}
+	case "m:templates":
+		t := templatesText()
+		if t == "" {
+			t = "(none)"
+		}
+		sendHTML(token, chat, "📋 <b>Templates</b>\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
+	case "m:edge_apply":
+		setState(chat, "wait_edge_apply", "")
+		sendHTML(token, chat, "Device id to enqueue <code>apply_template</code>:", backKeyboard())
 	case "m:status":
 		sendHTML(token, chat, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
 	case "m:ready":

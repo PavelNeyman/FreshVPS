@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	tokenFile = "/etc/freshvps/secrets/telegram_bot_token"
-	chatFile  = "/etc/freshvps/secrets/telegram_admin_id"
-	langFile  = "/etc/freshvps/telegram_lang"
-	statusSh  = "/opt/freshvps/runtime/telegram/status.sh"
+	tokenFile = "/etc/netductor/secrets/telegram_bot_token"
+	chatFile  = "/etc/netductor/secrets/telegram_admin_id"
+	langFile  = "/etc/netductor/telegram_lang"
+	statusSh  = "/opt/netductor/runtime/telegram/status.sh"
 )
 
 type update struct {
@@ -81,7 +81,7 @@ var dict = map[string]map[string]string{
 		"add_prompt":    "➕ <b>Add VPN user</b>\n\nSend a short <b>name</b> (e.g. <code>alice</code>).",
 		"name_prompt":   "✏️ <b>%s</b>\n\nSend the VPN <b>user name</b>:",
 		"session_prompt": "🔑 <b>API session</b>\n\nSend lifetime in <b>hours</b> (e.g. <code>72</code>), or /cancel:",
-		"admin_body":    "🖥 <b>Admin UI</b>\n\nURL: <code>http://127.0.0.1:8787/admin/</code>\n\n1) SSH tunnel:\n<code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>\n2) Open URL in browser\n3) Paste session token\n\nOr: <code>freshvps-vpn api-bind detect</code>",
+		"admin_body":    "🖥 <b>Admin UI</b>\n\nURL: <code>http://127.0.0.1:8787/admin/</code>\n\n1) SSH tunnel:\n<code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>\n2) Open URL in browser\n3) Paste session token\n\nOr: <code>netductor vpn api-bind detect</code>",
 		"unknown":       "Unknown action.",
 		"unknown_cmd":   "Unknown. Open the menu:",
 		"no_ready":      "⚠️ No READY.txt",
@@ -125,7 +125,7 @@ var dict = map[string]map[string]string{
 		"add_prompt":    "➕ <b>Новый VPN-пользователь</b>\n\nПришлите короткое <b>имя</b> (напр. <code>alice</code>).",
 		"name_prompt":   "✏️ <b>%s</b>\n\nПришлите <b>имя пользователя VPN</b>:",
 		"session_prompt": "🔑 <b>API session</b>\n\nПришлите срок в <b>часах</b> (напр. <code>72</code>) или /cancel:",
-		"admin_body":    "🖥 <b>Админка</b>\n\nURL: <code>http://127.0.0.1:8787/admin/</code>\n\n1) SSH-туннель:\n<code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>\n2) Откройте URL в браузере\n3) Вставьте session-токен\n\nИли: <code>freshvps-vpn api-bind detect</code>",
+		"admin_body":    "🖥 <b>Админка</b>\n\nURL: <code>http://127.0.0.1:8787/admin/</code>\n\n1) SSH-туннель:\n<code>ssh -L 8787:127.0.0.1:8787 root@VPS</code>\n2) Откройте URL в браузере\n3) Вставьте session-токен\n\nИли: <code>netductor vpn api-bind detect</code>",
 		"unknown":       "Неизвестное действие.",
 		"unknown_cmd":   "Неизвестно. Откройте меню:",
 		"no_ready":      "⚠️ Нет READY.txt",
@@ -311,7 +311,7 @@ func formatVPNList(s string) string {
 }
 
 func runVPN(args ...string) string {
-	cmd := exec.Command("/usr/local/bin/freshvps-vpn", args...)
+	cmd := exec.Command("/usr/local/bin/netductor vpn", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out) + "\n" + err.Error()
@@ -357,12 +357,12 @@ func statusInline() string {
 		}
 		return s
 	}
-	for _, u := range []string{"sing-box", "blocky", "freshvps-api", "netductor-api", "freshvps-telegram-bot", "netductor-telegram-bot"} {
+	for _, u := range []string{"sing-box", "blocky", "netductor-api", "netductor-api", "netductor-telegram-bot", "netductor-telegram-bot"} {
 		out, _ := exec.Command("systemctl", "is-active", u).Output()
 		b.WriteString(u + ": " + mapSt(string(out)))
 		b.WriteByte(10)
 	}
-	if out, err := exec.Command("systemctl", "is-active", "freshvps-metrics.timer").Output(); err == nil {
+	if out, err := exec.Command("systemctl", "is-active", "netductor-metrics.timer").Output(); err == nil {
 		b.WriteString("metrics-timer: " + mapSt(string(out)))
 		b.WriteByte(10)
 	}
@@ -406,7 +406,7 @@ func statusText() string {
 
 
 func readyText() string {
-	b, err := os.ReadFile("/etc/freshvps/READY.txt")
+	b, err := os.ReadFile("/etc/netductor/READY.txt")
 	if err != nil {
 		return ""
 	}
@@ -438,7 +438,7 @@ func readyText() string {
 func routersText() string {
 	cmd := exec.Command("python3", "-c",
 		`import json,sys
-sys.path.insert(0,"/opt/freshvps/runtime/api")
+sys.path.insert(0,"/opt/netductor/runtime/api")
 import edge_store
 ds=edge_store.list_devices()
 if not ds:

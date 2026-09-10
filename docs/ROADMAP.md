@@ -1,18 +1,15 @@
 # Netductor Roadmap
 
-## Phase G — complete
+## Done
 
-G0–G7 done.
-
-## Cleanup (done)
-
-- Removed `cmd/freshvps-tg`
-- LEGACY markers on Python vpn-api + bash bot.sh
-- [DEPRECATED.md](DEPRECATED.md)
+- Phase G: Go CLI, API, agent, TG, dual paths
+- Bubble Tea + Huh TUI
+- **Native `netductor install`** (dirs, sing-box, blocky, vpn-users, api, metrics, telegram)
+- Python Admin API **removed** from main tree (`legacy/`)
+- Shell modules **moved to `legacy/modules`**
 
 ## Next
 
-1. VPS smoke (parallel API + bot + agent)
-2. Optional Go metrics collector
-3. Port `freshvps-vpn` / doctor into `netductor`
-4. Full path cutover when ready
+- VPS smoke tests
+- Optional: hardening/backup/cloudflared as Go components
+- OpenWrt site scripts → pure agent docs (Go binary)

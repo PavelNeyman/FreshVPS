@@ -1,31 +1,41 @@
-# Edge agent — enrollment
+# Edge agent
 
-Outbound only (NAT). No management VPN required.
+Outbound enroll → approve → template apply. No management VPN.
 
-## Tokens
+## Provision (from operator machine / VPS)
 
-| Secret | Role |
-|--------|------|
-| `/etc/netductor/secrets/edge_bootstrap_token` | enroll only |
-| per-device `device_token` (after approve) | heartbeat, commands, backup |
-| `edge_token` | operator/global (legacy) |
+```bash
+# agent binary for router arch must exist locally
+netductor edge provision root@192.168.1.1 \
+  --id site1 \
+  --server https://vps.example:8787 \
+  --key ~/.ssh/id_ed25519 \
+  --agent ./netductor-agent-linux-arm64
+```
 
-## Flow
+Only installs agent + bootstrap token. Config apply is done **by the agent**.
 
-1. Agent starts with bootstrap token in config `TOKEN=…`
-2. `POST /api/edge/enroll` → `pending`
-3. Operator notified (Telegram) + `netductor edge pending`
-4. `netductor edge approve site1` → device token
-5. Agent stores `/etc/netductor-agent/device_token` and uses it
-6. `deny` / `revoke` cuts access
+## Enrollment
 
 ```bash
 netductor edge pending
 netductor edge approve site1
-netductor edge deny site1
-netductor edge revoke site1
-netductor edge list
-netductor edge cmd site1 config_backup
+netductor edge bind-template site1 default
+netductor edge cmd site1 apply_template   # or auto on first run after approve
 ```
 
-Templates / provision (SSH install agent only) — next.
+## Templates
+
+Stored on VPS under edge `templates/`. Default created on serve.
+
+```bash
+netductor edge templates
+# API: GET/POST /api/edge/templates (session)
+# Agent: GET /api/edge/template?device_id= (device token)
+```
+
+Template ≠ device backup. Overlay on device: `lan_ip`, `ssid`, etc.
+
+## Apply
+
+Idempotent UCI diff (lan IP/mask, wifi ssid/key). VPN client profile — next iteration (`vpn.enabled` in template).

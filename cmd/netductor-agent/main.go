@@ -330,9 +330,31 @@ func runCmd(action, arg string) string {
 			lines = lines[len(lines)-50:]
 		}
 		return strings.Join(lines, "\n")
+	case "uci_set":
+		// arg: path=value
+		parts := strings.SplitN(arg, "=", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			return "uci_set: need path=value"
+		}
+		out, err := exec.Command("uci", "set", parts[0]+"="+parts[1]).CombinedOutput()
+		if err != nil {
+			return truncate(string(out)+" "+err.Error(), 8000)
+		}
+		_ = exec.Command("uci", "commit").Run()
+		return "ok:" + truncate(string(out), 200)
+	case "uci_commit":
+		out, _ := exec.Command("uci", "commit").CombinedOutput()
+		return truncate(string(out), 8000)
+	case "status":
+		return collectStatusJSON()
 	default:
 		return "denied:" + action
 	}
+}
+
+func collectStatusJSON() string {
+	host, _ := os.Hostname()
+	return fmt.Sprintf(`{"hostname":%q,"board":%q,"ok":true}`, host, boardName())
 }
 
 func truncate(s string, n int) string {
@@ -345,3 +367,11 @@ func truncate(s string, n int) string {
 
 // silence unused on non-openwrt builds
 var _ = filepath.Join
+
+func boardName() string {
+	b, err := os.ReadFile("/tmp/sysinfo/model")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}

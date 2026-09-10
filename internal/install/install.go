@@ -17,7 +17,7 @@ type Options struct {
 }
 
 func DefaultComponents() []string {
-	return []string{"dirs", "hardening", "singbox", "blocky", "vpn-users", "api", "metrics", "telegram"}
+	return []string{"dirs", "hardening", "singbox", "blocky", "vpn-users", "api", "metrics", "telegram", "backup"}
 }
 
 func Run(opts Options) error {
@@ -34,6 +34,7 @@ func Run(opts Options) error {
 	if err := paths.EnsureLayout(); err != nil {
 		return err
 	}
+	_ = copySelfToLocalBin()
 	for _, c := range comps {
 		fmt.Fprintf(os.Stderr, "==> %s\n", c)
 		var err error
@@ -54,6 +55,8 @@ func Run(opts Options) error {
 			err = InstallMetrics()
 		case "telegram", "tg":
 			err = InstallTelegram()
+		case "backup":
+			err = InstallBackup()
 		default:
 			fmt.Fprintf(os.Stderr, "skip unknown component %s\n", c)
 		}
@@ -131,4 +134,25 @@ func writeReady() {
 	txt := fmt.Sprintf("Netductor ready\nETC=%s\nSTATE=%s\nOPT=%s\nIP=%s\n",
 		paths.EtcDir(), paths.StateDir(), paths.OptDir(), ip)
 	_ = os.WriteFile(filepath.Join(paths.EtcDir(), "READY.txt"), []byte(txt), 0o644)
+}
+
+
+func copySelfToLocalBin() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	dest := "/usr/local/bin/netductor"
+	if exe == dest {
+		return nil
+	}
+	in, err := os.ReadFile(exe)
+	if err != nil {
+		return err
+	}
+	tmp := dest + ".tmp"
+	if err := os.WriteFile(tmp, in, 0o755); err != nil {
+		return err
+	}
+	return os.Rename(tmp, dest)
 }

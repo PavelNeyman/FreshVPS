@@ -63,6 +63,11 @@ Commands (from VPS):
 	cfg.Server = strings.TrimRight(cfg.Server, "/")
 	client := &http.Client{Timeout: 120 * time.Second}
 	for {
+		if err := ensureEnrolled(client, &cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "enroll: %v\n", err)
+			time.Sleep(time.Duration(cfg.Interval) * time.Second)
+			continue
+		}
 		if err := heartbeat(client, cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "heartbeat: %v\n", err)
 		}
@@ -70,6 +75,69 @@ Commands (from VPS):
 			fmt.Fprintf(os.Stderr, "poll: %v\n", err)
 		}
 		time.Sleep(time.Duration(cfg.Interval) * time.Second)
+	}
+}
+
+func deviceTokenPath() string {
+	return "/etc/netductor-agent/device_token"
+}
+
+func loadDeviceToken() string {
+	b, err := os.ReadFile(deviceTokenPath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+func saveDeviceToken(tok string) {
+	_ = os.MkdirAll("/etc/netductor-agent", 0o700)
+	_ = os.WriteFile(deviceTokenPath(), []byte(tok+"\n"), 0o600)
+}
+
+// ensureEnrolled uses bootstrap TOKEN until device_token is issued.
+func ensureEnrolled(client *http.Client, cfg *config) error {
+	if tok := loadDeviceToken(); tok != "" {
+		cfg.Token = tok
+		return nil
+	}
+	payload := collectMetrics()
+	payload["device_id"] = cfg.DeviceID
+	// bootstrap auth uses config TOKEN (edge_bootstrap)
+	reqBody, _ := json.Marshal(payload)
+	req, err := http.NewRequest(http.MethodPost, cfg.Server+"/api/edge/enroll", bytes.NewReader(reqBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.Token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(data), 200))
+	}
+	var out struct {
+		Status      string `json:"status"`
+		DeviceToken string `json:"device_token"`
+	}
+	_ = json.Unmarshal(data, &out)
+	switch out.Status {
+	case "approved":
+		if out.DeviceToken != "" {
+			saveDeviceToken(out.DeviceToken)
+			cfg.Token = out.DeviceToken
+		}
+		return nil
+	case "pending":
+		return fmt.Errorf("pending approval")
+	case "denied", "revoked":
+		return fmt.Errorf("status %s", out.Status)
+	default:
+		return fmt.Errorf("status %s", out.Status)
 	}
 }
 

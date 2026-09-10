@@ -614,7 +614,7 @@ func applyTemplate(client *http.Client, cfg config) string {
 	}
 	toSet := edgeagent.DiffUCI(desired, current)
 	if len(toSet) == 0 {
-		return edgeagent.FormatApplyReport(toSet)
+		return edgeagent.FormatApplyReport(toSet) + applyVPNClient(tmpl)
 	}
 	for _, line := range toSet {
 		_ = exec.Command("uci", "set", line).Run()
@@ -622,7 +622,43 @@ func applyTemplate(client *http.Client, cfg config) string {
 	_ = exec.Command("uci", "commit").Run()
 	_ = exec.Command("/etc/init.d/network", "reload").Run()
 	_ = exec.Command("wifi", "reload").Run()
-	return edgeagent.FormatApplyReport(toSet) + "\n" + strings.Join(toSet, "\n")
+	vpnNote := applyVPNClient(tmpl)
+	return edgeagent.FormatApplyReport(toSet) + "\n" + strings.Join(toSet, "\n") + vpnNote
+}
+
+func applyVPNClient(tmpl map[string]any) string {
+	vpn, _ := tmpl["vpn"].(map[string]any)
+	if vpn == nil {
+		return ""
+	}
+	enabled := false
+	switch v := vpn["enabled"].(type) {
+	case bool:
+		enabled = v
+	case string:
+		enabled = v == "true" || v == "1"
+	}
+	if !enabled {
+		return ""
+	}
+	_ = os.MkdirAll("/etc/netductor-agent", 0o700)
+	if sub, _ := vpn["subscription"].(string); sub != "" {
+		_ = os.WriteFile("/etc/netductor-agent/vpn.subscription", []byte(sub+"\n"), 0o600)
+	}
+	if vless, _ := vpn["vless"].(string); vless != "" {
+		_ = os.WriteFile("/etc/netductor-agent/vpn.vless", []byte(vless+"\n"), 0o600)
+	}
+	if hy2, _ := vpn["hy2"].(string); hy2 != "" {
+		_ = os.WriteFile("/etc/netductor-agent/vpn.hy2", []byte(hy2+"\n"), 0o600)
+	}
+	// if sing-box present, write minimal outbound-only client (manual start)
+	if _, err := exec.LookPath("sing-box"); err == nil {
+		if vless, _ := vpn["vless"].(string); vless != "" {
+			_ = os.WriteFile("/etc/netductor-agent/README-VPN.txt",
+				[]byte("VLESS link saved. Integrate with your OpenWrt VPN client or sing-box.\n"+vless+"\n"), 0o644)
+		}
+	}
+	return "\nvpn client material saved under /etc/netductor-agent/vpn.*"
 }
 
 func configRestore(client *http.Client, cfg config, name string) string {

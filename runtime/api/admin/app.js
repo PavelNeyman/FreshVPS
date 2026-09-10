@@ -148,7 +148,12 @@
   }
   async function refreshTemplates() {
     const data = await (await api('/api/edge/templates')).json();
-    $('#templates-raw').textContent = JSON.stringify(data.templates || data, null, 2);
+    const list = data.templates || data || [];
+    $('#templates-raw').textContent = JSON.stringify(list, null, 2);
+    if (!$('#tmpl-editor').value && list.length) {
+      $('#tmpl-editor').value = JSON.stringify(list[0], null, 2);
+      $('#tmpl-id').value = list[0].id || 'default';
+    }
   }
   async function refreshMetrics() {
     const m = await (await api('/api/metrics')).json();
@@ -186,6 +191,24 @@
     $('#new-user').value = ''; refreshUsers(); toast('added');
   };
   $('#btn-refresh-tmpl').onclick = refreshTemplates;
+  $('#btn-load-tmpl').onclick = async () => {
+    const id = $('#tmpl-id').value.trim() || 'default';
+    const data = await (await api('/api/edge/templates')).json();
+    const list = data.templates || [];
+    const found = list.find((t) => t.id === id) || list[0];
+    if (found) {
+      $('#tmpl-id').value = found.id || id;
+      $('#tmpl-editor').value = JSON.stringify(found, null, 2);
+    } else toast('not found');
+  };
+  $('#btn-save-tmpl').onclick = async () => {
+    try {
+      const body = JSON.parse($('#tmpl-editor').value);
+      body.id = $('#tmpl-id').value.trim() || body.id || 'default';
+      await api('/api/edge/templates', { method: 'POST', body: JSON.stringify(body) });
+      toast('saved'); refreshTemplates();
+    } catch (e) { toast('JSON error: ' + e.message); }
+  };
   $('#btn-save-default').onclick = async () => {
     await api('/api/edge/templates', { method: 'POST', body: JSON.stringify({
       id: 'default', role: 'site',

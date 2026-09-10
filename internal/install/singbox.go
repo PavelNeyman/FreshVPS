@@ -14,21 +14,27 @@ import (
 )
 
 func InstallSingBox() error {
-	if _, err := os.Stat("/usr/local/bin/sing-box"); err == nil {
-		if out, _ := runOut("systemctl", "is-active", "sing-box"); strings.TrimSpace(out) == "active" {
-			fmt.Fprintln(os.Stderr, "sing-box already active — skip download")
-			return nil
-		}
-	}
 	_ = aptInstall("curl", "tar", "openssl", "ca-certificates")
 	binDir := "/usr/local/bin"
 	confDir := "/usr/local/etc/sing-box"
 	_ = os.MkdirAll(confDir, 0o755)
 	_ = os.MkdirAll("/etc/sing-box/certs", 0o755)
 
-	if err := downloadSingBox(binDir); err != nil {
+	tag, err := latestTag("SagerNet/sing-box")
+	if err != nil {
 		return err
 	}
+	if stateVersion("singbox") == tag {
+		if _, err := os.Stat("/usr/local/bin/sing-box"); err == nil {
+			fmt.Fprintf(os.Stderr, "sing-box %s already installed — skip download\n", tag)
+			goto afterBin
+		}
+	}
+	if err := downloadSingBoxVersion(binDir, tag); err != nil {
+		return err
+	}
+	writeStateVersion("singbox", tag)
+afterBin:
 	shortID := readSecret("singbox_short_id")
 	if shortID == "" {
 		shortID = randomHex(8)
@@ -98,6 +104,10 @@ func downloadSingBox(dest string) error {
 	if err != nil {
 		return err
 	}
+	return downloadSingBoxVersion(dest, tag)
+}
+
+func downloadSingBoxVersion(dest, tag string) error {
 	a := arch()
 	url := fmt.Sprintf("https://github.com/SagerNet/sing-box/releases/download/%s/sing-box-%s-linux-%s.tar.gz", tag, strings.TrimPrefix(tag, "v"), a)
 	tmp, err := os.MkdirTemp("", "sb-")

@@ -39,16 +39,12 @@
       const st = await (await api('/api/status')).json();
       $('#host-line').textContent = st.hostname || st.host || '';
       const m = await (await api('/api/metrics')).json().catch(() => ({}));
-      const mem = m.mem_pct != null ? m.mem_pct + '%' : '—';
-      const disk = m.disk_pct != null ? m.disk_pct + '%' : '—';
       $('#m-cpu').textContent = m.cpu_pct != null ? m.cpu_pct + '%' : (m.cpu || '—');
-      $('#m-ram').textContent = mem;
-      $('#m-disk').textContent = disk;
+      $('#m-ram').textContent = m.mem_pct != null ? m.mem_pct + '%' : '—';
+      $('#m-disk').textContent = m.disk_pct != null ? m.disk_pct + '%' : '—';
       $('#m-load').textContent = (m.load && (m.load['1'] || m.load[0])) || '—';
       $('#m-rx').textContent = m.net_rx || m.rx || '—';
       $('#m-tx').textContent = m.net_tx || m.tx || '—';
-      if (m.ts && Date.now()/1000 - m.ts > 180) $('#collector-warn').classList.remove('hide');
-      else $('#collector-warn').classList.add('hide');
       const pr = await (await api('/api/probes')).json().catch(() => []);
       const strip = $('#probe-strip'); strip.innerHTML = '';
       (Array.isArray(pr) ? pr : (pr.probes || [])).forEach((p) => {
@@ -67,15 +63,10 @@
     users.forEach((u) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${u.name}</td><td>${u.enabled ? 'on' : 'off'}</td><td>${u.note || ''}</td>
-        <td><button class="ghost btn-open" data-name="${u.name}">Open</button>
-        <button class="ghost btn-dis" data-name="${u.name}">${u.enabled ? 'Disable' : 'Enable'}</button></td>`;
+        <td><button class="ghost btn-open" data-name="${u.name}">Open</button></td>`;
       tb.appendChild(tr);
     });
     tb.querySelectorAll('.btn-open').forEach((b) => b.onclick = () => openUser(b.dataset.name));
-    tb.querySelectorAll('.btn-dis').forEach((b) => b.onclick = async () => {
-      await api('/vpn/users/' + b.dataset.name + '/' + (b.textContent === 'Disable' ? 'disable' : 'enable'), { method: 'POST' });
-      refreshUsers();
-    });
   }
   async function openUser(name) {
     $('#user-detail').classList.remove('hide');
@@ -88,33 +79,22 @@
     try {
       const qr = await api('/vpn/users/' + name + '/qr');
       if (qr.ok) {
-        const blob = await qr.blob();
-        img.src = URL.createObjectURL(blob);
+        img.src = URL.createObjectURL(await qr.blob());
         img.classList.remove('hide');
       }
     } catch (_) {}
     $('#btn-copy-sub').onclick = () => { navigator.clipboard.writeText(text); toast('copied'); };
   }
-  async function refreshMetrics() {
-    const m = await (await api('/api/metrics')).json();
-    $('#metrics-raw').textContent = JSON.stringify(m, null, 2);
-  }
   async function refreshPending() {
     try {
       const data = await (await api('/api/edge/pending')).json();
       const list = data.pending || [];
-      let box = document.getElementById('edge-pending');
-      if (!box) {
-        box = document.createElement('div');
-        box.id = 'edge-pending';
-        box.className = 'card';
-        const routers = document.getElementById('tab-routers');
-        if (routers) routers.prepend(box);
-      }
+      const box = $('#edge-pending');
+      if (!box) return;
       if (!list.length) { box.innerHTML = '<div class="muted">No pending devices</div>'; return; }
       box.innerHTML = '<h3>Pending approval</h3>' + list.map((d) => {
         const id = d.device_id || '';
-        return `<div class="row"><code>${id}</code> ${d.board||''} ${d.wan_ip||''} ${d.hostname||''}
+        return `<div class="row"><code>${id}</code> ${d.status||''} ${d.board||''} ${d.wan_ip||''} ${d.hostname||''}
           <button class="primary btn-appr" data-id="${id}">Approve</button>
           <button class="ghost btn-deny" data-id="${id}">Deny</button></div>`;
       }).join('');
@@ -136,46 +116,50 @@
     list.forEach((d) => {
       const tr = document.createElement('tr');
       const id = d.device_id || d.id || '';
-      tr.innerHTML = `<td>${id}</td><td>${d.hostname || ''}</td><td>${d.last_seen || ''}</td><td>${d.wan_ip || ''}</td>
-        <td><button class="ghost btn-ping" data-id="${id}">ping</button></td>`;
+      tr.innerHTML = `<td>${id}</td><td>${d.status||''}</td><td>${d.hostname||''}</td><td>${d.wan_ip||''}</td>
+        <td>
+          <button class="ghost btn-ping" data-id="${id}">ping</button>
+          <button class="ghost btn-apply" data-id="${id}">apply</button>
+          <button class="ghost btn-rev" data-id="${id}">revoke</button>
+        </td>`;
       tb.appendChild(tr);
     });
     tb.querySelectorAll('.btn-ping').forEach((b) => b.onclick = async () => {
       await api('/api/edge/cmd', { method: 'POST', body: JSON.stringify({ device_id: b.dataset.id, action: 'ping' }) });
       toast('queued');
-      setTimeout(refreshRouters, 1500);
+    });
+    tb.querySelectorAll('.btn-apply').forEach((b) => b.onclick = async () => {
+      await api('/api/edge/cmd', { method: 'POST', body: JSON.stringify({ device_id: b.dataset.id, action: 'apply_template' }) });
+      toast('apply queued');
+    });
+    tb.querySelectorAll('.btn-rev').forEach((b) => b.onclick = async () => {
+      await api('/api/edge/revoke', { method: 'POST', body: JSON.stringify({ device_id: b.dataset.id }) });
+      toast('revoked'); refreshRouters();
     });
     try {
       const res = await (await api('/api/edge/results')).json();
-      let box = document.getElementById('edge-results');
-      if (!box) {
-        box = document.createElement('pre');
-        box.id = 'edge-results';
-        box.className = 'code';
-        $('#tab-routers').appendChild(box);
-      }
-      box.textContent = JSON.stringify(res.results || res, null, 2);
-      // per-device backups for first device
+      $('#edge-results').textContent = JSON.stringify(res.results || res, null, 2);
       if (list.length) {
         const id0 = list[0].device_id || list[0].id;
         const bk = await (await api('/api/edge/backups?device_id=' + encodeURIComponent(id0))).json();
-        let bb = document.getElementById('edge-backups');
-        if (!bb) {
-          bb = document.createElement('pre');
-          bb.id = 'edge-backups';
-          bb.className = 'code';
-          $('#tab-routers').appendChild(bb);
-        }
-        bb.textContent = 'backups ' + id0 + ':\n' + JSON.stringify(bk.backups || bk, null, 2);
+        $('#edge-backups').textContent = 'backups ' + id0 + ':\n' + JSON.stringify(bk.backups || bk, null, 2);
       }
     } catch (_) {}
+  }
+  async function refreshTemplates() {
+    const data = await (await api('/api/edge/templates')).json();
+    $('#templates-raw').textContent = JSON.stringify(data.templates || data, null, 2);
+  }
+  async function refreshMetrics() {
+    const m = await (await api('/api/metrics')).json();
+    $('#metrics-raw').textContent = JSON.stringify(m, null, 2);
   }
   async function refreshProbes() {
     const p = await (await api('/api/probes')).json();
     $('#probes-raw').textContent = JSON.stringify(p, null, 2);
   }
   function refreshAll() {
-    refreshOverview(); refreshUsers(); refreshMetrics(); refreshRouters(); refreshProbes();
+    refreshOverview(); refreshUsers(); refreshRouters(); refreshTemplates(); refreshMetrics(); refreshProbes();
   }
 
   $('#btn-login').onclick = async () => {
@@ -200,6 +184,25 @@
     if (!name) return;
     await api('/vpn/users', { method: 'POST', body: JSON.stringify({ name, note }) });
     $('#new-user').value = ''; refreshUsers(); toast('added');
+  };
+  $('#btn-refresh-tmpl').onclick = refreshTemplates;
+  $('#btn-save-default').onclick = async () => {
+    await api('/api/edge/templates', { method: 'POST', body: JSON.stringify({
+      id: 'default', role: 'site',
+      network: { lan_ip: '192.168.50.1', lan_mask: '255.255.255.0', dhcp: true },
+      wifi: { ssid: 'Netductor', encryption: 'psk2', key: '' },
+      vpn: { enabled: true }
+    })});
+    toast('default saved'); refreshTemplates();
+  };
+  $('#btn-bind').onclick = async () => {
+    const device_id = $('#bind-device').value.trim();
+    const template_id = $('#bind-tmpl').value.trim() || 'default';
+    const overlay = {};
+    if ($('#bind-ssid').value.trim()) overlay.ssid = $('#bind-ssid').value.trim();
+    if ($('#bind-lan').value.trim()) overlay.lan_ip = $('#bind-lan').value.trim();
+    await api('/api/edge/bind-template', { method: 'POST', body: JSON.stringify({ device_id, template_id, overlay }) });
+    toast('bound');
   };
   applyI18n();
   if (state.token) showDash();

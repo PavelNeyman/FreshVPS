@@ -247,15 +247,33 @@ func btnCopy(text, copyPayload string) map[string]any {
 func mainKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn(T("status"), "m:status", "primary"), btn(T("ready"), "m:ready", "")},
-			{btn(T("vpn_list"), "m:vpn_list", ""), btn(T("vpn_add"), "m:vpn_add", "success")},
-			{btn(T("vpn_link"), "m:vpn_link", "primary"), btn(T("vpn_disable"), "m:vpn_disable", "danger")},
-			{btn(T("vpn_enable"), "m:vpn_enable", "success"), btn(T("vpn_revoke"), "m:vpn_revoke", "danger")},
-			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "primary")},
-			{btn(T("routers"), "m:routers", "primary"), btn("⏳ Pending", "m:pending", "primary")},
-			{btn("📋 Templates", "m:templates", ""), btn("🔗 Bind tmpl", "m:edge_bind", "")},
-			{btn("📡 Apply tmpl", "m:edge_apply", "")},
-			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
+			{btn("📊 Status", "m:status", "primary"), btn("📄 READY", "m:ready", "")},
+			{btn("🔐 VPN", "m:cat:vpn", "primary"), btn("📡 Routers", "m:cat:routers", "primary")},
+			{btn("🔑 Session", "m:session", ""), btn("🖥 Admin UI", "m:admin", "")},
+			{btn("🌐 Lang", "m:lang", ""), btn("❓ Help", "m:help", "")},
+		},
+	}
+}
+
+func vpnKeyboard() map[string]any {
+	return map[string]any{
+		"inline_keyboard": [][]map[string]any{
+			{btn("👥 List", "m:vpn_list", "primary"), btn("➕ Add", "m:vpn_add", "success")},
+			{btn("🔗 Link / QR", "m:vpn_link", "primary")},
+			{btn("✅ Enable", "m:vpn_enable", "success"), btn("🚫 Disable", "m:vpn_disable", "danger")},
+			{btn("🗑 Revoke", "m:vpn_revoke", "danger")},
+			{btn("⬅️ Main", "m:menu", "")},
+		},
+	}
+}
+
+func routersKeyboard() map[string]any {
+	return map[string]any{
+		"inline_keyboard": [][]map[string]any{
+			{btn("📡 Devices", "m:routers", "primary"), btn("⏳ Pending", "m:pending", "primary")},
+			{btn("📋 Templates", "m:templates", ""), btn("🔗 Bind template", "m:edge_bind", "")},
+			{btn("⚙️ Apply template", "m:edge_apply", "primary")},
+			{btn("⬅️ Main", "m:menu", "")},
 		},
 	}
 }
@@ -263,7 +281,24 @@ func mainKeyboard() map[string]any {
 func backKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn(T("main_menu"), "m:menu", "primary")},
+			{btn("⬅️ Main", "m:menu", "primary")},
+		},
+	}
+}
+
+func backTo(cat string) map[string]any {
+	// cat: vpn | routers | menu
+	up := "m:menu"
+	label := "⬅️ Main"
+	switch cat {
+	case "vpn":
+		up, label = "m:cat:vpn", "⬅️ VPN"
+	case "routers":
+		up, label = "m:cat:routers", "⬅️ Routers"
+	}
+	return map[string]any{
+		"inline_keyboard": [][]map[string]any{
+			{btn(label, up, "primary"), btn("🏠 Main", "m:menu", "")},
 		},
 	}
 }
@@ -487,12 +522,12 @@ func pendingKeyboard(lines string) map[string]any {
 			btn("🚫 "+id, "e:deny:"+id, "danger"),
 		})
 	}
-	rows = append(rows, []map[string]any{btn(T("main_menu"), "m:menu", "primary")})
+	rows = append(rows, []map[string]any{btn("⬅️ Routers", "m:cat:routers", "primary"), btn("🏠 Main", "m:menu", "")})
 	return map[string]any{"inline_keyboard": rows}
 }
 
 func menuText() string {
-	return T("menu_title") + "\n\n" + T("menu_hint")
+	return T("menu_title") + "\n\n" + "Choose a category — submenus open under VPN / Routers."
 }
 
 func helpText() string {
@@ -568,12 +603,12 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	case "m:routers":
 		t := strings.TrimSpace(routersText())
 		if t == "" {
-			sendHTML(token, chat, T("routers_title")+"\n\n"+T("routers_empty"), backKeyboard())
+			sendHTML(token, chat, T("routers_title")+"\n\n"+T("routers_empty"), backTo("routers"))
 		} else {
 			if len(t) > 3500 {
 				t = t[:3500] + "…"
 			}
-			sendHTML(token, chat, T("routers_title")+"\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
+			sendHTML(token, chat, T("routers_title")+"\n\n<pre>"+esc(t)+"</pre>", backTo("routers"))
 		}
 	case "m:pending":
 		t := pendingText()
@@ -604,10 +639,10 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			sendHTML(token, chat, T("ready_title")+"\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
 		}
 	case "m:vpn_list":
-		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(formatVPNList(runVPN("list")))+"</pre>", backKeyboard())
+		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(formatVPNList(runVPN("list")))+"</pre>", backTo("vpn"))
 	case "m:vpn_add":
 		setState(chat, "wait_vpn_add_name", "")
-		sendHTML(token, chat, T("add_prompt"), backKeyboard())
+		sendHTML(token, chat, T("add_prompt"), backTo("vpn"))
 	case "m:vpn_link", "m:vpn_disable", "m:vpn_enable", "m:vpn_revoke":
 		action := strings.TrimPrefix(data, "m:")
 		setState(chat, "wait_vpn_name:"+action, "")
@@ -615,7 +650,7 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			"vpn_link": T("label_link"), "vpn_disable": T("label_disable"),
 			"vpn_enable": T("label_enable"), "vpn_revoke": T("label_revoke"),
 		}[action]
-		sendHTML(token, chat, Tf("name_prompt", label), backKeyboard())
+		sendHTML(token, chat, Tf("name_prompt", label), backTo("vpn"))
 	case "m:admin":
 		sendHTML(token, chat, T("admin_body"), backKeyboard())
 	case "m:session":

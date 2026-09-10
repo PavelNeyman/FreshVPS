@@ -240,7 +240,8 @@ func mainKeyboard() map[string]any {
 			{btn(T("vpn_enable"), "m:vpn_enable", "success"), btn(T("vpn_revoke"), "m:vpn_revoke", "danger")},
 			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "primary")},
 			{btn(T("routers"), "m:routers", "primary"), btn("⏳ Pending", "m:pending", "primary")},
-			{btn("📋 Templates", "m:templates", ""), btn("📡 Apply tmpl", "m:edge_apply", "")},
+			{btn("📋 Templates", "m:templates", ""), btn("🔗 Bind tmpl", "m:edge_bind", "")},
+			{btn("📡 Apply tmpl", "m:edge_apply", "")},
 			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
 		},
 	}

@@ -1,4 +1,4 @@
-# FreshVPS Admin Shortcut (iOS / iPadOS / macOS) — русский
+# Netductor Admin Shortcut (iOS / iPadOS / macOS) — русский
 
 **EN:** [../SHORTCUT-IOS.md](../SHORTCUT-IOS.md)
 
@@ -9,30 +9,30 @@
 ## Модель безопасности
 
 1. API только через **ваш VPN** или SSH-туннель на `127.0.0.1:8787`.
-2. **Session token** через `freshvps-vpn session` или Telegram `/session` — не master token внутри Shortcut.
+2. **Session token** через `netductor-vpn session` или Telegram `/session` — не master token внутри Shortcut.
 3. **Face ID / код** в начале Shortcut.
 4. Токен в **локальном файле** (На iPhone / На Mac; лучше не класть токен в iCloud).
 
 ## Выпустить session
 
 ```bash
-sudo freshvps-vpn session 72
+sudo netductor-vpn session 72
 ```
 
 Или Telegram: `/session 72`
 
-На телефоне: Файлы → **На iPhone** → `FreshVPS/session.txt` (только токен).
+На телефоне: Файлы → **На iPhone** → `Netductor/session.txt` (только токен).
 
 ## Сборка на iPhone
 
 ### A. Создать
 
-1. **Команды** → **+** → имя `FreshVPS Admin`.
+1. **Команды** → **+** → имя `Netductor Admin`.
 2. **Аутентификация** (Face ID / код). При ошибке — стоп.
 
 ### B. Токен
 
-3. **Получить файл** → `На iPhone/FreshVPS/session.txt` (или «Спрашивать каждый раз»).
+3. **Получить файл** → `На iPhone/Netductor/session.txt` (или «Спрашивать каждый раз»).
 4. **Текст из входных данных** → **Задать переменную** `Token`.
 
 ### C. Меню

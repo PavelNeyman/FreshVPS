@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/bubbletea v0.26.6
 	github.com/charmbracelet/huh v0.5.2
 	github.com/charmbracelet/lipgloss v0.13.0
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 )
 
 require (

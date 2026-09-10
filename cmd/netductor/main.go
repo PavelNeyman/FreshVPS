@@ -19,6 +19,7 @@ import (
 	"github.com/PavelNeyman/netductor/internal/session"
 	"github.com/PavelNeyman/netductor/internal/vpn"
 	"github.com/PavelNeyman/netductor/internal/install"
+	"github.com/PavelNeyman/netductor/internal/notify"
 	"github.com/PavelNeyman/netductor/internal/paths"
 	"github.com/PavelNeyman/netductor/internal/probes"
 )
@@ -131,13 +132,48 @@ func runBridge(bin string, args []string) {
 }
 
 func runEdgeCLI(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: netductor edge list|cmd <device_id> <action> [arg]")
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: netductor edge list|pending|approve|deny|revoke|cmd …")
 		os.Exit(2)
 	}
 	switch args[0] {
 	case "list":
 		runEdgeList()
+	case "pending":
+		for _, d := range edge.ListPending() {
+			fmt.Printf("%v\t%v\t%v\t%v\n", d["device_id"], d["board"], d["wan_ip"], d["hostname"])
+		}
+	case "approve":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: netductor edge approve <device_id>")
+			os.Exit(2)
+		}
+		tok, err := edge.Approve(args[1])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("approved", args[1], "token="+tok)
+	case "deny":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: netductor edge deny <device_id>")
+			os.Exit(2)
+		}
+		if err := edge.Deny(args[1]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("denied")
+	case "revoke":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: netductor edge revoke <device_id>")
+			os.Exit(2)
+		}
+		if err := edge.Revoke(args[1]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("revoked")
 	case "cmd":
 		if len(args) < 3 {
 			fmt.Fprintln(os.Stderr, "usage: netductor edge cmd <device_id> <action> [arg]")
@@ -145,10 +181,16 @@ func runEdgeCLI(args []string) {
 		}
 		arg := ""
 		if len(args) > 3 {
-			arg = args[3]
+			arg = strings.Join(args[3:], " ")
 		}
-		fmt.Println(edge.EnqueueCmd(args[1], args[2], arg))
+		id := edge.EnqueueCmd(args[1], args[2], arg)
+		if id == "" {
+			fmt.Fprintln(os.Stderr, "enqueue failed (device not approved?)")
+			os.Exit(1)
+		}
+		fmt.Println(id)
 	default:
+		fmt.Fprintln(os.Stderr, "unknown edge subcommand")
 		os.Exit(2)
 	}
 }
@@ -568,6 +610,26 @@ func runServe(args []string) {
 		_ = edge.SaveMetrics(did, payload)
 		writeJSON(w, 200, map[string]string{"ok": "true"})
 	})
+		mux.HandleFunc("/api/edge/enroll", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]string{"error": "method"})
+			return
+		}
+		if !edge.ValidBootstrap(r.Header.Get("Authorization")) {
+			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+			return
+		}
+		var payload map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		st, dtok, isNew := edge.Enroll(payload)
+		if isNew && st == edge.StatusPending {
+			did, _ := payload["device_id"].(string)
+			board, _ := payload["board"].(string)
+			wan, _ := payload["wan_ip"].(string)
+			_ = notify.Telegram(fmt.Sprintf("⏳ Edge pending: <b>%s</b>\nboard=%s wan=%s", did, board, wan))
+		}
+		writeJSON(w, 200, map[string]any{"status": st, "device_token": dtok})
+	})
 	mux.HandleFunc("/api/edge/heartbeat", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, map[string]string{"error": "method"})
@@ -604,6 +666,50 @@ func runServe(args []string) {
 		}
 		edge.CmdResult(readJSON(r))
 		writeJSON(w, 200, map[string]bool{"ok": true})
+	})
+		mux.HandleFunc("/api/edge/approve", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !requireSession(w, r) {
+			return
+		}
+		body := readJSON(r)
+		did, _ := body["device_id"].(string)
+		tok, err := edge.Approve(did)
+		if err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		_ = notify.Telegram(fmt.Sprintf("✅ Edge approved: <b>%s</b>", did))
+		writeJSON(w, 200, map[string]any{"ok": true, "device_id": did, "device_token": tok})
+	})
+	mux.HandleFunc("/api/edge/deny", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !requireSession(w, r) {
+			return
+		}
+		body := readJSON(r)
+		did, _ := body["device_id"].(string)
+		if err := edge.Deny(did); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/api/edge/revoke", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !requireSession(w, r) {
+			return
+		}
+		body := readJSON(r)
+		did, _ := body["device_id"].(string)
+		if err := edge.Revoke(did); err != nil {
+			writeJSON(w, 400, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/api/edge/pending", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		writeJSON(w, 200, map[string]any{"pending": edge.ListPending()})
 	})
 	mux.HandleFunc("/api/edge/devices", func(w http.ResponseWriter, r *http.Request) {
 		tok := bearer(r)

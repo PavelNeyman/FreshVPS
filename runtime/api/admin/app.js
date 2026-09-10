@@ -99,7 +99,37 @@
     const m = await (await api('/api/metrics')).json();
     $('#metrics-raw').textContent = JSON.stringify(m, null, 2);
   }
+  async function refreshPending() {
+    try {
+      const data = await (await api('/api/edge/pending')).json();
+      const list = data.pending || [];
+      let box = document.getElementById('edge-pending');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'edge-pending';
+        box.className = 'card';
+        const routers = document.getElementById('tab-routers');
+        if (routers) routers.prepend(box);
+      }
+      if (!list.length) { box.innerHTML = '<div class="muted">No pending devices</div>'; return; }
+      box.innerHTML = '<h3>Pending approval</h3>' + list.map((d) => {
+        const id = d.device_id || '';
+        return `<div class="row"><code>${id}</code> ${d.board||''} ${d.wan_ip||''} ${d.hostname||''}
+          <button class="primary btn-appr" data-id="${id}">Approve</button>
+          <button class="ghost btn-deny" data-id="${id}">Deny</button></div>`;
+      }).join('');
+      box.querySelectorAll('.btn-appr').forEach((b) => b.onclick = async () => {
+        await api('/api/edge/approve', { method: 'POST', body: JSON.stringify({ device_id: b.dataset.id }) });
+        toast('approved'); refreshPending(); refreshRouters();
+      });
+      box.querySelectorAll('.btn-deny').forEach((b) => b.onclick = async () => {
+        await api('/api/edge/deny', { method: 'POST', body: JSON.stringify({ device_id: b.dataset.id }) });
+        toast('denied'); refreshPending();
+      });
+    } catch (e) { console.warn(e); }
+  }
   async function refreshRouters() {
+    refreshPending();
     const data = await (await api('/api/edge/devices')).json();
     const list = data.devices || data || [];
     const tb = $('#routers-table tbody'); tb.innerHTML = '';

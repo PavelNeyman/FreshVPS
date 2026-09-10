@@ -7,11 +7,11 @@ Unified runner wraps common community probes. Scripts run in a **temp dir** and 
 ## Run
 
 ```bash
-sudo freshvps-tests                 # checklist menu
-sudo freshvps-tests --list
-sudo freshvps-tests --default        # curated subset
-sudo freshvps-tests --all            # long
-sudo freshvps-tests yabs sysbench
+sudo netductor-tests                 # checklist menu
+sudo netductor-tests --list
+sudo netductor-tests --default        # curated subset
+sudo netductor-tests --all            # long
+sudo netductor-tests yabs sysbench
 sudo bash install.sh --tests        # same menu from installer
 ```
 

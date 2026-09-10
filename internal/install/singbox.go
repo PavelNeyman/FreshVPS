@@ -14,6 +14,12 @@ import (
 )
 
 func InstallSingBox() error {
+	if _, err := os.Stat("/usr/local/bin/sing-box"); err == nil {
+		if out, _ := runOut("systemctl", "is-active", "sing-box"); strings.TrimSpace(out) == "active" {
+			fmt.Fprintln(os.Stderr, "sing-box already active — skip download")
+			return nil
+		}
+	}
 	_ = aptInstall("curl", "tar", "openssl", "ca-certificates")
 	binDir := "/usr/local/bin"
 	confDir := "/usr/local/etc/sing-box"

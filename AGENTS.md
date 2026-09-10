@@ -26,7 +26,7 @@ Progress: [docs/ROADMAP.md](docs/ROADMAP.md) · [docs/ru/ROADMAP.md](docs/ru/ROA
 5. If ambiguous → **STOP** and ask the owner.
 6. Implement only the requested task.
 7. Docs EN+RU when user-facing behaviour changes.
-8. **Go first** for orchestrator/API/agent; bash as bridge until ported.
+8. **Go only** for control plane (install/serve/vpn/doctor/agent/tg). Shell/Python under `legacy/` is reference-only, not runtime.
 9. One logical Git commit per task.
 
 ---

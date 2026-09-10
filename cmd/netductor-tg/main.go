@@ -196,6 +196,14 @@ func mustRead(path string) string {
 	return strings.TrimSpace(string(b))
 }
 
+func readOptional(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
 func apiPost(token, method string, payload any) ([]byte, error) {
 	body, _ := json.Marshal(payload)
 	resp, err := http.Post("https://api.telegram.org/bot"+token+"/"+method, "application/json", bytes.NewReader(body))
@@ -783,7 +791,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "telegram_bot_token empty")
 		os.Exit(1)
 	}
-	adminStr := mustRead(chatFile)
+	adminStr := readOptional(chatFile)
 	admin, _ := strconv.ParseInt(adminStr, 10, 64)
 	if admin == 0 {
 		fmt.Fprintln(os.Stderr, "telegram_admin_id empty — waiting for first /start to claim admin")

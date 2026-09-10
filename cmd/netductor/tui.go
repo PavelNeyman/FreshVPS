@@ -1,27 +1,20 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
+
+	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
 
-const (
-	cReset  = "\033[0m"
-	cBold   = "\033[1m"
-	cDim    = "\033[2m"
-	cCyan   = "\033[36m"
-	cGreen  = "\033[32m"
-	cYellow = "\033[33m"
-	cRed    = "\033[31m"
-	cWhite  = "\033[97m"
-)
+// ── modes ──────────────────────────────────────────────────
 
 type runMode string
 
@@ -31,63 +24,6 @@ const (
 	modeWorkstation runMode = "workstation"
 	modeOperator    runMode = "operator"
 )
-
-var tuiMode runMode
-
-func colorOK() bool {
-	if os.Getenv("NO_COLOR") != "" {
-		return false
-	}
-	fi, err := os.Stdout.Stat()
-	return err == nil && (fi.Mode()&os.ModeCharDevice) != 0
-}
-
-func paint(code, s string) string {
-	if !colorOK() {
-		return s
-	}
-	return code + s + cReset
-}
-
-func box(title string) {
-	width := 54
-	inner := width - 2
-	top := "╭" + strings.Repeat("─", inner) + "╮"
-	bot := "╰" + strings.Repeat("─", inner) + "╯"
-	t := " " + title + " "
-	r := []rune(t)
-	if len(r) > inner {
-		t = string(r[:inner])
-		r = []rune(t)
-	}
-	mid := "│" + t + strings.Repeat(" ", inner-len(r)) + "│"
-	fmt.Println(paint(cCyan+cBold, top))
-	fmt.Println(paint(cCyan, mid))
-	fmt.Println(paint(cCyan+cBold, bot))
-}
-
-func item(n, title, desc string) {
-	fmt.Printf("  %s  %s\n", paint(cBold+cWhite, n+")"), paint(cBold, title))
-	if desc != "" {
-		fmt.Printf("      %s\n", paint(cDim, desc))
-	}
-}
-
-func prompt(in *bufio.Reader, label string) string {
-	fmt.Printf("%s ", paint(cGreen+cBold, label))
-	line, _ := in.ReadString('\n')
-	return strings.TrimSpace(line)
-}
-
-func pause(in *bufio.Reader) {
-	fmt.Print(paint(cDim, "\n  [Enter] … "))
-	_, _ = in.ReadString('\n')
-}
-
-func confirm(in *bufio.Reader, q string) bool {
-	a := prompt(in, q+" [y/N]:")
-	return strings.HasPrefix(strings.ToLower(a), "y")
-}
 
 func detectSuggestedMode() (runMode, string) {
 	if _, err := os.Stat("/etc/openwrt_release"); err == nil {
@@ -118,13 +54,13 @@ func detectSuggestedMode() (runMode, string) {
 func describeMode(m runMode) (string, string) {
 	switch m {
 	case modeVPS:
-		return "VPS setup", "Install & configure the stack on a server (VPN, DNS, API, bot…)"
+		return "VPS setup", "Install & configure stack on a server (VPN, DNS, API, bot…)"
 	case modeOpenWRT:
 		return "OpenWrt / edge", "Router agent, site network, tunnel toward your VPS"
 	case modeWorkstation:
-		return "Workstation (PC/Mac)", "Build binaries, bootstrap hints, remote operator helpers"
+		return "Workstation (PC/Mac)", "Build binaries, bootstrap hints, remote helpers"
 	default:
-		return "Operator panel", "Day-2 ops only: users, sessions, edge, doctor, probes"
+		return "Operator panel", "Day-2 ops: users, sessions, edge, doctor, probes"
 	}
 }
 
@@ -144,296 +80,372 @@ func parseModeFlags(args []string) runMode {
 	return ""
 }
 
-func chooseMode(in *bufio.Reader, forced runMode) runMode {
-	if forced == modeVPS || forced == modeOpenWRT || forced == modeWorkstation || forced == modeOperator {
-		t, _ := describeMode(forced)
-		fmt.Println(paint(cDim, "  mode forced: "+t))
-		return forced
-	}
-	sug, why := detectSuggestedMode()
-	st, _ := describeMode(sug)
+// ── styles ─────────────────────────────────────────────────
 
-	fmt.Println()
-	box("Netductor — select mode")
-	fmt.Println()
-	fmt.Printf("  %s %s\n", paint(cYellow, "Suggested:"), paint(cBold, st))
-	fmt.Printf("  %s %s\n\n", paint(cDim, "Why:"), paint(cDim, why))
+var (
+	titleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("205")).
+			MarginLeft(1)
+	subtitleStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			MarginLeft(1)
+	docStyle = lipgloss.NewStyle().Margin(1, 2)
+	helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	okStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	errStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+)
 
-	modes := []runMode{modeVPS, modeOpenWRT, modeWorkstation, modeOperator}
-	def := "1"
-	for i, m := range modes {
+// ── list items ─────────────────────────────────────────────
+
+type menuItem struct {
+	title, desc, id string
+}
+
+func (i menuItem) Title() string       { return i.title }
+func (i menuItem) Description() string { return i.desc }
+func (i menuItem) FilterValue() string { return i.title }
+
+// ── model ──────────────────────────────────────────────────
+
+type screen int
+
+const (
+	screenMode screen = iota
+	screenMenu
+	screenOutput
+)
+
+type model struct {
+	screen   screen
+	mode     runMode
+	list     list.Model
+	output   string
+	quitting bool
+	width    int
+	height   int
+}
+
+func modeItems(sug runMode) []list.Item {
+	order := []runMode{modeVPS, modeOpenWRT, modeWorkstation, modeOperator}
+	items := make([]list.Item, 0, 4)
+	for _, m := range order {
 		t, d := describeMode(m)
-		mark := ""
 		if m == sug {
-			mark = " " + paint(cYellow, "← suggested")
-			def = strconv.Itoa(i + 1)
+			t = t + "  ← suggested"
 		}
-		fmt.Printf("  %s  %s%s\n      %s\n",
-			paint(cBold+cWhite, fmt.Sprintf("%d)", i+1)),
-			paint(cBold, t), mark,
-			paint(cDim, d),
-		)
+		items = append(items, menuItem{title: t, desc: d, id: string(m)})
 	}
-	fmt.Printf("\n  %s\n\n", paint(cDim, "CLI: netductor tui --mode vps|openwrt|workstation|operator"))
-
-	ans := prompt(in, fmt.Sprintf("Mode [%s]:", def))
-	if ans == "" {
-		ans = def
-	}
-	n, err := strconv.Atoi(ans)
-	if err != nil || n < 1 || n > len(modes) {
-		fmt.Println(paint(cRed, "  invalid — using suggestion"))
-		return sug
-	}
-	chosen := modes[n-1]
-	ct, _ := describeMode(chosen)
-	if !confirm(in, "Start «"+ct+"»?") {
-		fmt.Println(paint(cDim, "  cancelled"))
-		os.Exit(0)
-	}
-	return chosen
+	return items
 }
 
-func runTUI(args []string) {
-	forced := parseModeFlags(args)
-	in := bufio.NewReader(os.Stdin)
-	tuiMode = chooseMode(in, forced)
-	for {
-		var cont bool
-		switch tuiMode {
-		case modeVPS:
-			cont = menuVPS(in)
-		case modeOpenWRT:
-			cont = menuOpenWRT(in)
-		case modeWorkstation:
-			cont = menuWorkstation(in)
-		default:
-			cont = menuOperator(in)
+func menuItemsFor(mode runMode) []list.Item {
+	switch mode {
+	case modeVPS:
+		return []list.Item{
+			menuItem{"Full install / upgrade", "bash install.sh (root + repo)", "install"},
+			menuItem{"Prepare only", "install.sh --prepare", "prepare"},
+			menuItem{"Doctor", "health checks", "doctor"},
+			menuItem{"Status", "systemd units", "status"},
+			menuItem{"Operator tools…", "VPN, edge, probes", "to-operator"},
+			menuItem{"Change mode…", "", "change-mode"},
+			menuItem{"Quit", "", "quit"},
 		}
-		if !cont {
-			fmt.Println(paint(cDim, "bye"))
-			return
+	case modeOpenWRT:
+		return []list.Item{
+			menuItem{"Agent install instructions", "outbound netductor-agent", "agent-help"},
+			menuItem{"Run install-openwrt.sh", "if present on device", "owrt-install"},
+			menuItem{"Check agent config", "", "agent-cfg"},
+			menuItem{"Change mode…", "", "change-mode"},
+			menuItem{"Quit", "", "quit"},
+		}
+	case modeWorkstation:
+		return []list.Item{
+			menuItem{"Bootstrap one-liner", "copy-paste for VPS", "bootstrap"},
+			menuItem{"Build netductor (local Go)", "", "build"},
+			menuItem{"Operator tools…", "via SSH tunnel", "to-operator"},
+			menuItem{"Change mode…", "", "change-mode"},
+			menuItem{"Quit", "", "quit"},
+		}
+	default:
+		return []list.Item{
+			menuItem{"Status", "systemd units", "status"},
+			menuItem{"Doctor", "health checks", "doctor"},
+			menuItem{"VPN — list users", "", "vpn-list"},
+			menuItem{"VPN — add user", "prompt name", "vpn-add"},
+			menuItem{"Session token", "admin API Bearer", "session"},
+			menuItem{"Edge — list devices", "", "edge-list"},
+			menuItem{"Live probes", "", "probe"},
+			menuItem{"Collect metrics", "", "collect"},
+			menuItem{"Change mode…", "", "change-mode"},
+			menuItem{"Quit", "", "quit"},
 		}
 	}
 }
 
-func menuHeader(m runMode) {
-	t, _ := describeMode(m)
-	fmt.Println()
-	box("Netductor · " + t)
-	fmt.Println()
+func newList(title string, items []list.Item, w, h int) list.Model {
+	d := list.NewDefaultDelegate()
+	d.Styles.SelectedTitle = d.Styles.SelectedTitle.Foreground(lipgloss.Color("205")).BorderForeground(lipgloss.Color("205"))
+	d.Styles.SelectedDesc = d.Styles.SelectedDesc.Foreground(lipgloss.Color("218"))
+	l := list.New(items, d, w, h)
+	l.Title = title
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(false)
+	l.Styles.Title = titleStyle
+	l.SetShowHelp(true)
+	return l
 }
 
-func menuOperator(in *bufio.Reader) bool {
-	menuHeader(modeOperator)
-	item("1", "Status", "systemd units")
-	item("2", "Doctor", "health checks")
-	item("3", "VPN — list users", "")
-	item("4", "VPN — add user", "")
-	item("5", "Session token", "admin API Bearer")
-	item("6", "Edge — list devices", "")
-	item("7", "Live probes", "")
-	item("8", "Collect metrics", "")
-	item("9", "Change mode…", "")
-	item("0", "Quit", "")
-	fmt.Println()
-	switch prompt(in, ">") {
-	case "1":
-		runStatus()
-		pause(in)
-	case "2":
-		_ = runDoctorNative()
-		pause(in)
-	case "3":
-		listUsersTUI()
-		pause(in)
-	case "4":
-		addUserTUI(in)
-		pause(in)
-	case "5":
-		sessionTUI(in)
-		pause(in)
-	case "6":
-		runEdgeList()
-		pause(in)
-	case "7":
-		runProbe(nil)
-		pause(in)
-	case "8":
-		_ = runCollect()
-		pause(in)
-	case "9":
-		tuiMode = chooseMode(in, "")
-	case "0", "q":
-		return false
-	}
-	return true
-}
+func (m model) Init() tea.Cmd { return nil }
 
-func menuVPS(in *bufio.Reader) bool {
-	menuHeader(modeVPS)
-	item("1", "Full install / upgrade", "bash install.sh (needs root + repo)")
-	item("2", "Prepare only", "install.sh --prepare")
-	item("3", "Doctor", "")
-	item("4", "Status", "")
-	item("5", "Operator tools…", "users, edge, probes")
-	item("9", "Change mode…", "")
-	item("0", "Quit", "")
-	fmt.Println()
-	switch prompt(in, ">") {
-	case "1":
-		fmt.Println(paint(cYellow, "  → bash install.sh"))
-		if confirm(in, "Run install?") {
-			runInstall(nil)
-		}
-		pause(in)
-	case "2":
-		fmt.Println(paint(cYellow, "  → bash install.sh --prepare"))
-		if confirm(in, "Run prepare?") {
-			runInstall([]string{"--prepare"})
-		}
-		pause(in)
-	case "3":
-		_ = runDoctorNative()
-		pause(in)
-	case "4":
-		runStatus()
-		pause(in)
-	case "5":
-		tuiMode = modeOperator
-	case "9":
-		tuiMode = chooseMode(in, "")
-	case "0", "q":
-		return false
-	}
-	return true
-}
-
-func menuOpenWRT(in *bufio.Reader) bool {
-	menuHeader(modeOpenWRT)
-	item("1", "Agent install instructions", "outbound netductor-agent")
-	item("2", "Run install-openwrt.sh", "if present on device")
-	item("3", "Check agent config", "")
-	item("9", "Change mode…", "")
-	item("0", "Quit", "")
-	fmt.Println()
-	switch prompt(in, ">") {
-	case "1":
-		fmt.Println(paint(cCyan, `
-  mkdir -p /etc/netductor-agent
-  # SERVER= TOKEN= DEVICE_ID= INTERVAL=60  → /etc/netductor-agent/config
-  # binary: releases …/netductor-agent-linux-arm64|mipsle|arm
-  # docs: edge/openwrt/INSTALL.md`))
-		pause(in)
-	case "2":
-		if !confirm(in, "Run OpenWrt installer scripts?") {
-			return true
-		}
-		for _, c := range []string{"install-openwrt.sh", "/opt/freshvps/install-openwrt.sh", "/opt/netductor/install-openwrt.sh"} {
-			if st, err := os.Stat(c); err == nil && !st.IsDir() {
-				cmd := exec.Command("sh", c)
-				cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
-				_ = cmd.Run()
-				pause(in)
-				return true
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.list.SetSize(msg.Width-4, msg.Height-6)
+		return m, nil
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c":
+			m.quitting = true
+			return m, tea.Quit
+		case "esc":
+			if m.screen == screenOutput {
+				m.screen = screenMenu
+				m.output = ""
+				return m, nil
 			}
-		}
-		fmt.Println(paint(cRed, "  install-openwrt.sh not found"))
-		pause(in)
-	case "3":
-		for _, p := range []string{"/etc/netductor-agent/config", "/etc/freshvps-agent/config"} {
-			if _, err := os.Stat(p); err == nil {
-				fmt.Println(paint(cGreen, "  "+p))
+			if m.screen == screenMenu {
+				m.screen = screenMode
+				sug, _ := detectSuggestedMode()
+				m.list = newList("Select mode", modeItems(sug), m.width-4, m.height-6)
+				return m, nil
 			}
+		case "enter":
+			if m.screen == screenOutput {
+				m.screen = screenMenu
+				m.output = ""
+				return m, nil
+			}
+			it, ok := m.list.SelectedItem().(menuItem)
+			if !ok {
+				return m, nil
+			}
+			if m.screen == screenMode {
+				m.mode = runMode(it.id)
+				t, _ := describeMode(m.mode)
+				m.list = newList("Netductor · "+t, menuItemsFor(m.mode), m.width-4, m.height-6)
+				m.screen = screenMenu
+				return m, nil
+			}
+			// screenMenu action
+			return m.runAction(it.id)
 		}
-		pause(in)
-	case "9":
-		tuiMode = chooseMode(in, "")
-	case "0", "q":
-		return false
 	}
-	return true
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd
 }
 
-func menuWorkstation(in *bufio.Reader) bool {
-	menuHeader(modeWorkstation)
-	item("1", "Bootstrap one-liner", "copy to VPS")
-	item("2", "Build netductor (local Go)", "")
-	item("3", "Operator tools…", "via SSH tunnel")
-	item("9", "Change mode…", "")
-	item("0", "Quit", "")
-	fmt.Println()
-	switch prompt(in, ">") {
-	case "1":
-		fmt.Println(`
-  curl -fsSL -o /usr/local/bin/netductor \
-    https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64
-  chmod 755 /usr/local/bin/netductor
-  netductor tui --mode vps
-`)
-		pause(in)
-	case "2":
-		if confirm(in, "go build ./cmd/netductor ?") {
+func (m model) runAction(id string) (tea.Model, tea.Cmd) {
+	switch id {
+	case "quit":
+		m.quitting = true
+		return m, tea.Quit
+	case "change-mode":
+		sug, _ := detectSuggestedMode()
+		m.list = newList("Select mode", modeItems(sug), m.width-4, m.height-6)
+		m.screen = screenMode
+		return m, nil
+	case "to-operator":
+		m.mode = modeOperator
+		t, _ := describeMode(m.mode)
+		m.list = newList("Netductor · "+t, menuItemsFor(m.mode), m.width-4, m.height-6)
+		return m, nil
+	case "status":
+		m.output = capture(func() { runStatus() })
+		m.screen = screenOutput
+		return m, nil
+	case "doctor":
+		m.output = capture(func() { _ = runDoctorNative() })
+		m.screen = screenOutput
+		return m, nil
+	case "probe":
+		m.output = capture(func() { runProbe(nil) })
+		m.screen = screenOutput
+		return m, nil
+	case "collect":
+		m.output = capture(func() { _ = runCollect() })
+		m.screen = screenOutput
+		return m, nil
+	case "edge-list":
+		m.output = capture(runEdgeList)
+		m.screen = screenOutput
+		return m, nil
+	case "vpn-list":
+		m.output = capture(func() {
+			users, err := vpn.List()
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			if len(users) == 0 {
+				fmt.Println("(no users)")
+			}
+			for _, u := range users {
+				en := "off"
+				if u.Enabled {
+					en = "on"
+				}
+				fmt.Printf("%s\t%s\t%s\t%s\n", u.Name, en, u.UUID, u.Note)
+			}
+		})
+		m.screen = screenOutput
+		return m, nil
+	case "vpn-add":
+		m.output = "VPN add requires a name.\n\nUse:  netductor vpn add <name> [note]\n\nInteractive prompt will be added later."
+		m.screen = screenOutput
+		return m, nil
+	case "session":
+		tok, exp, err := vpn.CreateSession(72)
+		if err != nil {
+			m.output = err.Error()
+		} else {
+			m.output = fmt.Sprintf("%s\n\nexpires_unix=%d hours=72", tok, exp)
+		}
+		m.screen = screenOutput
+		return m, nil
+	case "install":
+		m.output = "Will run: bash install.sh\nExit TUI and run:\n  netductor install\nor confirm from shell as root."
+		m.screen = screenOutput
+		return m, nil
+	case "prepare":
+		m.output = "Will run: bash install.sh --prepare\nUse: netductor install --prepare"
+		m.screen = screenOutput
+		return m, nil
+	case "bootstrap":
+		m.output = `curl -fsSL -o /usr/local/bin/netductor \
+  https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64
+chmod 755 /usr/local/bin/netductor
+netductor tui --mode vps`
+		m.screen = screenOutput
+		return m, nil
+	case "build":
+		m.output = capture(func() {
 			cmd := exec.Command("go", "build", "-o", "netductor", "./cmd/netductor")
 			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-			_ = cmd.Run()
-		}
-		pause(in)
-	case "3":
-		tuiMode = modeOperator
-	case "9":
-		tuiMode = chooseMode(in, "")
-	case "0", "q":
-		return false
+			if err := cmd.Run(); err != nil {
+				fmt.Println("error:", err)
+			} else {
+				fmt.Println("ok: ./netductor")
+			}
+		})
+		m.screen = screenOutput
+		return m, nil
+	case "agent-help":
+		m.output = `mkdir -p /etc/netductor-agent
+# SERVER= TOKEN= DEVICE_ID= INTERVAL=60 → config
+# binary: netductor-agent-linux-arm64|mipsle|arm from releases
+# docs: edge/openwrt/INSTALL.md`
+		m.screen = screenOutput
+		return m, nil
+	case "owrt-install":
+		m.output = capture(func() {
+			for _, c := range []string{"install-openwrt.sh", "/opt/freshvps/install-openwrt.sh", "/opt/netductor/install-openwrt.sh"} {
+				if st, err := os.Stat(c); err == nil && !st.IsDir() {
+					cmd := exec.Command("sh", c)
+					cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+					_ = cmd.Run()
+					return
+				}
+			}
+			fmt.Println("install-openwrt.sh not found")
+		})
+		m.screen = screenOutput
+		return m, nil
+	case "agent-cfg":
+		m.output = capture(func() {
+			for _, p := range []string{"/etc/netductor-agent/config", "/etc/freshvps-agent/config"} {
+				if _, err := os.Stat(p); err == nil {
+					fmt.Println("found:", p)
+				}
+			}
+		})
+		m.screen = screenOutput
+		return m, nil
 	}
-	return true
+	return m, nil
 }
 
-func listUsersTUI() {
-	users, err := vpn.List()
+func capture(fn func()) string {
+	r, w, err := os.Pipe()
 	if err != nil {
-		fmt.Println(paint(cRed, err.Error()))
-		return
+		fn()
+		return ""
 	}
-	if len(users) == 0 {
-		fmt.Println(paint(cDim, "  (no users)"))
-		return
-	}
-	for _, u := range users {
-		en := paint(cRed, "off")
-		if u.Enabled {
-			en = paint(cGreen, "on")
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = w, w
+	fn()
+	_ = w.Close()
+	os.Stdout, os.Stderr = oldOut, oldErr
+	var buf strings.Builder
+	tmp := make([]byte, 4096)
+	for {
+		n, er := r.Read(tmp)
+		if n > 0 {
+			buf.Write(tmp[:n])
 		}
-		fmt.Printf("  %s  [%s]  %s  %s\n", paint(cBold, u.Name), en, paint(cDim, u.UUID), u.Note)
-	}
-}
-
-func addUserTUI(in *bufio.Reader) {
-	name := prompt(in, "Name:")
-	if name == "" {
-		return
-	}
-	note := prompt(in, "Note:")
-	out, err := vpn.Add(name, note)
-	fmt.Println(out)
-	if err != nil {
-		fmt.Println(paint(cRed, err.Error()))
-	}
-}
-
-func sessionTUI(in *bufio.Reader) {
-	h := prompt(in, "Hours [72]:")
-	hours := 72
-	if h != "" {
-		if n, err := strconv.Atoi(h); err == nil {
-			hours = n
+		if er != nil {
+			break
 		}
 	}
-	tok, exp, err := vpn.CreateSession(hours)
-	if err != nil {
-		fmt.Println(paint(cRed, err.Error()))
-		return
+	_ = r.Close()
+	return buf.String()
+}
+
+func (m model) View() string {
+	if m.quitting {
+		return subtitleStyle.Render("bye") + "\n"
 	}
-	fmt.Println(paint(cGreen, tok))
-	fmt.Fprintf(os.Stderr, "expires_unix=%d hours=%d\n", exp, hours)
+	if m.screen == screenOutput {
+		body := lipgloss.NewStyle().Width(m.width - 4).Render(m.output)
+		return docStyle.Render(
+			titleStyle.Render("Output") + "\n\n" + body + "\n\n" +
+				helpStyle.Render("enter/esc back · ctrl+c quit"),
+		)
+	}
+	sug, why := detectSuggestedMode()
+	header := ""
+	if m.screen == screenMode {
+		st, _ := describeMode(sug)
+		header = subtitleStyle.Render(fmt.Sprintf("Suggested: %s (%s)", st, why)) + "\n" +
+			subtitleStyle.Render("↑↓ select · enter confirm · nothing runs until you choose") + "\n\n"
+	}
+	return docStyle.Render(header + m.list.View())
+}
+
+// runTUI — Bubble Tea UI for VPS / PC / operator. Agent stays separate & light.
+func runTUI(args []string) {
+	forced := parseModeFlags(args)
+	w, h := 80, 24
+	sug, _ := detectSuggestedMode()
+
+	var m model
+	m.width, m.height = w, h
+	if forced == modeVPS || forced == modeOpenWRT || forced == modeWorkstation || forced == modeOperator {
+		m.mode = forced
+		m.screen = screenMenu
+		t, _ := describeMode(forced)
+		m.list = newList("Netductor · "+t, menuItemsFor(forced), w-4, h-6)
+	} else {
+		m.screen = screenMode
+		m.list = newList("Select mode", modeItems(sug), w-4, h-6)
+	}
+
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

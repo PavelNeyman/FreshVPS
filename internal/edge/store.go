@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -161,6 +162,33 @@ func PollCommands(deviceID string) []map[string]any {
 		mine = []map[string]any{}
 	}
 	return mine
+}
+
+func ListResults() []map[string]any {
+	mu.Lock()
+	defer mu.Unlock()
+	b, err := os.ReadFile(resultsPath())
+	if err != nil {
+		return []map[string]any{}
+	}
+	var out []map[string]any
+	lines := strings.Split(string(b), "\n")
+	// keep last 100
+	start := 0
+	if len(lines) > 100 {
+		start = len(lines) - 100
+	}
+	for _, line := range lines[start:] {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var m map[string]any
+		if json.Unmarshal([]byte(line), &m) == nil {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func CmdResult(payload map[string]any) {

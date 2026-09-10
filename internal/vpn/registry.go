@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/skip2/go-qrcode"
+
 	"github.com/PavelNeyman/netductor/internal/paths"
 )
 
@@ -178,10 +180,10 @@ func writeArtifacts(name, uuid, hy2pass string) error {
 	_ = os.WriteFile(filepath.Join(dir, "subscription.txt"), []byte(sub), 0o600)
 	_ = os.WriteFile(filepath.Join(dir, "link.txt"), []byte(vless+"\n"), 0o600)
 	// base64 sub optional skip for simplicity or simple std encoding
-	if _, err := exec.LookPath("qrencode"); err == nil {
-		_ = exec.Command("qrencode", "-o", filepath.Join(dir, "qr.png"), "-t", "PNG", vless).Run()
-		_ = exec.Command("qrencode", "-o", filepath.Join(dir, "qr-subscription.png"), "-t", "PNG", sub).Run()
-	}
+	_ = qrcode.WriteFile(vless, qrcode.Medium, 256, filepath.Join(dir, "qr.png"))
+	_ = qrcode.WriteFile(sub, qrcode.Medium, 256, filepath.Join(dir, "qr-subscription.png"))
+	_ = os.Chmod(filepath.Join(dir, "qr.png"), 0o600)
+	_ = os.Chmod(filepath.Join(dir, "qr-subscription.png"), 0o600)
 	return nil
 }
 

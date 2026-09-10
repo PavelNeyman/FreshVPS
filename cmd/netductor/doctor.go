@@ -56,7 +56,7 @@ func runDoctorNative() int {
 	check("READY.txt", exists(filepath.Join(etc, "READY.txt")))
 	check("vpn-users.json", exists(filepath.Join(etc, "vpn-users.json")))
 	check("operator subscription", exists(filepath.Join(etc, "clients", "operator", "subscription.txt")))
-	check("freshvps-vpn", lookPath("freshvps-vpn") != "")
+	check("netductor", lookPath("netductor") != "")
 	check("sing-box binary", exists("/usr/local/bin/sing-box"))
 	check("sing-box unit", active("sing-box"))
 	if exists("/usr/local/bin/sing-box") && exists("/usr/local/etc/sing-box/config.json") {
@@ -66,18 +66,13 @@ func runDoctorNative() int {
 	}
 	check("blocky unit", active("blocky"))
 	warnCheck("netductor-api", active("netductor-api"))
-	warnCheck("freshvps-api", active("freshvps-api"))
-	warnCheck("netductor-telegram-bot", active("netductor-telegram-bot") || active("freshvps-telegram-bot"))
+	warnCheck("netductor-telegram-bot", active("netductor-telegram-bot"))
 
-	if exists("/etc/systemd/system/freshvps-api.service") || active("freshvps-api") {
-		warnCheck("api health :8787", curlOK("http://127.0.0.1:8787/health"))
-		warnCheck("admin ui :8787", curlOK("http://127.0.0.1:8787/admin/"))
-	}
 	if active("netductor-api") {
 		warnCheck("api health :8790", curlOK("http://127.0.0.1:8790/health"))
 	}
-	if exists("/etc/systemd/system/freshvps-metrics.timer") || exists("/etc/systemd/system/netductor-metrics.timer") {
-		warnCheck("metrics timer", active("freshvps-metrics.timer") || active("netductor-metrics.timer"))
+	if exists("/etc/systemd/system/netductor-metrics.timer") {
+		warnCheck("metrics timer", active("netductor-metrics.timer"))
 		warnCheck("metrics latest.json", exists(filepath.Join(state, "metrics", "latest.json")))
 	}
 	_ = opt

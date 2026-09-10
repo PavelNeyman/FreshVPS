@@ -8,16 +8,16 @@ import (
 )
 
 func InstallBlocky() error {
-	if _, err := os.Stat("/usr/local/bin/blocky"); err == nil {
-		if out, _ := runOut("systemctl", "is-active", "blocky"); strings.TrimSpace(out) == "active" {
-			fmt.Fprintln(os.Stderr, "blocky already active — skip")
-			return nil
-		}
-	}
 	_ = aptInstall("curl", "tar", "dnsutils")
 	tag, err := latestTag("0xERR0R/blocky")
 	if err != nil {
 		return err
+	}
+	if stateVersion("blocky") == tag {
+		if _, err := os.Stat("/usr/local/bin/blocky"); err == nil {
+			fmt.Fprintf(os.Stderr, "blocky %s already installed — skip\n", tag)
+			return enableStart("blocky")
+		}
 	}
 	a := arch()
 	assetArch := a
@@ -54,6 +54,7 @@ func InstallBlocky() error {
 	if err := run("install", "-m", "755", bin, "/usr/local/bin/blocky"); err != nil {
 		return err
 	}
+	writeStateVersion("blocky", tag)
 	_ = os.MkdirAll("/etc/blocky", 0o755)
 	cfg := `/etc/blocky/config.yml`
 	if _, err := os.Stat(cfg); err != nil {

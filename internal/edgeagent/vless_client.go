@@ -7,8 +7,9 @@ import (
 	"strings"
 )
 
-// VLESSClientConfig builds a minimal sing-box client JSON from a vless:// link.
-func VLESSClientConfig(link string) ([]byte, error) {
+// VLESSClientConfig builds sing-box client JSON.
+// mode: "tun" (default if empty) or "socks" (no kernel TUN — safer on OpenWrt).
+func VLESSClientConfig(link string, mode string) ([]byte, error) {
 	link = strings.TrimSpace(link)
 	if !strings.HasPrefix(link, "vless://") {
 		return nil, fmt.Errorf("not vless link")
@@ -38,9 +39,12 @@ func VLESSClientConfig(link string) ([]byte, error) {
 	if fp == "" {
 		fp = "chrome"
 	}
-	cfg := map[string]any{
-		"log": map[string]any{"level": "info"},
-		"inbounds": []any{
+	if mode == "" {
+		mode = "socks"
+	}
+	var inbounds []any
+	if mode == "tun" {
+		inbounds = []any{
 			map[string]any{
 				"type": "tun", "tag": "tun-in",
 				"interface_name": "nd-tun",
@@ -49,7 +53,19 @@ func VLESSClientConfig(link string) ([]byte, error) {
 				"strict_route":   true,
 				"stack":          "system",
 			},
-		},
+		}
+	} else {
+		// local SOCKS/HTTP — works without TUN modules; LAN can point proxy here
+		inbounds = []any{
+			map[string]any{
+				"type": "mixed", "tag": "mixed-in",
+				"listen": "0.0.0.0", "listen_port": 7890,
+			},
+		}
+	}
+	cfg := map[string]any{
+		"log":       map[string]any{"level": "info"},
+		"inbounds":  inbounds,
 		"outbounds": []any{
 			map[string]any{
 				"type":        "vless",
@@ -72,7 +88,7 @@ func VLESSClientConfig(link string) ([]byte, error) {
 			map[string]any{"type": "direct", "tag": "direct"},
 		},
 		"route": map[string]any{
-			"final": "proxy",
+			"final":                 "proxy",
 			"auto_detect_interface": true,
 		},
 	}

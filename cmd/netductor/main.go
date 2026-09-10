@@ -677,7 +677,7 @@ func runServe(args []string) {
 				writeJSON(w, 403, map[string]string{"error": "not_approved"})
 				return
 			}
-			tmpl, err := edge.TemplateForDevice(did)
+			tmpl, err := edge.TemplateWithVPN(did)
 			if err != nil {
 				writeJSON(w, 404, map[string]string{"error": err.Error()})
 				return

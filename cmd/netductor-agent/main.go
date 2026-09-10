@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PavelNeyman/netductor/internal/edgeagent"
 )
 
 var version = "0.7.0-dev"
@@ -321,6 +323,8 @@ func runCmd(client *http.Client, cfg config, action, arg string) string {
 		return strings.Join(lines, "\n")
 	case "config_backup":
 		return configBackup(client, cfg)
+	case "config_restore":
+		return configRestore(client, cfg, arg)
 	case "agent_update":
 		return agentUpdate(arg)
 	case "sysupgrade":
@@ -415,7 +419,7 @@ func configBackup(client *http.Client, cfg config) string {
 }
 
 func agentUpdate(arg string) string {
-	url, wantSHA, _ := splitArg(arg)
+	url, wantSHA, _ := edgeagent.SplitArg(arg)
 	if url == "" {
 		return "agent_update: need URL or URL|sha256"
 	}
@@ -448,13 +452,14 @@ func agentUpdate(arg string) string {
 
 func doSysupgrade(arg string) string {
 	// URL|sha256|confirm=yes
-	url, wantSHA, rest := splitArg(arg)
+	url, wantSHA, rest := edgeagent.SplitArg(arg)
 	if url == "" {
 		return "sysupgrade: URL|sha256|confirm=yes"
 	}
-	if !strings.Contains(rest, "confirm=yes") && !strings.Contains(arg, "confirm=yes") {
+	if !edgeagent.SysupgradeAllowed(arg) {
 		return "sysupgrade refused: add confirm=yes"
 	}
+	_ = rest
 	if _, err := exec.LookPath("sysupgrade"); err != nil {
 		return "sysupgrade binary not found"
 	}
@@ -475,21 +480,6 @@ func doSysupgrade(arg string) string {
 		_ = exec.Command("sysupgrade", "-n", img).Run()
 	}()
 	return "sysupgrade scheduled (keep config flags: default -n keep; image " + img + ")"
-}
-
-func splitArg(arg string) (url, sha, rest string) {
-	parts := strings.Split(arg, "|")
-	if len(parts) == 0 {
-		return "", "", ""
-	}
-	url = strings.TrimSpace(parts[0])
-	if len(parts) > 1 {
-		sha = strings.TrimSpace(parts[1])
-	}
-	if len(parts) > 2 {
-		rest = strings.Join(parts[2:], "|")
-	}
-	return url, sha, rest
 }
 
 func downloadFile(url, dest string) error {
@@ -521,6 +511,50 @@ func fileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func configRestore(client *http.Client, cfg config, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "config_restore: need backup filename"
+	}
+	url := fmt.Sprintf("%s/api/edge/backups?device_id=%s&name=%s", cfg.Server, cfg.DeviceID, name)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err.Error()
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.Token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err.Error()
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Sprintf("HTTP %d: %s", resp.StatusCode, truncate(string(b), 200))
+	}
+	tmp := filepath.Join(os.TempDir(), "nd-restore.tar.gz")
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err.Error()
+	}
+	_, err = io.Copy(f, resp.Body)
+	f.Close()
+	if err != nil {
+		return err.Error()
+	}
+	defer os.Remove(tmp)
+	// extract into /etc/config
+	_ = os.MkdirAll("/etc/config", 0o755)
+	out, err := exec.Command("tar", "-xzf", tmp, "-C", "/etc").CombinedOutput()
+	if err != nil {
+		out2, err2 := exec.Command("tar", "-xzf", tmp, "-C", "/").CombinedOutput()
+		if err2 != nil {
+			return "extract: " + truncate(string(out)+" "+string(out2), 500)
+		}
+	}
+	_ = exec.Command("uci", "commit").Run()
+	return "restored " + name + " + uci commit"
 }
 
 func truncate(s string, n int) string {

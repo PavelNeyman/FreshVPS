@@ -148,12 +148,13 @@ WantedBy=multi-user.target
 		return err
 	}
 	tok := filepath.Join(paths.EtcDir(), "secrets", "telegram_bot_token")
-	chat := filepath.Join(paths.EtcDir(), "secrets", "telegram_admin_id")
-	if _, e1 := os.Stat(tok); e1 == nil {
-		if _, e2 := os.Stat(chat); e2 == nil {
-			return enableStart("netductor-telegram-bot")
-		}
+	if _, e1 := os.Stat(tok); e1 != nil {
+		fmt.Fprintln(os.Stderr, "telegram_bot_token missing — unit installed, not started")
+		return nil
 	}
-	fmt.Fprintln(os.Stderr, "telegram secrets missing — unit installed, not started")
-	return nil
+	chat := filepath.Join(paths.EtcDir(), "secrets", "telegram_admin_id")
+	if _, e2 := os.Stat(chat); e2 != nil {
+		fmt.Fprintln(os.Stderr, "telegram_admin_id missing — starting bot; first /start becomes admin")
+	}
+	return enableStart("netductor-telegram-bot")
 }

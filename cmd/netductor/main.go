@@ -680,6 +680,15 @@ func runServe(args []string) {
 			w.Header().Set("Content-Type", "image/png")
 			w.WriteHeader(200)
 			_, _ = w.Write(b)
+		case action == "subscription" && r.Method == http.MethodGet:
+			sub, ok := vpn.ReadClient(name, "subscription.txt", "link.txt")
+			if !ok {
+				writeJSON(w, 404, map[string]string{"error": "not found"})
+				return
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(sub + "\n"))
 		case action == "link" && r.Method == http.MethodGet:
 			sub, ok := vpn.ReadClient(name, "subscription.txt", "link.txt")
 			if !ok {

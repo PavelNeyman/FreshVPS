@@ -360,22 +360,27 @@ func parseNodesList() []nodeRow {
 			continue
 		}
 		// id\thost=...\trole=...
-		parts := strings.Split(line, "\t")
+		parts := strings.Split(line, "	")
 		if len(parts) == 0 {
 			continue
 		}
-		r := nodeRow{ID: parts[0]}
-		for _, p := range parts[1:] {
-			if strings.HasPrefix(p, "host=") {
+		r := nodeRow{}
+		for i, p := range parts {
+			switch {
+			case strings.HasPrefix(p, "id="):
+				r.ID = strings.TrimPrefix(p, "id=")
+			case strings.HasPrefix(p, "host="):
 				r.Host = strings.TrimPrefix(p, "host=")
-			} else if strings.HasPrefix(p, "role=") {
+			case strings.HasPrefix(p, "role="):
 				r.Role = strings.TrimPrefix(p, "role=")
-			} else if strings.HasPrefix(p, "kind=") {
+			case strings.HasPrefix(p, "kind="):
 				r.Kind = strings.TrimPrefix(p, "kind=")
-			} else if strings.HasPrefix(p, "ip=") {
+			case strings.HasPrefix(p, "ip="):
 				r.IP = strings.TrimPrefix(p, "ip=")
-			} else if strings.HasPrefix(p, "desired=") {
+			case strings.HasPrefix(p, "desired="):
 				r.Desired = strings.TrimPrefix(p, "desired=")
+			case i == 0 && !strings.Contains(p, "="):
+				r.ID = p // legacy
 			}
 		}
 		if r.Host == "" {
@@ -393,9 +398,13 @@ func formatNodesListHTML() string {
 	}
 	var b strings.Builder
 	for i, r := range rows {
-		b.WriteString(fmt.Sprintf("%d. <b>%s</b>", i+1, esc(r.ID)))
-		if r.Host != "" && r.Host != r.ID {
-			b.WriteString(" host="+esc(r.Host))
+		label := r.Host
+		if label == "" {
+			label = r.ID
+		}
+		b.WriteString(fmt.Sprintf("%d. <b>%s</b>", i+1, esc(label)))
+		if r.ID != "" && r.ID != r.Host {
+			b.WriteString(" <code>"+esc(r.ID)+"</code>")
 		}
 		if r.Role != "" {
 			b.WriteString(" · "+esc(r.Role))
@@ -418,7 +427,11 @@ func nodesRenameKeyboard() map[string]any {
 	rows := parseNodesList()
 	kb := [][]map[string]any{}
 	for i, r := range rows {
-		label := fmt.Sprintf("%d. %s", i+1, r.ID)
+		name := r.Host
+		if name == "" {
+			name = r.ID
+		}
+		label := fmt.Sprintf("%d. %s", i+1, name)
 		if len(label) > 40 {
 			label = label[:40]
 		}

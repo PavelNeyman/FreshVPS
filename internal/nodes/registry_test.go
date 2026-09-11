@@ -12,7 +12,7 @@ func TestNormalizeHostname(t *testing.T) {
 	}
 }
 
-func TestUpsertDesiredAndPrune(t *testing.T) {
+func TestStableIDRename(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.Setenv("NETDUCTOR_STATE", dir)
 	_ = os.Setenv("NETDUCTOR_ETC", filepath.Join(dir, "etc"))
@@ -22,26 +22,27 @@ func TestUpsertDesiredAndPrune(t *testing.T) {
 	})
 	_ = os.MkdirAll(filepath.Join(dir, "etc"), 0o755)
 
-	_, err := UpsertFromDevice(Node{ID: "nd-core-1", Hostname: "nd-core-1", Role: "core", Kind: "vps", PublicIP: "1.2.3.4"})
+	id := LocalStableID()
+	if id == "" {
+		t.Fatal("empty id")
+	}
+	if LocalStableID() != id {
+		t.Fatal("id must be stable")
+	}
+	_ = SelfRegisterLocal("nd-core-1", "core", "1.2.3.4")
+	_, err := SetDesiredHostname(id, "nd-core-nl01")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = SetDesiredHostname("nd-core-1", "nd-core-nl01")
-	if err != nil {
+	WriteLocalHostname("nd-core-nl01")
+	if err := SyncLocalHostname(); err != nil {
 		t.Fatal(err)
 	}
-	// simulate applied
-	_, err = UpsertFromDevice(Node{ID: "nd-core-nl01", Hostname: "nd-core-nl01", Role: "core", Kind: "vps", PublicIP: "1.2.3.4"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = Delete("nd-core-1")
-	_ = pruneStaleVPS("nd-core-nl01", "1.2.3.4")
-	list, err := List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 1 || list[0].ID != "nd-core-nl01" {
+	list, _ := List()
+	if len(list) != 1 {
 		t.Fatalf("%+v", list)
+	}
+	if list[0].ID != id || list[0].Hostname != "nd-core-nl01" {
+		t.Fatalf("%+v", list[0])
 	}
 }

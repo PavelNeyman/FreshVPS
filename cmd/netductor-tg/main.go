@@ -225,6 +225,14 @@ func Tf(key string, args ...any) string {
 }
 
 func claimAdmin(chatID int64) {
+	// Production: admin id must be pre-provisioned (file or NETDUCTOR_TG_ADMIN).
+	// First-message claim only if NETDUCTOR_TG_CLAIM_FIRST=1.
+	if os.Getenv("NETDUCTOR_TG_CLAIM_FIRST") != "1" {
+		return
+	}
+	if readOptional(chatFile) != "" {
+		return
+	}
 	_ = os.MkdirAll("/etc/netductor/secrets", 0o700)
 	_ = os.WriteFile(chatFile, []byte(fmt.Sprintf("%d\n", chatID)), 0o600)
 }

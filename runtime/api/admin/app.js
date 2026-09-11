@@ -34,6 +34,22 @@
     document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('hide', p.id !== 'tab-' + name));
   }
+  async function refreshNodes() {
+    const data = await (await api('/api/nodes')).json();
+    const list = data.nodes || [];
+    const tb = $('#nodes-table tbody'); if (!tb) return;
+    tb.innerHTML = '';
+    list.forEach((n) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${n.id||''}</td><td>${n.hostname||''}</td><td>${n.role||''}</td><td>${n.kind||''}</td><td>${n.public_ip||''}</td><td>${n.desired_hostname||''}</td>
+        <td><button class="ghost btn-nren" data-id="${n.id}" data-hn="${n.hostname||''}">Rename</button></td>`;
+      tb.appendChild(tr);
+    });
+    tb.querySelectorAll('.btn-nren').forEach((b) => b.onclick = () => {
+      $('#node-id').value = b.dataset.id;
+      $('#node-hn').value = b.dataset.hn || '';
+    });
+  }
   async function refreshOverview() {
     try {
       const st = await (await api('/api/status')).json();
@@ -205,6 +221,7 @@
     $('#probes-raw').textContent = JSON.stringify(p, null, 2);
   }
   function refreshAll() {
+    refreshNodes().catch(()=>{});
     refreshOverview(); refreshUsers(); refreshRouters(); refreshTemplates(); refreshMetrics(); refreshProbes();
   }
 
@@ -284,3 +301,12 @@
   applyI18n();
   if (state.token) showDash();
 })();
+
+  document.getElementById('btn-refresh-nodes')?.addEventListener('click', () => refreshNodes().catch(e=>toast(e.message)));
+  document.getElementById('btn-node-rename')?.addEventListener('click', async () => {
+    const id = document.getElementById('node-id').value.trim();
+    const hostname = document.getElementById('node-hn').value.trim();
+    await api('/api/nodes/hostname', { method: 'POST', body: JSON.stringify({ id, hostname }) });
+    toast('desired hostname set');
+    refreshNodes();
+  });

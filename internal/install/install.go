@@ -97,11 +97,6 @@ func runOut(name string, args ...string) (string, error) {
 	return string(out), err
 }
 
-func aptInstall(pkgs ...string) error {
-	_ = run("bash", "-c", "export DEBIAN_FRONTEND=noninteractive; apt-get update -y")
-	args := append([]string{"install", "-y"}, pkgs...)
-	return run("apt-get", args...)
-}
 
 func writeSecret(name, val string) error {
 	dir := filepath.Join(paths.EtcDir(), "secrets")

@@ -295,6 +295,7 @@ func mainKeyboard() map[string]any {
 			{btn(T("status"), "m:status", "primary")},
 			{btn(T("cat_vpn"), "m:cat:vpn", "primary"), btn(T("cat_routers"), "m:cat:routers", "primary")},
 			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "")},
+			{btn("🗂 Nodes", "m:cat:nodes", "primary")},
 			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
 		},
 	}
@@ -310,6 +311,24 @@ func vpnKeyboard() map[string]any {
 			{btn(T("main_menu"), "m:menu", "")},
 		},
 	}
+}
+
+func nodesKeyboard() map[string]any {
+	return map[string]any{
+		"inline_keyboard": [][]map[string]any{
+			{btn("📋 List", "m:nodes_list", "primary"), btn("✏️ Rename", "m:node_rename", "")},
+			{btn(T("main_menu"), "m:menu", "")},
+		},
+	}
+}
+
+func nodesText() string {
+	out, err := exec.Command(netductorBin(), "nodes", "list").CombinedOutput()
+	if err != nil {
+		// fallback API-less: try reading via edge not available
+		return strings.TrimSpace(string(out) + " " + err.Error())
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func routersKeyboard() map[string]any {
@@ -716,6 +735,14 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	case "m:cat:routers":
 		setState(chat, "", "")
 		reply(token, chat, msgID, T("cat_routers_title"), routersKeyboard())
+	case "m:cat:nodes":
+		setState(chat, "", "")
+		reply(token, chat, msgID, "🗂 <b>Nodes</b>", nodesKeyboard())
+	case "m:nodes_list":
+		reply(token, chat, msgID, "🗂 <b>Nodes</b>\n\n<pre>"+esc(nodesText())+"</pre>", nodesKeyboard())
+	case "m:node_rename":
+		setState(chat, "wait_node_rename", "")
+		reply(token, chat, msgID, "Send: <code>id new-hostname</code>\nExample: <code>nd-core-11870 nd-core-nl01</code>", backKeyboard())
 	case "m:lang":
 		cur := getLang()
 		label := "Русский"

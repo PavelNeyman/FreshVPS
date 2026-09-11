@@ -69,14 +69,17 @@ func bearerRaw(auth string) string {
 	return ""
 }
 
-// ValidBearer: legacy global edge_token OR any approved device token.
+// ValidBearer: approved per-device token.
+// Global edge_token is denied unless NETDUCTOR_EDGE_LEGACY_TOKEN=1 (migration only).
 func ValidBearer(auth string) bool {
 	raw := bearerRaw(auth)
-	if raw == "" {
+	if raw == "" || len(raw) < 32 {
 		return false
 	}
-	if tok := Token(); tok != "" && constEq(raw, tok) {
-		return true
+	if os.Getenv("NETDUCTOR_EDGE_LEGACY_TOKEN") == "1" {
+		if tok := Token(); tok != "" && constEq(raw, tok) {
+			return true
+		}
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -112,7 +115,10 @@ func DeviceIDFromAuth(auth string) string {
 func ValidBootstrap(auth string) bool {
 	raw := bearerRaw(auth)
 	bt := BootstrapToken()
-	return raw != "" && bt != "" && constEq(raw, bt)
+	if raw == "" || bt == "" || len(bt) < 32 {
+		return false
+	}
+	return constEq(raw, bt)
 }
 
 // RequireApproved: device token must map to approved device_id matching claim.
@@ -121,9 +127,10 @@ func RequireApproved(auth, deviceID string) bool {
 	if raw == "" || deviceID == "" {
 		return false
 	}
-	// global token (operator tooling) may act as superuser
-	if tok := Token(); tok != "" && constEq(raw, tok) {
-		return true
+	if os.Getenv("NETDUCTOR_EDGE_LEGACY_TOKEN") == "1" {
+		if tok := Token(); tok != "" && constEq(raw, tok) {
+			return true
+		}
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -241,7 +248,7 @@ func Approve(deviceID string) (deviceToken string, err error) {
 	if st == StatusRevoked {
 		// re-approve allowed → new token
 	}
-	tok := randomID() + randomID()
+	tok := randomToken(32)
 	d["status"] = StatusApproved
 	d["device_token"] = tok
 	d["approved_at"] = time.Now().Unix()
@@ -578,4 +585,11 @@ func randomID() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
+}
+
+
+func randomToken(n int) string {
+	b := make([]byte, n)
+	_, _ = io.ReadFull(rand.Reader, b)
+	return hex.EncodeToString(b)
 }

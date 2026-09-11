@@ -21,3 +21,4 @@ func TestSysupgradeAllowed(t *testing.T) {
 		t.Fatal()
 	}
 }
+

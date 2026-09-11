@@ -191,13 +191,15 @@ func Delete(id string) error {
 	return save(d)
 }
 
-// SelfRegisterLocal VPS after install/rename.
+// SelfRegisterLocal VPS after install/rename. ID is stable UUID; hostname is separate.
 func SelfRegisterLocal(hostname, role, publicIP string) error {
-	id := hostname
-	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "node_id")); err == nil {
-		if s := strings.TrimSpace(string(b)); s != "" {
-			id = s
-		}
+	id := LocalStableID()
+	hostname = NormalizeHostname(hostname)
+	if hostname == "" {
+		hostname = LocalHostname()
+	}
+	if role == "" {
+		role = "core"
 	}
 	_, err := UpsertFromDevice(Node{
 		ID:       id,
@@ -211,20 +213,10 @@ func SelfRegisterLocal(hostname, role, publicIP string) error {
 }
 
 // SyncLocalHostname applies desired_hostname for this host if set in registry.
+// Stable ID never changes on rename.
 func SyncLocalHostname() error {
-	curID := ""
-	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "node_id")); err == nil {
-		curID = strings.TrimSpace(string(b))
-	}
-	if curID == "" {
-		if b, err := os.ReadFile("/etc/hostname"); err == nil {
-			curID = strings.TrimSpace(string(b))
-		}
-	}
-	if curID == "" {
-		return nil
-	}
-
+	id := LocalStableID()
+	hn := LocalHostname()
 	ip := ""
 	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
 		ip = strings.TrimSpace(string(b))
@@ -235,58 +227,53 @@ func SyncLocalHostname() error {
 		return err
 	}
 
-	// Find our entry: by id, hostname, or any with desired pending that we own
 	var mine *Node
 	for i := range list {
 		n := list[i]
-		if n.ID == curID || n.Hostname == curID {
+		if n.ID == id || (n.Kind == "vps" && n.Hostname == hn && hn != "") {
 			mine = &list[i]
 			break
 		}
 	}
+	// migrate legacy entry where id == old hostname
 	if mine == nil {
 		for i := range list {
-			if list[i].DesiredHN != "" && (list[i].DesiredHN == curID || list[i].ID == curID) {
+			if list[i].Kind == "vps" && list[i].PublicIP == ip && ip != "" {
 				mine = &list[i]
 				break
 			}
 		}
 	}
 	if mine == nil {
-		return SelfRegisterLocal(curID, "core", ip)
+		return SelfRegisterLocal(hn, "core", ip)
 	}
 
-	want := mine.DesiredHN
 	role := mine.Role
 	if role == "" {
 		role = "core"
 	}
-	if want == "" || want == mine.Hostname {
-		_, err := UpsertFromDevice(Node{
-			ID: curID, Hostname: curID, Role: role, Kind: "vps", PublicIP: ip, Status: "online",
-		})
-		// drop stale duplicates: same IP, different id, no longer current
-		_ = pruneStaleVPS(curID, ip)
-		return err
+	want := mine.DesiredHN
+	oldID := mine.ID
+
+	if want != "" && want != mine.Hostname {
+		WriteLocalHostname(want)
+		_ = exec.Command("hostnamectl", "set-hostname", want).Run()
+		hn = want
+	} else if hn == "" {
+		hn = mine.Hostname
 	}
 
-	// apply rename
-	_ = os.MkdirAll(paths.EtcDir(), 0o755)
-	_ = os.WriteFile(filepath.Join(paths.EtcDir(), "node_id"), []byte(want+"\n"), 0o644)
-	_ = os.WriteFile("/etc/hostname", []byte(want+"\n"), 0o644)
-	_ = exec.Command("hostnamectl", "set-hostname", want).Run()
-
-	oldID := mine.ID
 	_, err = UpsertFromDevice(Node{
-		ID: want, Hostname: want, Role: role, Kind: "vps", PublicIP: ip, Status: "online",
+		ID: id, Hostname: hn, Role: role, Kind: "vps", PublicIP: ip, Status: "online",
 	})
 	if err != nil {
 		return err
 	}
-	if oldID != want {
+	// drop legacy id==hostname entries and other same-IP vps rows
+	if oldID != id {
 		_ = Delete(oldID)
 	}
-	_ = pruneStaleVPS(want, ip)
+	_ = pruneStaleVPS(id, ip)
 	return nil
 }
 
@@ -306,4 +293,5 @@ func pruneStaleVPS(keepID, publicIP string) error {
 	}
 	return nil
 }
+
 

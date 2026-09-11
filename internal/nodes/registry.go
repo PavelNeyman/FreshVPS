@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -195,5 +196,56 @@ func SelfRegisterLocal(hostname, role, publicIP string) error {
 		PublicIP: publicIP,
 		Status:   "online",
 	})
+	return err
+}
+
+// SyncLocalHostname applies desired_hostname for this host if set in registry.
+func SyncLocalHostname() error {
+	id := ""
+	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "node_id")); err == nil {
+		id = strings.TrimSpace(string(b))
+	}
+	if id == "" {
+		if b, err := os.ReadFile("/etc/hostname"); err == nil {
+			id = strings.TrimSpace(string(b))
+		}
+	}
+	if id == "" {
+		return nil
+	}
+	n, ok, err := Get(id)
+	if err != nil || !ok {
+		// also try register current
+		ip := ""
+		if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
+			ip = strings.TrimSpace(string(b))
+		}
+		return SelfRegisterLocal(id, "core", ip)
+	}
+	want := n.DesiredHN
+	if want == "" || want == n.Hostname {
+		// heartbeat-style upsert
+		ip := n.PublicIP
+		if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
+			if s := strings.TrimSpace(string(b)); s != "" {
+				ip = s
+			}
+		}
+		_, err := UpsertFromDevice(Node{ID: id, Hostname: id, Role: n.Role, Kind: "vps", PublicIP: ip, Status: "online"})
+		return err
+	}
+	// apply
+	_ = os.MkdirAll(paths.EtcDir(), 0o755)
+	_ = os.WriteFile(filepath.Join(paths.EtcDir(), "node_id"), []byte(want+"\n"), 0o644)
+	_ = os.WriteFile("/etc/hostname", []byte(want+"\n"), 0o644)
+	_ = exec.Command("hostnamectl", "set-hostname", want).Run()
+	ip := n.PublicIP
+	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
+		if s := strings.TrimSpace(string(b)); s != "" {
+			ip = s
+		}
+	}
+	_, err = UpsertFromDevice(Node{ID: want, Hostname: want, Role: n.Role, Kind: "vps", PublicIP: ip, Status: "online"})
+	// remove old id entry desired by re-upsert under new id; keep simple
 	return err
 }

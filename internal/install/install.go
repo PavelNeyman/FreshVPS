@@ -217,6 +217,13 @@ func copySelfToLocalBin() error {
 		return err
 	}
 	dest := "/usr/local/bin/netductor"
+	// resolve symlinks
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	if real, err := filepath.EvalSymlinks(dest); err == nil && real == exe {
+		return nil
+	}
 	if exe == dest {
 		return nil
 	}
@@ -224,9 +231,16 @@ func copySelfToLocalBin() error {
 	if err != nil {
 		return err
 	}
-	tmp := dest + ".tmp"
+	tmp := fmt.Sprintf("%s.%d.tmp", dest, os.Getpid())
 	if err := os.WriteFile(tmp, in, 0o755); err != nil {
 		return err
 	}
-	return os.Rename(tmp, dest)
+	if err := os.Rename(tmp, dest); err != nil {
+		// Text file busy: leave side-by-side binary for next restart
+		alt := dest + ".new"
+		_ = os.Rename(tmp, alt)
+		fmt.Fprintf(os.Stderr, "copySelf: dest busy — wrote %s (restart netductor-api to pick up)\n", alt)
+		return nil
+	}
+	return nil
 }

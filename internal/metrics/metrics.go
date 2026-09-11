@@ -13,7 +13,7 @@ import (
 	"github.com/PavelNeyman/netductor/internal/paths"
 )
 
-var Services = []string{"sing-box", "blocky", "freshvps-api", "freshvps-telegram-bot", "netductor-api", "netductor-telegram-bot"}
+var Services = []string{"sing-box", "blocky", "netductor-api", "netductor-telegram-bot"}
 
 func Dir() string { return paths.MetricsDir() }
 

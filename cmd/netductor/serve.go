@@ -19,42 +19,8 @@ import (
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
 
-func runServe(args []string) {
+func buildAPIMux() http.Handler {
 	edge.EnsureDefaultTemplate()
-	bind := envOr("NETDUCTOR_API_BIND", "127.0.0.1")
-	port := envOr("NETDUCTOR_API_PORT", "8787")
-	tlsCert := envOr("NETDUCTOR_TLS_CERT", "")
-	tlsKey := envOr("NETDUCTOR_TLS_KEY", "")
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--bind":
-			if i+1 < len(args) {
-				bind, i = args[i+1], i+1
-			}
-		case "--port":
-			if i+1 < len(args) {
-				port, i = args[i+1], i+1
-			}
-		case "--tls-cert":
-			if i+1 < len(args) {
-				tlsCert, i = args[i+1], i+1
-			}
-		case "--tls-key":
-			if i+1 < len(args) {
-				tlsKey, i = args[i+1], i+1
-			}
-		case "--help", "-h":
-			printHelp()
-			return
-		}
-	}
-
-
-	// Production default: localhost only. Opt-in public bind.
-	if bind != "127.0.0.1" && bind != "localhost" && os.Getenv("NETDUCTOR_API_PUBLIC") != "1" {
-		fmt.Fprintln(os.Stderr, "refusing non-local API bind without NETDUCTOR_API_PUBLIC=1")
-		os.Exit(2)
-	}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/nodes", func(w http.ResponseWriter, r *http.Request) {
@@ -693,8 +659,36 @@ func runServe(args []string) {
 		http.Redirect(w, r, "/admin/", http.StatusFound)
 	})
 	mux.Handle("/admin/", http.StripPrefix("/admin/", http.FileServer(http.Dir(root))))
+	return mux
+}
 
 
+func runServe(args []string) {
+	bind := envOr("NETDUCTOR_API_BIND", "127.0.0.1")
+	port := envOr("NETDUCTOR_API_PORT", "8787")
+	tlsCert := envOr("NETDUCTOR_TLS_CERT", "")
+	tlsKey := envOr("NETDUCTOR_TLS_KEY", "")
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--bind":
+			if i+1 < len(args) {
+				bind, i = args[i+1], i+1
+			}
+		case "--port":
+			if i+1 < len(args) {
+				port, i = args[i+1], i+1
+			}
+		case "--help", "-h":
+			printHelp()
+			return
+		}
+	}
+	if bind != "127.0.0.1" && bind != "localhost" && os.Getenv("NETDUCTOR_API_PUBLIC") != "1" {
+		fmt.Fprintln(os.Stderr, "refusing non-local API bind without NETDUCTOR_API_PUBLIC=1")
+		os.Exit(2)
+	}
+	mux := buildAPIMux()
+	root := adminRoot()
 	addr := bind + ":" + port
 	fmt.Fprintf(os.Stderr, "netductor serve on http://%s admin=%s\n", addr, root)
 	if tlsCert != "" && tlsKey != "" {
@@ -710,4 +704,3 @@ func runServe(args []string) {
 		os.Exit(1)
 	}
 }
-

@@ -146,3 +146,35 @@ func TestEnrollUnauthorized(t *testing.T) {
 		t.Fatal(rr.Code)
 	}
 }
+
+func TestTemplatesList(t *testing.T) {
+	apiEnv(t)
+	mux := buildAPIMux()
+	tok, _, err := session.Create(1, "t", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/edge/templates", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatal(rr.Code, rr.Body.String())
+	}
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	apiEnv(t)
+	mux := buildAPIMux()
+	tok, _, err := session.Create(1, "t", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/metrics", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatal(rr.Code, rr.Body.String())
+	}
+}

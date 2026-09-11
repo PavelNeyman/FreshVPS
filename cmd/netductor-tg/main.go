@@ -102,7 +102,10 @@ var dict = map[string]map[string]string{
 		"nodes":         "🗂 Nodes",
 		"nodes_title":   "🗂 <b>Nodes</b>",
 		"nodes_hint":    "Format: <code>nd-&lt;role&gt;-&lt;marker&gt;</code>\nExamples: <code>nd-core-nl01</code>, <code>nd-edge-de02</code>, <code>nd-lab-01</code>\nRoles: core (main VPS), edge, lab. Only a-z, 0-9, hyphen.",
-		"nodes_rename":  "✏️ <b>Rename</b>\n\nFormat: <code>nd-&lt;role&gt;-&lt;marker&gt;</code>\nSend: <code>id new-hostname</code>\nExample: <code>nd-core-11870 nd-core-nl01</code>",
+		"nodes_empty":   "No nodes in registry.",
+		"nodes_pick":    "Node: <code>%s</code>\nSend new hostname:",
+		"nodes_done":    "✅ desired set: <code>%s</code> → <code>%s</code>",
+		"nodes_rename":  "✏️ <b>Rename</b>\nSelect a node button, then send the new name.\nFormat: <code>nd-&lt;role&gt;-&lt;marker&gt;</code>",
 		"cat_vpn":       "🔐 VPN",
 		"cat_routers":   "📡 Routers",
 		"cat_vpn_title": "🔐 <b>VPN</b>\nManage users, links, access.",
@@ -167,6 +170,9 @@ var dict = map[string]map[string]string{
 		"nodes":         "🗂 Ноды",
 		"nodes_title":   "🗂 <b>Ноды</b>",
 		"nodes_hint":    "Формат: <code>nd-&lt;role&gt;-&lt;marker&gt;</code>\nПримеры: <code>nd-core-nl01</code>, <code>nd-edge-de02</code>, <code>nd-lab-01</code>\nРоли: core (основной VPS), edge, lab. Только a-z, 0-9, дефис.",
+		"nodes_empty":   "В реестре нет нод.",
+		"nodes_pick":    "Нода: <code>%s</code>\nПришлите новое имя:",
+		"nodes_done":    "✅ desired: <code>%s</code> → <code>%s</code>",
 		"nodes_rename":  "✏️ <b>Переименовать</b>\n\nФормат: <code>nd-&lt;role&gt;-&lt;marker&gt;</code>\nПришлите: <code>id новое-имя</code>\nПример: <code>nd-core-11870 nd-core-nl01</code>",
 		"cat_vpn":       "🔐 VPN",
 		"cat_routers":   "📡 Роутеры",
@@ -338,14 +344,95 @@ func nodesKeyboard() map[string]any {
 	}
 }
 
-func nodesText() string {
+type nodeRow struct {
+	ID, Host, Role, Kind, IP, Desired string
+}
+
+func parseNodesList() []nodeRow {
 	out, err := exec.Command(netductorBin(), "nodes", "list").CombinedOutput()
 	if err != nil {
-		// fallback API-less: try reading via edge not available
-		return strings.TrimSpace(string(out) + " " + err.Error())
+		return nil
 	}
-	return strings.TrimSpace(string(out))
+	var rows []nodeRow
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "(") {
+			continue
+		}
+		// id\thost=...\trole=...
+		parts := strings.Split(line, "\t")
+		if len(parts) == 0 {
+			continue
+		}
+		r := nodeRow{ID: parts[0]}
+		for _, p := range parts[1:] {
+			if strings.HasPrefix(p, "host=") {
+				r.Host = strings.TrimPrefix(p, "host=")
+			} else if strings.HasPrefix(p, "role=") {
+				r.Role = strings.TrimPrefix(p, "role=")
+			} else if strings.HasPrefix(p, "kind=") {
+				r.Kind = strings.TrimPrefix(p, "kind=")
+			} else if strings.HasPrefix(p, "ip=") {
+				r.IP = strings.TrimPrefix(p, "ip=")
+			} else if strings.HasPrefix(p, "desired=") {
+				r.Desired = strings.TrimPrefix(p, "desired=")
+			}
+		}
+		if r.Host == "" {
+			r.Host = r.ID
+		}
+		rows = append(rows, r)
+	}
+	return rows
 }
+
+func formatNodesListHTML() string {
+	rows := parseNodesList()
+	if len(rows) == 0 {
+		return T("nodes_empty")
+	}
+	var b strings.Builder
+	for i, r := range rows {
+		b.WriteString(fmt.Sprintf("%d. <b>%s</b>", i+1, esc(r.ID)))
+		if r.Host != "" && r.Host != r.ID {
+			b.WriteString(" host="+esc(r.Host))
+		}
+		if r.Role != "" {
+			b.WriteString(" · "+esc(r.Role))
+		}
+		if r.Kind != "" {
+			b.WriteString(" · "+esc(r.Kind))
+		}
+		if r.IP != "" {
+			b.WriteString(" · "+esc(r.IP))
+		}
+		if r.Desired != "" {
+			b.WriteString(" → <i>"+esc(r.Desired)+"</i>")
+		}
+		b.WriteByte(10)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func nodesRenameKeyboard() map[string]any {
+	rows := parseNodesList()
+	kb := [][]map[string]any{}
+	for i, r := range rows {
+		label := fmt.Sprintf("%d. %s", i+1, r.ID)
+		if len(label) > 40 {
+			label = label[:40]
+		}
+		// callback max 64 bytes
+		data := "m:nr:" + r.ID
+		if len(data) > 64 {
+			data = data[:64]
+		}
+		kb = append(kb, []map[string]any{btn(label, data, "")})
+	}
+	kb = append(kb, []map[string]any{btn(T("main_menu"), "m:menu", "primary")})
+	return map[string]any{"inline_keyboard": kb}
+}
+
 
 func routersKeyboard() map[string]any {
 	return map[string]any{
@@ -737,6 +824,13 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		return
 	}
 
+	if strings.HasPrefix(data, "m:nr:") {
+		id := strings.TrimPrefix(data, "m:nr:")
+		setState(chat, "wait_node_newname", id)
+		reply(token, chat, msgID, fmt.Sprintf(T("nodes_pick"), esc(id)), backKeyboard())
+		return
+	}
+
 	switch data {
 	case "m:menu", "m:help":
 		setState(chat, "", "")
@@ -755,10 +849,10 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		setState(chat, "", "")
 		reply(token, chat, msgID, T("nodes_title")+string([]byte{10, 10})+T("nodes_hint"), nodesKeyboard())
 	case "m:nodes_list":
-		reply(token, chat, msgID, T("nodes_title")+string([]byte{10, 10})+T("nodes_hint")+string([]byte{10, 10})+"<pre>"+esc(nodesText())+"</pre>", nodesKeyboard())
+		reply(token, chat, msgID, T("nodes_title")+string([]byte{10, 10})+formatNodesListHTML()+string([]byte{10, 10})+"<i>"+T("nodes_hint")+"</i>", nodesKeyboard())
 	case "m:node_rename":
-		setState(chat, "wait_node_rename", "")
-		reply(token, chat, msgID, T("nodes_rename"), backKeyboard())
+		setState(chat, "", "")
+		reply(token, chat, msgID, T("nodes_rename")+string([]byte{10, 10})+formatNodesListHTML(), nodesRenameKeyboard())
 	case "m:lang":
 		cur := getLang()
 		label := "Русский"
@@ -834,6 +928,20 @@ func handleMessage(token string, m *message, admin int64) {
 	}
 
 	st := chatState[chat]
+	if st == "wait_node_newname" {
+		id := chatExtra[chat]
+		newName := strings.Fields(text)
+		setState(chat, "", "")
+		if id == "" || len(newName) == 0 {
+			sendHTML(token, chat, T("nodes_rename"), nodesRenameKeyboard())
+			return
+		}
+		out := runND("nodes", "rename", id, newName[0])
+		// try apply on local if this is the VPS
+		_ = runND("nodes", "sync-local")
+		sendHTML(token, chat, fmt.Sprintf(T("nodes_done"), esc(id), esc(newName[0]))+string([]byte{10, 10})+"<pre>"+esc(out)+"</pre>"+string([]byte{10})+formatNodesListHTML(), nodesKeyboard())
+		return
+	}
 	if st == "wait_vpn_add_name" {
 		name := strings.Fields(text)[0]
 		out := runVPN("add", name)

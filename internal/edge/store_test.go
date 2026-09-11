@@ -13,7 +13,7 @@ func setup(t *testing.T) {
 	os.Setenv("NETDUCTOR_EDGE_DIR", dir)
 	os.Setenv("NETDUCTOR_ETC", dir)
 	_ = os.MkdirAll(filepath.Join(dir, "secrets"), 0o700)
-	_ = os.WriteFile(filepath.Join(dir, "secrets", "edge_bootstrap_token"), []byte("boot\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "secrets", "edge_bootstrap_token"), []byte("boot-token-at-least-32-characters-xx\n"), 0o600)
 	_ = os.WriteFile(filepath.Join(dir, "secrets", "edge_token"), []byte("global\n"), 0o600)
 	t.Cleanup(func() {
 		os.Unsetenv("NETDUCTOR_EDGE_DIR")
@@ -87,7 +87,7 @@ func TestBackupPathTraversal(t *testing.T) {
 
 func TestBootstrap(t *testing.T) {
 	setup(t)
-	if !ValidBootstrap("Bearer boot") {
+	if !ValidBootstrap("Bearer boot-token-at-least-32-characters-xx") {
 		t.Fatal()
 	}
 	if ValidBootstrap("Bearer wrong") {

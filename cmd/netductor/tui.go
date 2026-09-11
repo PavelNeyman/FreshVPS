@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/PavelNeyman/netductor/internal/nodes"
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
 
@@ -144,6 +145,8 @@ func menuItemsFor(mode runMode) []list.Item {
 			menuItem{"Doctor", "health checks", "doctor"},
 			menuItem{"Status", "systemd units", "status"},
 			menuItem{"Operator tools…", "VPN, edge, probes", "to-operator"},
+			menuItem{"Set hostname", "optional: nd-core-nl01", "hostname"},
+			menuItem{"Nodes registry", "list fleet", "nodes-list"},
 			menuItem{"Change mode…", "", "change-mode"},
 			menuItem{"Quit", "", "quit"},
 		}
@@ -171,6 +174,8 @@ func menuItemsFor(mode runMode) []list.Item {
 			menuItem{"VPN — add user", "form: name + note", "vpn-add"},
 			menuItem{"Session token", "hours form", "session"},
 			menuItem{"Edge — list devices", "", "edge-list"},
+			menuItem{"Nodes registry", "", "nodes-list"},
+			menuItem{"Set hostname", "this VPS", "hostname"},
 			menuItem{"Live probes", "", "probe"},
 			menuItem{"Collect metrics", "", "collect"},
 			menuItem{"Change mode…", "", "change-mode"},
@@ -249,7 +254,7 @@ func (m model) handleAction(id string) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		m.result = tuiResult{action: "quit", mode: m.mode}
 		return m, tea.Quit
-	case "vpn-add", "session", "install", "prepare", "owrt-install", "build":
+	case "vpn-add", "session", "install", "prepare", "owrt-install", "build", "hostname":
 		m.result = tuiResult{action: id, mode: m.mode}
 		return m, tea.Quit
 	case "change-mode":
@@ -276,6 +281,23 @@ func (m model) handleAction(id string) (tea.Model, tea.Cmd) {
 		m.screen = screenOutput
 	case "edge-list":
 		m.output = capture(runEdgeList)
+		m.screen = screenOutput
+	case "nodes-list":
+		m.output = capture(func() {
+			list, err := nodes.List()
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			if len(list) == 0 {
+				fmt.Println("(empty registry)")
+				return
+			}
+			for _, n := range list {
+				line := n.ID + " host=" + n.Hostname + " role=" + n.Role + " kind=" + n.Kind + " ip=" + n.PublicIP + " desired=" + n.DesiredHN
+				fmt.Println(line)
+			}
+		})
 		m.screen = screenOutput
 	case "vpn-list":
 		m.output = capture(func() {
@@ -520,6 +542,40 @@ func runBubbleSession(mode runMode, startMenu bool) tuiResult {
 }
 
 // runTUI — Bubble Tea menus + Huh forms for confirm/add/session.
+
+func runHostnameForm() {
+	cur := ""
+	if b, err := os.ReadFile("/etc/netductor/node_id"); err == nil {
+		cur = strings.TrimSpace(string(b))
+	}
+	name := cur
+	ok := false
+	f := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Title("Hostname").Description("nd-<role>-<marker>, empty = keep current").Value(&name),
+			huh.NewConfirm().Title("Apply hostname on this host?").Affirmative("Yes").Negative("Skip").Value(&ok),
+		),
+	).WithTheme(huh.ThemeCharm())
+	if err := f.Run(); err != nil || !ok {
+		return
+	}
+	name = nodes.NormalizeHostname(name)
+	if name == "" {
+		fmt.Println("empty name, skip")
+		return
+	}
+	_ = os.MkdirAll("/etc/netductor", 0o755)
+	_ = os.WriteFile("/etc/netductor/node_id", []byte(name+string([]byte{10})), 0o644)
+	_ = os.WriteFile("/etc/hostname", []byte(name+string([]byte{10})), 0o644)
+	_ = exec.Command("hostnamectl", "set-hostname", name).Run()
+	ip := ""
+	if b, err := os.ReadFile("/etc/netductor/public_ip"); err == nil {
+		ip = strings.TrimSpace(string(b))
+	}
+	_ = nodes.SelfRegisterLocal(name, "core", ip)
+	fmt.Println("hostname:", name)
+}
+
 func runTUI(args []string) {
 	forced := parseModeFlags(args)
 	mode := forced

@@ -12,32 +12,36 @@ func TestNormalizeHostname(t *testing.T) {
 	}
 }
 
-func TestUpsertDesired(t *testing.T) {
+func TestUpsertDesiredAndPrune(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.Setenv("NETDUCTOR_STATE", dir)
-	t.Cleanup(func() { _ = os.Unsetenv("NETDUCTOR_STATE") })
+	_ = os.Setenv("NETDUCTOR_ETC", filepath.Join(dir, "etc"))
+	t.Cleanup(func() {
+		_ = os.Unsetenv("NETDUCTOR_STATE")
+		_ = os.Unsetenv("NETDUCTOR_ETC")
+	})
+	_ = os.MkdirAll(filepath.Join(dir, "etc"), 0o755)
 
-	n, err := UpsertFromDevice(Node{ID: "nd-core-1", Hostname: "nd-core-1", Role: "core", Kind: "vps"})
+	_, err := UpsertFromDevice(Node{ID: "nd-core-1", Hostname: "nd-core-1", Role: "core", Kind: "vps", PublicIP: "1.2.3.4"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n.Hostname != "nd-core-1" {
-		t.Fatal(n)
-	}
-	n2, err := SetDesiredHostname("nd-core-1", "nd-core-nl01")
+	_, err = SetDesiredHostname("nd-core-1", "nd-core-nl01")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n2.DesiredHN != "nd-core-nl01" {
-		t.Fatal(n2)
-	}
-	// device applies
-	n3, err := UpsertFromDevice(Node{ID: "nd-core-1", Hostname: "nd-core-nl01", Role: "core", Kind: "vps"})
+	// simulate applied
+	_, err = UpsertFromDevice(Node{ID: "nd-core-nl01", Hostname: "nd-core-nl01", Role: "core", Kind: "vps", PublicIP: "1.2.3.4"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n3.DesiredHN != "" || n3.Hostname != "nd-core-nl01" {
-		t.Fatalf("%+v", n3)
+	_ = Delete("nd-core-1")
+	_ = pruneStaleVPS("nd-core-nl01", "1.2.3.4")
+	list, err := List()
+	if err != nil {
+		t.Fatal(err)
 	}
-	_ = filepath.Join(dir, "nodes")
+	if len(list) != 1 || list[0].ID != "nd-core-nl01" {
+		t.Fatalf("%+v", list)
+	}
 }

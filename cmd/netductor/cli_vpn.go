@@ -1,0 +1,153 @@
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/PavelNeyman/netductor/internal/edge"
+	"github.com/PavelNeyman/netductor/internal/vpn"
+)
+
+func runVPN(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: netductor vpn add|list|link|note|disable|enable|revoke|apply|session|edge-list|edge-cmd ...")
+		os.Exit(2)
+	}
+	cmd := args[0]
+	rest := args[1:]
+	switch cmd {
+	case "list":
+		users, err := vpn.List()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		for _, u := range users {
+			en := "off"
+			if u.Enabled {
+				en = "on"
+			}
+			fmt.Printf("%s\t%s\t%s\t%s\t%s\n", u.Name, en, u.UUID, u.Note, u.Created)
+		}
+	case "add":
+		if len(rest) < 1 {
+			fmt.Fprintln(os.Stderr, "name required")
+			os.Exit(2)
+		}
+		note := ""
+		if len(rest) > 1 {
+			note = rest[1]
+		}
+		out, err := vpn.Add(rest[0], note)
+		fmt.Println(out)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "note":
+		if len(rest) < 1 {
+			os.Exit(2)
+		}
+		note := ""
+		if len(rest) > 1 {
+			note = rest[1]
+		}
+		out, err := vpn.Note(rest[0], note)
+		fmt.Println(out)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "disable", "enable", "revoke":
+		if len(rest) < 1 {
+			os.Exit(2)
+		}
+		var out string
+		var err error
+		switch cmd {
+		case "disable":
+			out, err = vpn.Disable(rest[0])
+		case "enable":
+			out, err = vpn.Enable(rest[0])
+		case "revoke":
+			out, err = vpn.Revoke(rest[0])
+		}
+		fmt.Println(out)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "link":
+		if len(rest) < 1 {
+			os.Exit(2)
+		}
+		kind := "sub"
+		if len(rest) > 1 {
+			kind = rest[1]
+		}
+		name := rest[0]
+		var s string
+		var ok bool
+		switch kind {
+		case "vless":
+			s, ok = vpn.ReadClient(name, "link-vless.txt", "link.txt")
+		case "hy2":
+			s, ok = vpn.ReadClient(name, "link-hy2.txt")
+		default:
+			s, ok = vpn.ReadClient(name, "subscription.txt", "link.txt")
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "not found")
+			os.Exit(1)
+		}
+		fmt.Println(s)
+	case "apply":
+		if err := vpn.ApplyConfig(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("config applied")
+	case "session":
+		hours := 72
+		if len(rest) > 0 {
+			fmt.Sscanf(rest[0], "%d", &hours)
+		}
+		tok, exp, err := vpn.CreateSession(hours)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println(tok)
+		fmt.Fprintf(os.Stderr, "expires_unix=%d hours=%d\n", exp, hours)
+	case "edge-list":
+		runEdgeList()
+	case "edge-cmd":
+		if len(rest) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: netductor vpn edge-cmd <device_id> <action> [arg]")
+			os.Exit(2)
+		}
+		arg := ""
+		if len(rest) > 2 {
+			arg = rest[2]
+		}
+		id := edge.EnqueueCmd(rest[0], rest[1], arg)
+		fmt.Println(id)
+	case "api-bind":
+		mode := "localhost"
+		ufw := false
+		for _, a := range rest {
+			if a == "--ufw" {
+				ufw = true
+				continue
+			}
+			mode = a
+		}
+		if err := vpn.APIBind(mode, ufw); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	default:
+		fmt.Fprintln(os.Stderr, "unknown vpn subcommand"); os.Exit(2)
+	}
+}
+

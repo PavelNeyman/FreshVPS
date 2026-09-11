@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/PavelNeyman/netductor/internal/edge"
+	"github.com/PavelNeyman/netductor/internal/nodes"
 	"github.com/PavelNeyman/netductor/internal/metrics"
 	"github.com/PavelNeyman/netductor/internal/session"
 	"github.com/PavelNeyman/netductor/internal/vpn"
@@ -579,6 +580,60 @@ func runServe(args []string) {
 	}
 
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("/api/nodes", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		list, err := nodes.List()
+		if err != nil {
+			writeJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"nodes": list})
+	})
+	mux.HandleFunc("/api/nodes/self", func(w http.ResponseWriter, r *http.Request) {
+		// local VPS can register without session (loopback) or with session
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]any{"error": "POST"})
+			return
+		}
+		body := readJSON(r)
+		hn, _ := body["hostname"].(string)
+		role, _ := body["role"].(string)
+		ip, _ := body["public_ip"].(string)
+		if role == "" {
+			role = "core"
+		}
+		if err := nodes.SelfRegisterLocal(hn, role, ip); err != nil {
+			writeJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("/api/nodes/hostname", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]any{"error": "POST"})
+			return
+		}
+		body := readJSON(r)
+		id, _ := body["id"].(string)
+		hn, _ := body["hostname"].(string)
+		if id == "" || hn == "" {
+			writeJSON(w, 400, map[string]any{"error": "id and hostname required"})
+			return
+		}
+		n, err := nodes.SetDesiredHostname(id, hn)
+		if err != nil {
+			writeJSON(w, 400, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "node": n})
+	})
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"ok": true, "service": "netductor", "version": version, "time": time.Now().UTC().Format(time.RFC3339)})
 	})

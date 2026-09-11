@@ -52,6 +52,8 @@ func main() {
 		os.Exit(runDoctorNative())
 	case "vpn":
 		runVPN(os.Args[2:])
+	case "nodes":
+		runNodes(os.Args[2:])
 	case "edge":
 		runEdgeCLI(os.Args[2:])
 	case "status":
@@ -281,6 +283,40 @@ func readJSON(r *http.Request) map[string]any {
 func bearer(r *http.Request) string {
 	return session.TokenFromAuth(r.Header.Get("Authorization"), r.Header.Get("Cookie"))
 }
+
+
+func runNodes(args []string) {
+	if len(args) == 0 {
+		args = []string{"list"}
+	}
+	switch args[0] {
+	case "list":
+		list, err := nodes.List()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		for _, n := range list {
+			fmt.Printf("%s\thost=%s\trole=%s\tkind=%s\tip=%s\tdesired=%s\n",
+				n.ID, n.Hostname, n.Role, n.Kind, n.PublicIP, n.DesiredHN)
+		}
+	case "rename":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: netductor nodes rename <id> <hostname>")
+			os.Exit(2)
+		}
+		n, err := nodes.SetDesiredHostname(args[1], args[2])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Printf("desired_hostname=%s for %s\n", n.DesiredHN, n.ID)
+	default:
+		fmt.Fprintln(os.Stderr, "usage: netductor nodes list|rename")
+		os.Exit(2)
+	}
+}
+
 
 func requireSession(w http.ResponseWriter, r *http.Request) bool {
 	tok := bearer(r)
@@ -809,8 +845,32 @@ func runServe(args []string) {
 			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
 			return
 		}
-		edge.Heartbeat(readJSON(r))
-		writeJSON(w, 200, map[string]bool{"ok": true})
+		payload := readJSON(r)
+		edge.Heartbeat(payload)
+		did, _ := payload["device_id"].(string)
+		hn, _ := payload["hostname"].(string)
+		ip, _ := payload["wan_ip"].(string)
+		if ip == "" {
+			ip, _ = payload["public_ip"].(string)
+		}
+		kind, _ := payload["kind"].(string)
+		if kind == "" {
+			kind = "openwrt"
+		}
+		role, _ := payload["role"].(string)
+		if role == "" {
+			role = "edge"
+		}
+		resp := map[string]any{"ok": true}
+		if did != "" {
+			n, err := nodes.UpsertFromDevice(nodes.Node{
+				ID: did, Hostname: hn, Role: role, Kind: kind, PublicIP: ip, Status: "online",
+			})
+			if err == nil && n.DesiredHN != "" {
+				resp["desired_hostname"] = n.DesiredHN
+			}
+		}
+		writeJSON(w, 200, resp)
 	})
 	mux.HandleFunc("/api/edge/commands", func(w http.ResponseWriter, r *http.Request) {
 		if !edge.ValidBearer(r.Header.Get("Authorization")) {
@@ -818,6 +878,44 @@ func runServe(args []string) {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"commands": edge.PollCommands(r.URL.Query().Get("device_id"))})
+	})
+	mux.HandleFunc("/api/edge/rsc", func(w http.ResponseWriter, r *http.Request) {
+		// device downloads RouterOS script to import
+		if !edge.ValidBearer(r.Header.Get("Authorization")) {
+			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+			return
+		}
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			writeJSON(w, 400, map[string]string{"error": "name"})
+			return
+		}
+		b, err := edge.ReadRSC(name)
+		if err != nil {
+			writeJSON(w, 404, map[string]string{"error": err.Error()})
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(b)
+	})
+	mux.HandleFunc("/api/edge/apply_rsc", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !requireSession(w, r) {
+			return
+		}
+		body := readJSON(r)
+		did, _ := body["device_id"].(string)
+		script, _ := body["script"].(string)
+		if did == "" || script == "" {
+			writeJSON(w, 400, map[string]string{"error": "device_id and script required"})
+			return
+		}
+		name, err := edge.SaveRSC(did, script)
+		if err != nil {
+			writeJSON(w, 500, map[string]string{"error": err.Error()})
+			return
+		}
+		cid := edge.EnqueueCmd(did, "apply_rsc", name)
+		writeJSON(w, 200, map[string]any{"ok": true, "cmd_id": cid, "rsc": name})
 	})
 	mux.HandleFunc("/api/edge/results", func(w http.ResponseWriter, r *http.Request) {
 		if !requireSession(w, r) {

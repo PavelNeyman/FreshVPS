@@ -95,9 +95,15 @@
       </div>
       <div class="card">
         <h3>Rename node</h3>
+        <p class="hint" style="opacity:.85;font-size:.9rem;margin:.25rem 0 0.75rem">
+          Format: <code>nd-&lt;role&gt;-&lt;marker&gt;</code> —
+          e.g. <code>nd-core-nl01</code>, <code>nd-edge-de02</code>, <code>nd-lab-01</code>.
+          Roles: <b>core</b> (main VPS), <b>edge</b> (extra exit), <b>lab</b> (test).
+          Only <code>a-z</code>, <code>0-9</code>, <code>-</code>. Bidirectional: device confirms on next heartbeat.
+        </p>
         <div class="row">
-          <input id="node-id" placeholder="node id" />
-          <input id="node-hn" placeholder="nd-core-nl01" />
+          <input id="node-id" placeholder="node id (current)" />
+          <input id="node-hn" placeholder="nd-core-nl01" title="nd-&lt;role&gt;-&lt;marker&gt;" />
           <button id="btn-node-rename" class="primary">Set desired hostname</button>
         </div>
       </div>

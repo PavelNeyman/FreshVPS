@@ -1,5 +1,10 @@
 # Node naming & registry / Именование нод и реестр
 
+## Identity
+
+- **`id`**: stable UUID in `/etc/netductor/node_uuid` (never changes on rename)
+- **`hostname`**: `nd-<role>-<marker>` in `/etc/netductor/node_id` + OS hostname
+
 ## Name format / Формат имени
 
 ```

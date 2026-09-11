@@ -14,6 +14,7 @@ import (
 	"github.com/skip2/go-qrcode"
 
 	"github.com/PavelNeyman/netductor/internal/paths"
+	"github.com/PavelNeyman/netductor/internal/session"
 )
 
 type UserRecord struct {
@@ -291,18 +292,5 @@ func ListNative() ([]User, error) {
 }
 
 func CreateSession(hours int) (token string, exp int64, err error) {
-	if hours <= 0 {
-		hours = 72
-	}
-	dir := filepath.Join(paths.EtcDir(), "sessions")
-	_ = os.MkdirAll(dir, 0o700)
-	var b [32]byte
-	_, _ = rand.Read(b[:])
-	token = hex.EncodeToString(b[:])
-	exp = time.Now().Unix() + int64(hours)*3600
-	path := filepath.Join(dir, token)
-	if err := os.WriteFile(path, []byte(fmt.Sprintf("%d\n", exp)), 0o600); err != nil {
-		return "", 0, err
-	}
-	return token, exp, nil
+	return session.Create(hours, "cli", "")
 }

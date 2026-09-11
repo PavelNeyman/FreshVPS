@@ -99,6 +99,10 @@ var dict = map[string]map[string]string{
 		"label_disable": "Disable",
 		"label_enable":  "Enable",
 		"label_revoke":  "Revoke",
+		"nodes":         "🗂 Nodes",
+		"nodes_title":   "🗂 <b>Nodes</b>",
+		"nodes_hint":    "Format: <code>nd-&lt;role&gt;-&lt;marker&gt;</code>\nExamples: <code>nd-core-nl01</code>, <code>nd-edge-de02</code>, <code>nd-lab-01</code>\nRoles: core (main VPS), edge, lab. Only a-z, 0-9, hyphen.",
+		"nodes_rename":  "✏️ <b>Rename</b>\n\nFormat: <code>nd-&lt;role&gt;-&lt;marker&gt;</code>\nSend: <code>id new-hostname</code>\nExample: <code>nd-core-11870 nd-core-nl01</code>",
 		"cat_vpn":       "🔐 VPN",
 		"cat_routers":   "📡 Routers",
 		"cat_vpn_title": "🔐 <b>VPN</b>\nManage users, links, access.",
@@ -160,6 +164,10 @@ var dict = map[string]map[string]string{
 		"label_disable": "Отключить",
 		"label_enable":  "Включить",
 		"label_revoke":  "Отозвать",
+		"nodes":         "🗂 Ноды",
+		"nodes_title":   "🗂 <b>Ноды</b>",
+		"nodes_hint":    "Формат: <code>nd-&lt;role&gt;-&lt;marker&gt;</code>\nПримеры: <code>nd-core-nl01</code>, <code>nd-edge-de02</code>, <code>nd-lab-01</code>\nРоли: core (основной VPS), edge, lab. Только a-z, 0-9, дефис.",
+		"nodes_rename":  "✏️ <b>Переименовать</b>\n\nФормат: <code>nd-&lt;role&gt;-&lt;marker&gt;</code>\nПришлите: <code>id новое-имя</code>\nПример: <code>nd-core-11870 nd-core-nl01</code>",
 		"cat_vpn":       "🔐 VPN",
 		"cat_routers":   "📡 Роутеры",
 		"cat_vpn_title": "🔐 <b>VPN</b>\nПользователи, ссылки, доступ.",
@@ -295,7 +303,7 @@ func mainKeyboard() map[string]any {
 			{btn(T("status"), "m:status", "primary")},
 			{btn(T("cat_vpn"), "m:cat:vpn", "primary"), btn(T("cat_routers"), "m:cat:routers", "primary")},
 			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "")},
-			{btn("🗂 Nodes", "m:cat:nodes", "primary")},
+			{btn(T("nodes"), "m:cat:nodes", "primary")},
 			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
 		},
 	}
@@ -737,12 +745,12 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		reply(token, chat, msgID, T("cat_routers_title"), routersKeyboard())
 	case "m:cat:nodes":
 		setState(chat, "", "")
-		reply(token, chat, msgID, "🗂 <b>Nodes</b>", nodesKeyboard())
+		reply(token, chat, msgID, T("nodes_title")+string([]byte{10, 10})+T("nodes_hint"), nodesKeyboard())
 	case "m:nodes_list":
-		reply(token, chat, msgID, "🗂 <b>Nodes</b>\n\n<pre>"+esc(nodesText())+"</pre>", nodesKeyboard())
+		reply(token, chat, msgID, T("nodes_title")+string([]byte{10, 10})+T("nodes_hint")+string([]byte{10, 10})+"<pre>"+esc(nodesText())+"</pre>", nodesKeyboard())
 	case "m:node_rename":
 		setState(chat, "wait_node_rename", "")
-		reply(token, chat, msgID, "Send: <code>id new-hostname</code>\nExample: <code>nd-core-11870 nd-core-nl01</code>", backKeyboard())
+		reply(token, chat, msgID, T("nodes_rename"), backKeyboard())
 	case "m:lang":
 		cur := getLang()
 		label := "Русский"

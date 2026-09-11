@@ -324,9 +324,17 @@ func runNodes(args []string) {
 }
 
 
+func securityHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+}
+
 func requireSession(w http.ResponseWriter, r *http.Request) bool {
+	securityHeaders(w)
 	tok := bearer(r)
-	if !session.Valid(tok) {
+	if tok == "" || !session.Valid(tok) {
 		writeJSON(w, 401, map[string]string{"error": "unauthorized"})
 		return false
 	}
@@ -676,6 +684,24 @@ func runServe(args []string) {
 		writeJSON(w, 200, map[string]any{"ok": true, "node": n})
 	})
 
+	mux.HandleFunc("/api/session/revoke", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, 405, map[string]string{"error": "method"})
+			return
+		}
+		tok := bearer(r)
+		if !session.Valid(tok) {
+			writeJSON(w, 401, map[string]string{"error": "unauthorized"})
+			return
+		}
+		body := readJSON(r)
+		if all, _ := body["all"].(bool); all {
+			_ = session.RevokeAll()
+		} else {
+			session.Revoke(tok)
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"ok": true, "service": "netductor", "version": version, "time": time.Now().UTC().Format(time.RFC3339)})
 	})
@@ -825,6 +851,14 @@ func runServe(args []string) {
 	mux.HandleFunc("/api/edge/enroll", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, 405, map[string]string{"error": "method"})
+			return
+		}
+		ip := r.Header.Get("X-Real-IP")
+		if ip == "" {
+			ip = r.RemoteAddr
+		}
+		if !edge.AllowEnroll(ip) {
+			writeJSON(w, 429, map[string]string{"error": "rate_limited"})
 			return
 		}
 		if !edge.ValidBootstrap(r.Header.Get("Authorization")) {

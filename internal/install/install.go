@@ -38,6 +38,7 @@ func Run(opts Options) error {
 		return err
 	}
 	_ = copySelfToLocalBin()
+	applyHostname("core")
 	for _, c := range comps {
 		fmt.Fprintf(os.Stderr, "==> %s\n", c)
 		var err error
@@ -128,6 +129,44 @@ func enableStart(unit string) error {
 	_ = run("systemctl", "enable", unit)
 	return run("systemctl", "restart", unit)
 }
+
+
+// applyHostname sets a uniform node name.
+// Priority: NETDUCTOR_HOSTNAME env > existing /etc/netductor/node_id > auto nd-<role>-<ip-suffix>
+func applyHostname(role string) {
+	if role == "" {
+		role = "core"
+	}
+	name := strings.TrimSpace(os.Getenv("NETDUCTOR_HOSTNAME"))
+	if name == "" {
+		if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "node_id")); err == nil {
+			name = strings.TrimSpace(string(b))
+		}
+	}
+	if name == "" {
+		ip := detectPublicIP()
+		suf := "00"
+		if ip != "" {
+			parts := strings.Split(ip, ".")
+			if len(parts) == 4 {
+				suf = parts[2] + parts[3]
+				if len(suf) > 6 {
+					suf = suf[len(suf)-6:]
+				}
+			}
+		}
+		name = fmt.Sprintf("nd-%s-%s", role, suf)
+	}
+	name = strings.ToLower(name)
+	_ = os.MkdirAll(paths.EtcDir(), 0o755)
+	_ = os.WriteFile(filepath.Join(paths.EtcDir(), "node_id"), []byte(name+"\n"), 0o644)
+	_ = os.WriteFile("/etc/hostname", []byte(name+"\n"), 0o644)
+	_ = run("hostnamectl", "set-hostname", name)
+	// ensure hosts entry
+	_ = run("bash", "-c", fmt.Sprintf(
+		`grep -q '%s' /etc/hosts || echo '127.0.1.1 %s' >> /etc/hosts`, name, name))
+}
+
 
 func detectPublicIP() string {
 	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {

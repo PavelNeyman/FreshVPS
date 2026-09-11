@@ -50,12 +50,18 @@ func InstallAPI() error {
 	if _, err := os.Stat(bin); err != nil {
 		return fmt.Errorf("netductor binary not at %s — install release asset first", bin)
 	}
-	// copy admin UI if present next to process or in repo
-	adminSrc := paths.AdminRoot()
 	adminDst := filepath.Join(paths.OptDir(), "runtime", "api", "admin")
 	_ = os.MkdirAll(adminDst, 0o755)
+	adminSrc := paths.AdminRoot()
 	if adminSrc != adminDst {
 		_ = run("cp", "-a", adminSrc+"/.", adminDst)
+	}
+	// if still empty, pull from GitHub raw
+	if _, err := os.Stat(filepath.Join(adminDst, "index.html")); err != nil {
+		base := "https://raw.githubusercontent.com/PavelNeyman/netductor/main/runtime/api/admin/"
+		for _, f := range []string{"index.html", "app.js", "style.css"} {
+			_ = httpDownload(base+f, filepath.Join(adminDst, f))
+		}
 	}
 	unit := fmt.Sprintf(`[Unit]
 Description=Netductor API
@@ -77,7 +83,38 @@ WantedBy=multi-user.target
 	}
 	// stop legacy python if any
 	_ = run("systemctl", "disable", "--now", "freshvps-api")
+	_ = installNodeSyncTimer(bin)
 	return enableStart("netductor-api")
+}
+
+func installNodeSyncTimer(bin string) error {
+	svc := fmt.Sprintf(`[Unit]
+Description=Netductor node registry sync (hostname desired)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%s nodes sync-local
+`, bin)
+	timer := `[Unit]
+Description=Netductor node sync timer
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+`
+	if err := writeUnit("netductor-node-sync.service", svc); err != nil {
+		return err
+	}
+	if err := writeUnit("netductor-node-sync.timer", timer); err != nil {
+		return err
+	}
+	_ = run("systemctl", "enable", "--now", "netductor-node-sync.timer")
+	return nil
 }
 
 func InstallMetrics() error {

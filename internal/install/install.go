@@ -40,6 +40,7 @@ func Run(opts Options) error {
 	}
 	_ = copySelfToLocalBin()
 	applyHostname("core")
+	_ = nodes.LocalStableID() // stable node id (UUID), independent of hostname
 	for _, c := range comps {
 		fmt.Fprintf(os.Stderr, "==> %s\n", c)
 		var err error

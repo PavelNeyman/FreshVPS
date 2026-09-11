@@ -302,7 +302,7 @@ func runNodes(args []string) {
 		}
 	case "rename":
 		if len(args) < 3 {
-			fmt.Fprintln(os.Stderr, "usage: netductor nodes rename <id> <hostname>")
+			fmt.Fprintln(os.Stderr, "usage: netductor nodes rename <id> <hostname>\n  hostname format: nd-<role>-<marker>  e.g. nd-core-nl01")
 			os.Exit(2)
 		}
 		n, err := nodes.SetDesiredHostname(args[1], args[2])

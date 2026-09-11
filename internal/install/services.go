@@ -82,7 +82,9 @@ WantedBy=multi-user.target
 		return err
 	}
 	// stop legacy python if any
-	_ = run("systemctl", "disable", "--now", "freshvps-api")
+	if out, _ := runOut("systemctl", "cat", "freshvps-api.service"); strings.Contains(out, "[Unit]") {
+		_ = run("systemctl", "disable", "--now", "freshvps-api")
+	}
 	_ = installNodeSyncTimer(bin)
 	return enableStart("netductor-api")
 }
@@ -162,8 +164,17 @@ func InstallTelegram() error {
 	_ = os.MkdirAll(filepath.Dir(dest), 0o755)
 	tmp := dest + ".tmp"
 	if err := httpDownload(url, tmp); err != nil {
-		fmt.Fprintf(os.Stderr, "telegram binary download skipped: %v\n", err)
-		return nil
+		fmt.Fprintf(os.Stderr, "telegram binary download: %v — trying local\n", err)
+		for _, src := range []string{"/usr/local/bin/netductor-tg", "/tmp/netductor-tg.bin"} {
+			if b, e := os.ReadFile(src); e == nil && len(b) > 1000 {
+				_ = os.WriteFile(tmp, b, 0o755)
+				err = nil
+				break
+			}
+		}
+		if err != nil {
+			return nil
+		}
 	}
 	_ = os.Chmod(tmp, 0o755)
 	_ = os.Rename(tmp, dest)
@@ -191,7 +202,7 @@ WantedBy=multi-user.target
 	}
 	chat := filepath.Join(paths.EtcDir(), "secrets", "telegram_admin_id")
 	if _, e2 := os.Stat(chat); e2 != nil {
-		fmt.Fprintln(os.Stderr, "telegram_admin_id missing — starting bot; first /start becomes admin")
+		fmt.Fprintln(os.Stderr, "telegram_admin_id missing — set secrets/telegram_admin_id (or NETDUCTOR_TG_ADMIN)")
 	}
 	return enableStart("netductor-telegram-bot")
 }

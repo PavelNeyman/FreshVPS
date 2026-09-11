@@ -82,6 +82,27 @@
       <pre id="edge-backups" class="code"></pre>
     </section>
 
+    
+    <section id="tab-nodes" class="tab-panel hide">
+      <div class="row">
+        <button id="btn-refresh-nodes" class="ghost">Refresh</button>
+      </div>
+      <div class="card">
+        <table id="nodes-table">
+          <thead><tr><th>ID</th><th>Hostname</th><th>Role</th><th>Kind</th><th>IP</th><th>Desired</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Rename node</h3>
+        <div class="row">
+          <input id="node-id" placeholder="node id" />
+          <input id="node-hn" placeholder="nd-core-nl01" />
+          <button id="btn-node-rename" class="primary">Set desired hostname</button>
+        </div>
+      </div>
+    </section>
+
     <section id="tab-templates" class="tab-panel hide">
       <div class="row">
         <button id="btn-refresh-tmpl" class="ghost">Refresh</button>

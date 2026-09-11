@@ -145,7 +145,7 @@ func menuItemsFor(mode runMode) []list.Item {
 			menuItem{"Doctor", "health checks", "doctor"},
 			menuItem{"Status", "systemd units", "status"},
 			menuItem{"Operator tools…", "VPN, edge, probes", "to-operator"},
-			menuItem{"Set hostname", "optional: nd-core-nl01", "hostname"},
+			menuItem{"Set hostname", "nd-<role>-<marker> e.g. nd-core-nl01", "hostname"},
 			menuItem{"Nodes registry", "list fleet", "nodes-list"},
 			menuItem{"Change mode…", "", "change-mode"},
 			menuItem{"Quit", "", "quit"},
@@ -175,7 +175,7 @@ func menuItemsFor(mode runMode) []list.Item {
 			menuItem{"Session token", "hours form", "session"},
 			menuItem{"Edge — list devices", "", "edge-list"},
 			menuItem{"Nodes registry", "", "nodes-list"},
-			menuItem{"Set hostname", "this VPS", "hostname"},
+			menuItem{"Set hostname", "nd-<role>-<marker> e.g. nd-core-nl01", "hostname"},
 			menuItem{"Live probes", "", "probe"},
 			menuItem{"Collect metrics", "", "collect"},
 			menuItem{"Change mode…", "", "change-mode"},
@@ -552,7 +552,7 @@ func runHostnameForm() {
 	ok := false
 	f := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().Title("Hostname").Description("nd-<role>-<marker>, empty = keep current").Value(&name),
+			huh.NewInput().Title("Hostname").Description("Format nd-<role>-<marker> · core|edge|lab · e.g. nd-core-nl01 · a-z0-9- only").Value(&name),
 			huh.NewConfirm().Title("Apply hostname on this host?").Affirmative("Yes").Negative("Skip").Value(&ok),
 		),
 	).WithTheme(huh.ThemeCharm())

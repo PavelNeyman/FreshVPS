@@ -292,7 +292,7 @@ func btnCopy(text, copyPayload string) map[string]any {
 func mainKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
-			{btn(T("status"), "m:status", "primary"), btn(T("ready"), "m:ready", "")},
+			{btn(T("status"), "m:status", "primary")},
 			{btn(T("cat_vpn"), "m:cat:vpn", "primary"), btn(T("cat_routers"), "m:cat:routers", "primary")},
 			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "")},
 			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
@@ -514,6 +514,27 @@ func statusInline() string {
 		b.WriteString("docker: " + names)
 		b.WriteByte(10)
 	}
+	// identity
+	if ipb, err := os.ReadFile("/etc/netductor/public_ip"); err == nil {
+		ip := strings.TrimSpace(string(ipb))
+		if ip != "" {
+			if ru {
+				b.WriteString("IP: ")
+			} else {
+				b.WriteString("IP: ")
+			}
+			b.WriteString(ip)
+			b.WriteByte(10)
+		}
+	}
+	if idb, err := os.ReadFile("/etc/netductor/node_id"); err == nil {
+		id := strings.TrimSpace(string(idb))
+		if id != "" {
+			b.WriteString("node: ")
+			b.WriteString(id)
+			b.WriteByte(10)
+		}
+	}
 	b.WriteByte(10)
 	if ru {
 		b.WriteString("Пользователи VPN:")
@@ -733,16 +754,6 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		reply(token, chat, msgID, T("bind_prompt"), backTo("routers"))
 	case "m:status":
 		reply(token, chat, msgID, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
-	case "m:ready":
-		t := readyText()
-		if t == "" {
-			reply(token, chat, msgID, T("no_ready"), backKeyboard())
-		} else {
-			if len(t) > 3500 {
-				t = t[:3500] + "\n…"
-			}
-			reply(token, chat, msgID, T("ready_title")+"\n\n<pre>"+esc(t)+"</pre>", backKeyboard())
-		}
 	case "m:vpn_list":
 		reply(token, chat, msgID, T("vpn_users")+"\n\n<pre>"+esc(formatVPNList(runVPN("list")))+"</pre>", backTo("vpn"))
 	case "m:vpn_add":
@@ -898,16 +909,6 @@ func handleMessage(token string, m *message, admin int64) {
 		sendHTML(token, chat, "🔑 <code>"+esc(tok)+"</code>", kb)
 	case "/admin":
 		sendHTML(token, chat, T("admin_body"), mainKeyboard())
-	case "/ready":
-		t := readyText()
-		if t == "" {
-			sendHTML(token, chat, T("no_ready"), backKeyboard())
-		} else {
-			if len(t) > 3500 {
-				t = t[:3500] + "…"
-			}
-			sendHTML(token, chat, T("ready_title")+string([]byte{10, 10})+"<pre>"+esc(t)+"</pre>", backKeyboard())
-		}
 	default:
 		sendHTML(token, chat, T("unknown_cmd"), mainKeyboard())
 	}

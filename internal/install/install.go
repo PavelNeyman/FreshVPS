@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PavelNeyman/netductor/internal/nodes"
 	"github.com/PavelNeyman/netductor/internal/paths"
 )
 
@@ -201,6 +202,16 @@ func writeReady() {
 	txt := fmt.Sprintf("Netductor ready\nETC=%s\nSTATE=%s\nOPT=%s\nIP=%s\n",
 		paths.EtcDir(), paths.StateDir(), paths.OptDir(), ip)
 	_ = os.WriteFile(filepath.Join(paths.EtcDir(), "READY.txt"), []byte(txt), 0o644)
+	hn := ""
+	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "node_id")); err == nil {
+		hn = strings.TrimSpace(string(b))
+	}
+	if hn == "" {
+		if b, err := os.ReadFile("/etc/hostname"); err == nil {
+			hn = strings.TrimSpace(string(b))
+		}
+	}
+	_ = nodes.SelfRegisterLocal(hn, "core", ip)
 }
 
 

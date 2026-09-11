@@ -180,6 +180,17 @@ func Get(id string) (Node, bool, error) {
 	return n, ok, nil
 }
 
+func Delete(id string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	d, err := load()
+	if err != nil {
+		return err
+	}
+	delete(d.Nodes, id)
+	return save(d)
+}
+
 // SelfRegisterLocal VPS after install/rename.
 func SelfRegisterLocal(hostname, role, publicIP string) error {
 	id := hostname
@@ -201,51 +212,98 @@ func SelfRegisterLocal(hostname, role, publicIP string) error {
 
 // SyncLocalHostname applies desired_hostname for this host if set in registry.
 func SyncLocalHostname() error {
-	id := ""
+	curID := ""
 	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "node_id")); err == nil {
-		id = strings.TrimSpace(string(b))
+		curID = strings.TrimSpace(string(b))
 	}
-	if id == "" {
+	if curID == "" {
 		if b, err := os.ReadFile("/etc/hostname"); err == nil {
-			id = strings.TrimSpace(string(b))
+			curID = strings.TrimSpace(string(b))
 		}
 	}
-	if id == "" {
+	if curID == "" {
 		return nil
 	}
-	n, ok, err := Get(id)
-	if err != nil || !ok {
-		// also try register current
-		ip := ""
-		if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
-			ip = strings.TrimSpace(string(b))
-		}
-		return SelfRegisterLocal(id, "core", ip)
+
+	ip := ""
+	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
+		ip = strings.TrimSpace(string(b))
 	}
-	want := n.DesiredHN
-	if want == "" || want == n.Hostname {
-		// heartbeat-style upsert
-		ip := n.PublicIP
-		if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
-			if s := strings.TrimSpace(string(b)); s != "" {
-				ip = s
-			}
-		}
-		_, err := UpsertFromDevice(Node{ID: id, Hostname: id, Role: n.Role, Kind: "vps", PublicIP: ip, Status: "online"})
+
+	list, err := List()
+	if err != nil {
 		return err
 	}
-	// apply
+
+	// Find our entry: by id, hostname, or any with desired pending that we own
+	var mine *Node
+	for i := range list {
+		n := list[i]
+		if n.ID == curID || n.Hostname == curID {
+			mine = &list[i]
+			break
+		}
+	}
+	if mine == nil {
+		for i := range list {
+			if list[i].DesiredHN != "" && (list[i].DesiredHN == curID || list[i].ID == curID) {
+				mine = &list[i]
+				break
+			}
+		}
+	}
+	if mine == nil {
+		return SelfRegisterLocal(curID, "core", ip)
+	}
+
+	want := mine.DesiredHN
+	role := mine.Role
+	if role == "" {
+		role = "core"
+	}
+	if want == "" || want == mine.Hostname {
+		_, err := UpsertFromDevice(Node{
+			ID: curID, Hostname: curID, Role: role, Kind: "vps", PublicIP: ip, Status: "online",
+		})
+		// drop stale duplicates: same IP, different id, no longer current
+		_ = pruneStaleVPS(curID, ip)
+		return err
+	}
+
+	// apply rename
 	_ = os.MkdirAll(paths.EtcDir(), 0o755)
 	_ = os.WriteFile(filepath.Join(paths.EtcDir(), "node_id"), []byte(want+"\n"), 0o644)
 	_ = os.WriteFile("/etc/hostname", []byte(want+"\n"), 0o644)
 	_ = exec.Command("hostnamectl", "set-hostname", want).Run()
-	ip := n.PublicIP
-	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "public_ip")); err == nil {
-		if s := strings.TrimSpace(string(b)); s != "" {
-			ip = s
+
+	oldID := mine.ID
+	_, err = UpsertFromDevice(Node{
+		ID: want, Hostname: want, Role: role, Kind: "vps", PublicIP: ip, Status: "online",
+	})
+	if err != nil {
+		return err
+	}
+	if oldID != want {
+		_ = Delete(oldID)
+	}
+	_ = pruneStaleVPS(want, ip)
+	return nil
+}
+
+// pruneStaleVPS removes other vps entries with same public IP but different id.
+func pruneStaleVPS(keepID, publicIP string) error {
+	if publicIP == "" {
+		return nil
+	}
+	list, err := List()
+	if err != nil {
+		return err
+	}
+	for _, n := range list {
+		if n.Kind == "vps" && n.PublicIP == publicIP && n.ID != keepID {
+			_ = Delete(n.ID)
 		}
 	}
-	_, err = UpsertFromDevice(Node{ID: want, Hostname: want, Role: n.Role, Kind: "vps", PublicIP: ip, Status: "online"})
-	// remove old id entry desired by re-upsert under new id; keep simple
-	return err
+	return nil
 }
+

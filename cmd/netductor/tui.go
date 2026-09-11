@@ -332,7 +332,7 @@ netductor tui --mode vps`
 		m.screen = screenOutput
 	case "agent-cfg":
 		m.output = capture(func() {
-			for _, p := range []string{"/etc/netductor-agent/config", "/etc/freshvps-agent/config"} {
+			for _, p := range []string{"/etc/netductor-agent/config"} {
 				if _, err := os.Stat(p); err == nil {
 					fmt.Println("found:", p)
 				}
@@ -475,7 +475,7 @@ func formInstall(prepare bool) {
 		title = "Prepare only"
 		cmdHint = "bash install.sh --prepare"
 	}
-	if !formConfirm(title, "Runs on this host as current user.\nCommand: "+cmdHint+"\nRequires root + checkout or /opt/freshvps.") {
+	if !formConfirm(title, "Runs on this host as current user.\nCommand: "+cmdHint+"\nRequires root.") {
 		fmt.Println(subStyle.Render("cancelled"))
 		return
 	}
@@ -491,7 +491,7 @@ func formOwrtInstall() {
 		fmt.Println(subStyle.Render("cancelled"))
 		return
 	}
-	for _, c := range []string{"install-openwrt.sh", "/opt/freshvps/install-openwrt.sh", "/opt/netductor/install-openwrt.sh"} {
+	for _, c := range []string{"install-openwrt.sh", "/opt/netductor/install-openwrt.sh"} {
 		if st, err := os.Stat(c); err == nil && !st.IsDir() {
 			cmd := exec.Command("sh", c)
 			cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin

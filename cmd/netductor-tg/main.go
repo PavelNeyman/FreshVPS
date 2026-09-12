@@ -113,6 +113,8 @@ func reply(token string, chat int64, msgID int, text string, kb map[string]any) 
 		if err := editHTML(token, chat, msgID, text, kb); err == nil {
 			return
 		}
+		// Photo (or other non-text) message: cannot editMessageText — replace in place.
+		_ = deleteMessage(token, chat, msgID)
 	}
 	sendHTML(token, chat, text, kb)
 }

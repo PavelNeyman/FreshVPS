@@ -73,6 +73,13 @@ func Run(opts Options) error {
 	}
 	_ = os.WriteFile(filepath.Join(paths.StateDir(), "installed_version"), []byte("0.7.0-dev\n"), 0o644)
 	writeReady()
+	// optional extras (env-gated)
+	if os.Getenv("NETDUCTOR_LAMPAC") == "1" {
+		fmt.Fprintln(os.Stderr, "==> lampac")
+		if err := InstallLampac(); err != nil {
+			fmt.Fprintln(os.Stderr, "lampac:", err)
+		}
+	}
 	fmt.Fprintln(os.Stderr, "install finished")
 	return nil
 }

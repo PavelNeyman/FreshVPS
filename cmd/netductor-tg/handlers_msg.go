@@ -43,7 +43,7 @@ func handleMessage(token string, m *message, admin int64) {
 	}
 		if st == "wait_relay_host" {
 		setState(chat, "wait_relay_user:"+text, "")
-		sendHTML(token, chat, "Логин SSH (обычно <code>root</code>), или отправьте <code>root</code>:", backTo("nodes"))
+		sendHTML(token, chat, T("enroll_user"), backTo("nodes"))
 		return
 	}
 	if strings.HasPrefix(st, "wait_relay_user:") {
@@ -53,7 +53,7 @@ func handleMessage(token string, m *message, admin int64) {
 			user = "root"
 		}
 		setState(chat, "wait_relay_pass:"+host+"|"+user, "")
-		sendHTML(token, chat, "Пароль root (один раз; после установки останется только SSH-ключ core):", backTo("nodes"))
+		sendHTML(token, chat, T("enroll_pass"), backTo("nodes"))
 		return
 	}
 	if strings.HasPrefix(st, "wait_relay_pass:") {
@@ -65,7 +65,7 @@ func handleMessage(token string, m *message, admin int64) {
 		}
 		pass := text
 		setState(chat, "", "")
-		sendHTML(token, chat, "⏳ Provisioning <code>"+esc(host)+"</code>… (1–3 мин)", nil)
+		sendHTML(token, chat, fmt.Sprintf(T("enroll_wait"), esc(host)), nil)
 		out := runND("relay", "provision", "--host", host, "--user", user, "--password", pass, "--sni", "ya.ru")
 		sendHTML(token, chat, "✅ <b>Relay</b>"+string([]byte{10})+"<pre>"+esc(truncate(out, 3500))+"</pre>"+string([]byte{10})+formatRelayListHTML(), relayKeyboard())
 		return

@@ -24,7 +24,7 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			action, name := parts[1], parts[2]
 			switch action {
 			case "link":
-				deliverVPNLink(token, chat, 0, name)
+				deliverVPNLink(token, chat, msgID, name)
 			case "hy2qr":
 				showVPNQR(token, chat, msgID, name, "hy2", true)
 			case "vlessqr":
@@ -112,6 +112,9 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		reply(token, chat, msgID, "📦 <b>bundle</b>"+string([]byte{10})+"<pre>"+esc(truncate(msg, 3500))+"</pre>", relayKeyboard())
 	case "m:relay:oneline":
 		reply(token, chat, msgID, formatRelayOneline(), relayKeyboard())
+	case "m:relay:sync":
+		out := runND("relay", "sync")
+		reply(token, chat, msgID, "🔄 <b>Sync</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>"+string([]byte{10})+formatRelayListHTML(), relayKeyboard())
 	case "m:relay:exit:on":
 		out := runND("relay", "exit", "on")
 		reply(token, chat, msgID, "🇷🇺 <b>RU exit ON</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>"+string([]byte{10})+"<i>Трафик с core уходит через РФ (доступ к RU-сервисам из-за границы)</i>", relayKeyboard())

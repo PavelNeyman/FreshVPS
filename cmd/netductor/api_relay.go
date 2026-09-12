@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PavelNeyman/netductor/internal/nodes"
 	"github.com/PavelNeyman/netductor/internal/relay"
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
@@ -126,8 +127,23 @@ func handleRelayAgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", 401)
 		return
 	}
+	// Register as node role=relay so rename / fleet UI work
+	host := d.Name
+	if host == "" || host == "relay" {
+		host = "nd-relay-" + strings.ReplaceAll(d.PublicIP, ".", "-")
+	}
+	st := "online"
+	_, _ = nodes.UpsertFromDevice(nodes.Node{
+		ID: d.ID, Hostname: host, Role: "relay", Kind: "vps",
+		PublicIP: d.PublicIP, Status: st, LastSeen: time.Now().Unix(),
+	})
+	desired := ""
+	if n, ok, err := nodes.Get(d.ID); err == nil && ok && n.DesiredHN != "" {
+		desired = n.DesiredHN
+	}
 	writeJSON(w, 200, map[string]any{
 		"ok": true, "config_ver": ver, "need_sync": in.ConfigVer < ver, "id": d.ID,
+		"desired_hostname": desired,
 	})
 }
 

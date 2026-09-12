@@ -375,8 +375,9 @@ func ensureQRFile(path, payload string) string {
 	return path
 }
 
-func deliverVPNLink(token string, chat int64, replyTo int, name string) {
-	showVPNQR(token, chat, 0, name, "vless", false)
+func deliverVPNLink(token string, chat int64, msgID int, name string) {
+	// Replace the message that contained the user button (list / card).
+	showVPNQR(token, chat, msgID, name, "vless", msgID > 0)
 }
 
 func vpnQRCaption(name, mode, vless, hy2 string) string {
@@ -436,8 +437,11 @@ func showVPNQR(token string, chat int64, msgID int, name, mode string, edit bool
 	}
 	if edit && msgID > 0 {
 		if err := editPhotoFile(token, chat, msgID, path, cap, kb); err != nil {
-			// fallback: new message
-			_ = sendPhotoFile(token, chat, path, cap, kb)
+			// Text list message cannot become a photo — delete and put QR in its place.
+			_ = deleteMessage(token, chat, msgID)
+			if err2 := sendPhotoFile(token, chat, path, cap, kb); err2 != nil {
+				sendHTML(token, chat, cap+string([]byte{10})+"⚠️ <code>"+esc(err2.Error())+"</code>", kb)
+			}
 		}
 		return
 	}
@@ -481,9 +485,16 @@ func formatRelayListHTML() string {
 	if out == "" || strings.Contains(out, "unknown") {
 		out = runND("nodes", "list")
 	}
+	ex := strings.TrimSpace(runND("relay", "exit"))
 	nl := string([]byte{10})
 	if getLang() != "en" {
-		return "📋 <b>Ноды</b>" + nl + nl + "<pre>" + esc(out) + "</pre>"
+		return "📡 <b>Relay (ведомые)</b>" + nl +
+			"<i>Агент ходит на core сам; SSH не нужен</i>" + nl +
+			"RU exit: <code>" + esc(ex) + "</code>" + nl + nl +
+			"<pre>" + esc(out) + "</pre>"
 	}
-	return "📋 <b>Nodes</b>" + nl + nl + "<pre>" + esc(out) + "</pre>"
+	return "📡 <b>Relay (managed)</b>" + nl +
+		"<i>Agent pulls config from core; no SSH</i>" + nl +
+		"RU exit: <code>" + esc(ex) + "</code>" + nl + nl +
+		"<pre>" + esc(out) + "</pre>"
 }

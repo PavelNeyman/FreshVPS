@@ -110,6 +110,9 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			msg = string(b)
 		}
 		reply(token, chat, msgID, "📦 <b>bundle</b>"+string([]byte{10})+"<pre>"+esc(truncate(msg, 3500))+"</pre>", relayKeyboard())
+	case "m:relay:enroll":
+		setState(chat, "wait_relay_host", "")
+		reply(token, chat, msgID, "📡 <b>Enroll relay</b>"+string([]byte{10,10})+"Введите <b>IP</b> (или host) новой RU VPS:", backTo("relay"))
 	case "m:relay:oneline":
 		reply(token, chat, msgID, formatRelayOneline(), relayKeyboard())
 	case "m:relay:sync":

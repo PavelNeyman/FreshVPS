@@ -230,8 +230,17 @@ func userCardKeyboard(name, subText string) map[string]any {
 }
 
 func vpnUsersKeyboard() map[string]any {
+	return vpnUsersKeyboardFor("link")
+}
+
+// action: link | enable | disable | revoke
+func vpnUsersKeyboardFor(action string) map[string]any {
+	if action == "" {
+		action = "link"
+	}
 	raw := runVPN("list")
 	rows := [][]map[string]any{}
+	n := 0
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -245,21 +254,37 @@ func vpnUsersKeyboard() map[string]any {
 			continue
 		}
 		name := parts[0]
+		if name == "relay-uplink" {
+			continue
+		}
 		en := ""
 		if len(parts) > 1 {
 			en = parts[1]
 		}
-		label := "🔗 " + name
-		if en == "off" {
-			label = "🔴 " + name
-		} else if en == "on" {
-			label = "🟢 " + name
+		n++
+		icon := "🔗"
+		switch action {
+		case "enable":
+			icon = "✅"
+		case "disable":
+			icon = "🚫"
+		case "revoke":
+			icon = "🗑"
 		}
-		rows = append(rows, []map[string]any{btn(label, "u:link:"+name, "primary")})
-		if len(rows) >= 20 {
+		if en == "off" {
+			icon = "🔴"
+		} else if en == "on" && action == "link" {
+			icon = "🟢"
+		}
+		label := icon + " " + fmt.Sprintf("%d. %s", n, name)
+		rows = append(rows, []map[string]any{btn(label, "u:"+action+":"+name, "primary")})
+		if n >= 30 {
 			break
 		}
 	}
-	rows = append(rows, []map[string]any{btn(T("vpn_link"), "m:vpn_link", ""), btn(T("main_menu"), "m:menu", "primary")})
+	if n == 0 {
+		rows = append(rows, []map[string]any{btn("— empty —", "m:cat:vpn", "")})
+	}
+	rows = append(rows, []map[string]any{btn(T("main_menu"), "m:menu", "primary"), btn(T("cat_vpn"), "m:cat:vpn", "")})
 	return map[string]any{"inline_keyboard": rows}
 }

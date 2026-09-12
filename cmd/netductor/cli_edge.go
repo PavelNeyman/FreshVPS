@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/PavelNeyman/netductor/internal/edge"
 )
@@ -19,7 +18,7 @@ func runEdgeCLI(args []string) {
 		runEdgeList()
 	case "pending":
 		for _, d := range edge.ListPending() {
-			fmt.Printf("%v\t%v\t%v\t%v\n", d["device_id"], d["board"], d["wan_ip"], d["hostname"])
+			fmt.Printf("%s\t%s\t%s\t%s\n", d.DeviceID, d.Board, d.WANIP, d.Hostname)
 		}
 	case "approve":
 		if len(args) < 2 {
@@ -68,7 +67,6 @@ func runEdgeCLI(args []string) {
 		}
 		fmt.Println(id)
 	case "provision":
-		// netductor edge provision root@host --id site1 --server https://vps --key path --agent path
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "usage: netductor edge provision user@host --id DEVICE [--server URL] [--key KEY] [--agent BIN]")
 			os.Exit(2)
@@ -129,30 +127,13 @@ func runEdgeCLI(args []string) {
 }
 
 func runEdgeList() {
-	now := time.Now().Unix()
 	devs := edge.ListDevices()
-	// sort by last_seen desc roughly
 	for _, d := range devs {
-		did, _ := d["device_id"].(string)
-		var last int64
-		switch v := d["last_seen"].(type) {
-		case float64:
-			last = int64(v)
-		case int64:
-			last = v
-		}
 		st := "offline"
-		if healthy, _ := d["healthy"].(bool); healthy {
+		if d.Healthy {
 			st = "online"
 		}
-		host, _ := d["hostname"].(string)
-		wan, _ := d["wan_ip"].(string)
-		board, _ := d["board"].(string)
-		age := now - last
-		if last == 0 {
-			age = -1
-		}
-		fmt.Printf("%s\t%s\t%ds\t%s\t%s\t%s\n", did, st, age, host, wan, board)
+		fmt.Printf("%s\t%s\t%s\t%s\t%s\tip=%s\tlast=%d\n",
+			d.DeviceID, d.Status, st, d.Board, d.Hostname, d.WANIP, d.LastSeen)
 	}
 }
-

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/PavelNeyman/netductor/internal/addons"
@@ -309,4 +310,78 @@ func formatJSONPretty(title, raw string) string {
 func formatStatusPretty() string {
 	// Prefer structured inline HTML over raw shell dump.
 	return statusInline()
+}
+
+func formatVPNLinkHTML(name string) (caption string, vless, hy2, sub string) {
+	vless = strings.TrimSpace(runVPN("link", name, "vless"))
+	hy2 = strings.TrimSpace(runVPN("link", name, "hy2"))
+	sub = strings.TrimSpace(runVPN("link", name))
+	// strip errors
+	if strings.Contains(vless, "not found") || strings.Contains(vless, "exit status") {
+		vless = ""
+	}
+	if strings.Contains(hy2, "not found") || strings.Contains(hy2, "exit status") {
+		hy2 = ""
+	}
+	if strings.Contains(sub, "not found") || strings.Contains(sub, "exit status") {
+		sub = ""
+	}
+	ru := getLang() != "en"
+	var b strings.Builder
+	if ru {
+		b.WriteString("🔗 <b>VPN · " + esc(name) + "</b>\n\n")
+	} else {
+		b.WriteString("🔗 <b>VPN · " + esc(name) + "</b>\n\n")
+	}
+	if vless != "" {
+		b.WriteString("<b>VLESS Reality</b>\n<code>" + esc(vless) + "</code>\n\n")
+	}
+	if hy2 != "" {
+		b.WriteString("<b>Hysteria2</b>\n<code>" + esc(hy2) + "</code>\n\n")
+	}
+	if vless == "" && hy2 == "" && sub != "" {
+		b.WriteString("<code>" + esc(sub) + "</code>\n\n")
+	}
+	if vless == "" && hy2 == "" && sub == "" {
+		if ru {
+			b.WriteString("❌ Пользователь не найден или нет ссылок.\nПроверьте: VPN → список.")
+		} else {
+			b.WriteString("❌ User not found or no links.\nCheck: VPN → list.")
+		}
+	} else if ru {
+		b.WriteString("<i>QR ниже (VLESS). Скопируйте ссылку длинным нажатием на mono-текст.</i>")
+	} else {
+		b.WriteString("<i>QR below (VLESS). Long-press mono text to copy.</i>")
+	}
+	return b.String(), vless, hy2, sub
+}
+
+func vpnQRPath(name string) string {
+	candidates := []string{
+		"/etc/netductor/clients/" + name + "/qr.png",
+		"/etc/netductor/clients/" + name + "/qr-subscription.png",
+		"/var/lib/netductor/clients/" + name + "/qr.png",
+	}
+	for _, p := range candidates {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
+
+func deliverVPNLink(token string, chat int64, replyTo int, name string) {
+	caption, _, _, _ := formatVPNLinkHTML(name)
+	kb := userCardKeyboard(name, "")
+	qr := vpnQRPath(name)
+	if qr != "" {
+		sendPhotoFile(token, chat, qr, caption, kb)
+		return
+	}
+	if replyTo > 0 {
+		reply(token, chat, replyTo, caption, kb)
+	} else {
+		sendHTML(token, chat, caption, kb)
+	}
 }

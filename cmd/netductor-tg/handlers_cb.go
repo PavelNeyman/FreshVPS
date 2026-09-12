@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -23,8 +24,7 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			action, name := parts[1], parts[2]
 			switch action {
 			case "link":
-				sub := runVPN("link", name)
-				reply(token, chat, msgID, "🔗 <b>"+esc(name)+"</b>\n\n<pre>"+esc(sub)+"</pre>", userCardKeyboard(name, strings.TrimSpace(sub)))
+				deliverVPNLink(token, chat, 0, name)
 			case "enable":
 				reply(token, chat, msgID, "✅ <pre>"+esc(runVPN("enable", name))+"</pre>", backKeyboard())
 			case "disable":
@@ -96,6 +96,20 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	case "m:edge_bind":
 		setState(chat, "wait_edge_bind_dev", "")
 		reply(token, chat, msgID, T("bind_prompt"), backTo("routers"))
+		case "m:cat:relay":
+		reply(token, chat, msgID, T("relay_title")+string([]byte{10,10})+formatRelayHelp(), relayKeyboard())
+	case "m:relay:export":
+		out := runND("relay", "export", "-o", "/tmp/nd-relay-bundle.json", "--sni", "ya.ru")
+		b, err := os.ReadFile("/tmp/nd-relay-bundle.json")
+		msg := out
+		if err == nil {
+			msg = string(b)
+		}
+		reply(token, chat, msgID, "📦 <b>bundle</b>"+string([]byte{10})+"<pre>"+esc(truncate(msg, 3500))+"</pre>", relayKeyboard())
+	case "m:relay:oneline":
+		reply(token, chat, msgID, formatRelayOneline(), relayKeyboard())
+	case "m:relay:list":
+		reply(token, chat, msgID, formatRelayListHTML(), relayKeyboard())
 	case "m:addons":
 		editHTML(token, cq.Message.Chat.ID, cq.Message.MessageID, formatAddonsHTML(), addonsKeyboard())
 	case "m:addon:lampac":

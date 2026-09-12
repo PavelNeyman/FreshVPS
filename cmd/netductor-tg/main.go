@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -113,6 +114,44 @@ func reply(token string, chat int64, msgID int, text string, kb map[string]any) 
 		}
 	}
 	sendHTML(token, chat, text, kb)
+}
+
+
+func sendPhotoFile(token string, chat int64, path, caption string, kb map[string]any) {
+	f, err := os.Open(path)
+	if err != nil {
+		sendHTML(token, chat, caption+"\n\n<i>QR file missing</i>", kb)
+		return
+	}
+	defer f.Close()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	_ = w.WriteField("chat_id", strconv.FormatInt(chat, 10))
+	if caption != "" {
+		_ = w.WriteField("caption", caption)
+		_ = w.WriteField("parse_mode", "HTML")
+	}
+	if kb != nil {
+		jb, _ := json.Marshal(kb)
+		_ = w.WriteField("reply_markup", string(jb))
+	}
+	part, err := w.CreateFormFile("photo", "qr.png")
+	if err != nil {
+		return
+	}
+	_, _ = io.Copy(part, f)
+	_ = w.Close()
+	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+token+"/sendPhoto", &buf)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	_, _ = io.ReadAll(resp.Body)
 }
 
 func answerCallback(token, id string) {

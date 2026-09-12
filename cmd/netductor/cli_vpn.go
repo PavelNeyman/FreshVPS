@@ -94,10 +94,11 @@ func runVPN(args []string) {
 		var s string
 		var ok bool
 		switch kind {
-		case "vless":
-			s, ok = vpn.ReadClient(name, "link-vless.txt", "link.txt")
 		case "hy2":
 			s, ok = vpn.ReadClient(name, "link-hy2.txt")
+		case "vless":
+			// fall through to preferred (relay-first)
+			fallthrough
 		default:
 			// preferred: relay VLESS when online, else core subscription
 			r, err := vpn.ListNative()
@@ -121,8 +122,10 @@ func runVPN(args []string) {
 						if via != "core" {
 							fmt.Fprintln(os.Stderr, "via", via)
 						}
-						if hy, ok2 := vpn.ReadClient(name, "link-hy2.txt"); ok2 {
-							fmt.Println(strings.TrimSpace(hy))
+						if kind != "vless" {
+							if hy, ok2 := vpn.ReadClient(name, "link-hy2.txt"); ok2 {
+								fmt.Println(strings.TrimSpace(hy))
+							}
 						}
 						return
 					}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -432,4 +433,43 @@ func deliverVPNLink(token string, chat int64, replyTo int, name string) {
 			sendHTML(token, chat, "⚠️ QR HY2: <code>"+esc(err.Error())+"</code>", nil)
 		}
 	}
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
+func formatRelayHelp() string {
+	nl := string([]byte{10})
+	if getLang() != "en" {
+		return "Управление промежуточным VPS в РФ." + nl + nl + "1) <b>Export</b> / <b>One-liner</b>" + nl + "2) На RU выполнить команду" + nl + "3) Мобильным — relay links"
+	}
+	return "RU intermediate VPS." + nl + nl + "1) Export / One-liner" + nl + "2) Run on RU" + nl + "3) Mobile uses relay links"
+}
+
+func formatRelayOneline() string {
+	_ = runND("relay", "export", "-o", "/tmp/nd-relay-bundle.json", "--sni", "ya.ru")
+	b, err := os.ReadFile("/tmp/nd-relay-bundle.json")
+	if err != nil {
+		return "❌ export failed: " + esc(err.Error())
+	}
+	enc := base64.StdEncoding.EncodeToString(b)
+	cmd := "wget -qO /usr/local/bin/netductor https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64 && chmod 755 /usr/local/bin/netductor && echo " + enc + " | base64 -d > /root/bundle.json && netductor relay join /root/bundle.json"
+	nl := string([]byte{10})
+	if getLang() != "en" {
+		return "🧾 <b>Одна команда на RU VPS</b>" + nl + nl + "<code>" + esc(cmd) + "</code>"
+	}
+	return "🧾 <b>One command on RU VPS</b>" + nl + nl + "<code>" + esc(cmd) + "</code>"
+}
+
+func formatRelayListHTML() string {
+	out := runND("nodes", "list")
+	nl := string([]byte{10})
+	if getLang() != "en" {
+		return "📋 <b>Ноды</b>" + nl + nl + "<pre>" + esc(out) + "</pre>"
+	}
+	return "📋 <b>Nodes</b>" + nl + nl + "<pre>" + esc(out) + "</pre>"
 }

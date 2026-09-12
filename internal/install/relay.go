@@ -119,6 +119,28 @@ WantedBy=multi-user.target
 		_ = os.WriteFile(filepath.Join(outDir, u.Name+".txt"), []byte(link+"\n"), 0o600)
 	}
 	fmt.Fprintf(os.Stderr, "relay ready · public_ip=%s · SNI=%s · client links in %s\n", pubIP, b.RelaySNI, outDir)
+	// install agent
+	if b.AgentToken != "" && b.CoreAgentURL != "" {
+		_ = os.WriteFile(filepath.Join(paths.EtcDir(), "secrets", "relay_agent_token"), append([]byte(b.AgentToken), 10), 0o600)
+		_ = os.WriteFile(filepath.Join(paths.EtcDir(), "secrets", "relay_core_url"), append([]byte(b.CoreAgentURL), 10), 0o600)
+		agentUnit := `[Unit]
+Description=Netductor relay agent
+After=network-online.target sing-box.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/netductor relay agent
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
+`
+		_ = writeUnit("netductor-relay-agent.service", agentUnit)
+		_ = enableStart("netductor-relay-agent")
+		fmt.Fprintln(os.Stderr, "relay agent started →", b.CoreAgentURL)
+	}
 	fmt.Fprintln(os.Stderr, "Give mobile users *-relay links; home users keep core links.")
 	return nil
 }

@@ -38,6 +38,13 @@ systemctl is-active sing-box blocky netductor-api netductor-telegram-bot
 netductor vpn list
 ```
 
+
+SNI по умолчанию **ya.ru** (белый список). Мобильный — часто **промежуточный VPS в РФ**, см. [VPN-USERS.md](VPN-USERS.md).
+
+```bash
+netductor vpn set-sni ya.ru
+```
+
 ## 4. VPN
 
 ```bash

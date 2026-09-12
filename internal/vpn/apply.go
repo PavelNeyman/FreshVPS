@@ -54,6 +54,7 @@ func ApplyConfig() error {
 	}
 
 	sniVal := sni()
+	outbounds, routeRules, finalOut := buildOutboundsAndRoute()
 	cfg := map[string]any{
 		"log": map[string]any{"level": "info", "timestamp": true},
 		"dns": map[string]any{
@@ -87,13 +88,10 @@ func ApplyConfig() error {
 				"masquerade": "https://" + sniVal,
 			},
 		},
-		"outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}},
+		"outbounds": outbounds,
 		"route": map[string]any{
-			"rules": []any{
-				map[string]any{"action": "sniff"},
-				map[string]any{"protocol": "dns", "action": "hijack-dns"},
-			},
-			"final": "direct", "auto_detect_interface": true, "default_domain_resolver": "blocky",
+			"rules": routeRules,
+			"final": finalOut, "auto_detect_interface": true, "default_domain_resolver": "blocky",
 		},
 	}
 
@@ -166,4 +164,63 @@ func cloneMap(m map[string]any) map[string]any {
 	var out map[string]any
 	_ = json.Unmarshal(b, &out)
 	return out
+}
+
+
+func buildOutboundsAndRoute() (outbounds []any, routeRules []any, finalOut string) {
+	outbounds = []any{map[string]any{"type": "direct", "tag": "direct"}}
+	routeRules = []any{
+		map[string]any{"action": "sniff"},
+		map[string]any{"protocol": "dns", "action": "hijack-dns"},
+	}
+	finalOut = "direct"
+	exitOn, ip, pbk, sid, sniR := readExitTarget()
+	exitUUID := secret("relay_exit_uuid")
+	if !exitOn || ip == "" || pbk == "" || exitUUID == "" {
+		return
+	}
+	if sniR == "" {
+		sniR = "ya.ru"
+	}
+	outbounds = append(outbounds, map[string]any{
+		"type": "vless", "tag": "ru-exit",
+		"server": ip, "server_port": 4443,
+		"uuid": exitUUID, "flow": "xtls-rprx-vision",
+		"tls": map[string]any{
+			"enabled": true, "server_name": sniR,
+			"utls": map[string]any{"enabled": true, "fingerprint": "chrome"},
+			"reality": map[string]any{
+				"enabled": true, "public_key": pbk, "short_id": sid,
+			},
+		},
+	})
+	finalOut = "ru-exit"
+	return
+}
+
+func readExitTarget() (on bool, ip, pbk, sid, sni string) {
+	b, err := os.ReadFile(filepath.Join(paths.StateDir(), "relay", "devices.json"))
+	if err != nil {
+		return
+	}
+	var reg struct {
+		ExitEnabled bool `json:"exit_enabled"`
+		Devices     []struct {
+			PublicIP string `json:"public_ip"`
+			PBK      string `json:"pbk"`
+			SID      string `json:"sid"`
+			SNI      string `json:"sni"`
+			LastSeen string `json:"last_seen"`
+		} `json:"devices"`
+	}
+	if json.Unmarshal(b, &reg) != nil {
+		return
+	}
+	on = reg.ExitEnabled
+	for _, d := range reg.Devices {
+		if d.PublicIP != "" && d.PBK != "" {
+			return on, d.PublicIP, d.PBK, d.SID, d.SNI
+		}
+	}
+	return on, "", "", "", ""
 }

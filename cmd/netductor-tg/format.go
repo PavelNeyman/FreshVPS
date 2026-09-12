@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -255,18 +254,14 @@ func formatDoctorHTML(raw string) string {
 	return b.String()
 }
 
+
 func formatVPNListPretty(raw string) string {
-	// name\ton\tuuid\tnote\tcreated
-	raw = strings.TrimSpace(raw)
+	nl := string([]byte{10})
 	var b strings.Builder
 	if getLang() != "en" {
-		b.WriteString("👥 <b>VPN пользователи</b>\n\n")
+		b.WriteString("👥 <b>VPN пользователи</b>" + nl + nl)
 	} else {
-		b.WriteString("👥 <b>VPN users</b>\n\n")
-	}
-	if raw == "" {
-		b.WriteString("<i>—</i>")
-		return b.String()
+		b.WriteString("👥 <b>VPN users</b>" + nl + nl)
 	}
 	n := 0
 	for _, line := range strings.Split(raw, "\n") {
@@ -275,44 +270,35 @@ func formatVPNListPretty(raw string) string {
 			continue
 		}
 		parts := strings.Split(line, "\t")
-		if len(parts) < 2 {
+		if len(parts) < 1 {
 			parts = strings.Fields(line)
 		}
-		if len(parts) < 2 {
+		name := parts[0]
+		if name == "relay-uplink" {
 			continue
 		}
+		en := ""
+		if len(parts) > 1 {
+			en = parts[1]
+		}
 		n++
-		name, en := parts[0], parts[1]
-		icon := yn(en == "on", "🟢", "🔴")
-		note := ""
-		if len(parts) >= 4 {
-			note = parts[3]
+		icon := "🟢"
+		if en == "off" {
+			icon = "🔴"
 		}
-		b.WriteString(fmt.Sprintf("%s <b>%s</b>", icon, esc(name)))
-		if note != "" {
-			b.WriteString(" — <i>" + esc(note) + "</i>")
+		b.WriteString(fmt.Sprintf("%s <b>%d. %s</b>", icon, n, esc(name)))
+		if en != "" {
+			b.WriteString(" · <code>" + esc(en) + "</code>")
 		}
-		b.WriteByte('\n')
+		b.WriteString(nl)
 	}
 	if n == 0 {
-		b.WriteString("<pre>" + esc(raw) + "</pre>")
+		b.WriteString("<i>—</i>")
 	}
-	return b.String()
-}
-
-// formatJSONPretty is last resort for unknown JSON blobs.
-func formatJSONPretty(title, raw string) string {
-	raw = strings.TrimSpace(raw)
-	var v any
-	if json.Unmarshal([]byte(raw), &v) == nil {
-		b, _ := json.MarshalIndent(v, "", "  ")
-		return title + "\n<pre>" + esc(string(b)) + "</pre>"
-	}
-	return title + "\n<pre>" + esc(raw) + "</pre>"
+	return strings.TrimRight(b.String(), nl)
 }
 
 func formatStatusPretty() string {
-	// Prefer structured inline HTML over raw shell dump.
 	return statusInline()
 }
 
@@ -320,7 +306,12 @@ func formatVPNLinkHTML(name string) (caption string, vless, hy2, sub string) {
 	vless = strings.TrimSpace(runVPN("link", name, "vless"))
 	hy2 = strings.TrimSpace(runVPN("link", name, "hy2"))
 	sub = strings.TrimSpace(runVPN("link", name))
-	// strip errors
+	if sub != "" {
+		first := strings.TrimSpace(strings.Split(sub, "\n")[0])
+		if strings.HasPrefix(first, "vless://") {
+			vless = first
+		}
+	}
 	if strings.Contains(vless, "not found") || strings.Contains(vless, "exit status") {
 		vless = ""
 	}
@@ -330,34 +321,27 @@ func formatVPNLinkHTML(name string) (caption string, vless, hy2, sub string) {
 	if strings.Contains(sub, "not found") || strings.Contains(sub, "exit status") {
 		sub = ""
 	}
-	ru := getLang() != "en"
+	nl := string([]byte{10})
 	var b strings.Builder
-	if ru {
-		b.WriteString("🔗 <b>VPN · " + esc(name) + "</b>\n\n")
-	} else {
-		b.WriteString("🔗 <b>VPN · " + esc(name) + "</b>\n\n")
-	}
+	b.WriteString("🔗 <b>VPN · " + esc(name) + "</b>" + nl + nl)
 	if vless != "" {
-		b.WriteString("<b>VLESS Reality</b>\n<code>" + esc(vless) + "</code>\n\n")
+		b.WriteString("<b>VLESS</b>" + nl + "<code>" + esc(vless) + "</code>" + nl + nl)
 	}
 	if hy2 != "" {
-		b.WriteString("<b>Hysteria2</b>\n<code>" + esc(hy2) + "</code>\n\n")
+		b.WriteString("<b>HY2</b>" + nl + "<code>" + esc(hy2) + "</code>" + nl)
 	}
-	if vless == "" && hy2 == "" && sub != "" {
-		b.WriteString("<code>" + esc(sub) + "</code>\n\n")
-	}
-	if vless == "" && hy2 == "" && sub == "" {
-		if ru {
-			b.WriteString("❌ Пользователь не найден или нет ссылок.\nПроверьте: VPN → список.")
-		} else {
-			b.WriteString("❌ User not found or no links.\nCheck: VPN → list.")
-		}
-	} else if ru {
-		b.WriteString("<i>QR ниже (VLESS). Скопируйте ссылку длинным нажатием на mono-текст.</i>")
-	} else {
-		b.WriteString("<i>QR below (VLESS). Long-press mono text to copy.</i>")
+	if vless == "" && hy2 == "" {
+		b.WriteString("❌ no links")
 	}
 	return b.String(), vless, hy2, sub
+}
+
+func formatRelayListHTML() string {
+	_ = runND("relay", "status")
+	ex := strings.TrimSpace(runND("relay", "exit"))
+	nl := string([]byte{10})
+	body := formatNodesListHTML()
+	return "📡 <b>Nodes / relay</b>" + nl + "RU exit: <code>" + esc(ex) + "</code>" + nl + nl + body
 }
 
 func ensureQRFile(path, payload string) string {
@@ -480,21 +464,3 @@ func formatRelayOneline() string {
 	return "🧾 <b>One command on RU VPS</b>" + nl + nl + "<code>" + esc(cmd) + "</code>"
 }
 
-func formatRelayListHTML() string {
-	out := runND("relay", "status")
-	if out == "" || strings.Contains(out, "unknown") {
-		out = runND("nodes", "list")
-	}
-	ex := strings.TrimSpace(runND("relay", "exit"))
-	nl := string([]byte{10})
-	if getLang() != "en" {
-		return "📡 <b>Relay (ведомые)</b>" + nl +
-			"<i>Агент ходит на core сам; SSH не нужен</i>" + nl +
-			"RU exit: <code>" + esc(ex) + "</code>" + nl + nl +
-			"<pre>" + esc(out) + "</pre>"
-	}
-	return "📡 <b>Relay (managed)</b>" + nl +
-		"<i>Agent pulls config from core; no SSH</i>" + nl +
-		"RU exit: <code>" + esc(ex) + "</code>" + nl + nl +
-		"<pre>" + esc(out) + "</pre>"
-}

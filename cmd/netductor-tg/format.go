@@ -376,58 +376,73 @@ func ensureQRFile(path, payload string) string {
 }
 
 func deliverVPNLink(token string, chat int64, replyTo int, name string) {
-	_, vless, hy2, sub := formatVPNLinkHTML(name)
-	kb := userCardKeyboard(name, "")
+	showVPNQR(token, chat, 0, name, "vless", false)
+}
+
+func vpnQRCaption(name, mode, vless, hy2 string) string {
 	ru := getLang() != "en"
 	nl := string([]byte{10})
-	dir := filepath.Join("/etc/netductor/clients", name)
-
-	var cap strings.Builder
-	if ru {
-		cap.WriteString("🔗 <b>" + esc(name) + "</b>")
-		cap.WriteString(nl)
-		cap.WriteString("<i>Shadowrocket: добавьте оба узла (2-й QR следом)</i>")
-	} else {
-		cap.WriteString("🔗 <b>" + esc(name) + "</b>")
-		cap.WriteString(nl)
-		cap.WriteString("<i>Shadowrocket: add both nodes (2nd QR follows)</i>")
-	}
-	cap.WriteString(nl + nl)
-	if vless != "" {
-		cap.WriteString("<b>VLESS</b>" + nl + "<code>" + esc(vless) + "</code>" + nl + nl)
-	}
-	if hy2 != "" {
-		cap.WriteString("<b>HY2</b>" + nl + "<code>" + esc(hy2) + "</code>")
-	}
-	if vless == "" && hy2 == "" {
-		msg := cap.String()
-		if sub != "" {
-			msg = "<code>" + esc(sub) + "</code>"
-		} else if ru {
-			msg = "❌ Нет ссылок"
-		} else {
-			msg = "❌ No links"
+	var b strings.Builder
+	if mode == "hy2" {
+		b.WriteString("📱 <b>Hysteria2</b> · " + esc(name) + nl + nl)
+		if hy2 != "" {
+			b.WriteString("<code>" + esc(hy2) + "</code>")
 		}
-		sendHTML(token, chat, msg, kb)
+	} else {
+		b.WriteString("📱 <b>VLESS Reality</b> · " + esc(name) + nl + nl)
+		if vless != "" {
+			b.WriteString("<code>" + esc(vless) + "</code>")
+		}
+		if hy2 != "" {
+			if ru {
+				b.WriteString(nl + nl + "<i>HY2 — кнопка «HY2 QR» выше</i>")
+			} else {
+				b.WriteString(nl + nl + "<i>HY2 — use «HY2 QR» button</i>")
+			}
+		}
+	}
+	return b.String()
+}
+
+func showVPNQR(token string, chat int64, msgID int, name, mode string, edit bool) {
+	_, vless, hy2, sub := formatVPNLinkHTML(name)
+	if mode != "hy2" {
+		mode = "vless"
+	}
+	kb := userCardKeyboardMode(name, mode)
+	dir := filepath.Join("/etc/netductor/clients", name)
+	var path, payload string
+	if mode == "hy2" {
+		payload = hy2
+		path = ensureQRFile(filepath.Join(dir, "qr-hy2.png"), hy2)
+	} else {
+		payload = vless
+		if payload == "" {
+			payload = sub
+		}
+		path = ensureQRFile(filepath.Join(dir, "qr-vless.png"), vless)
+		if path == "" {
+			path = ensureQRFile(filepath.Join(dir, "qr.png"), vless)
+		}
+	}
+	cap := vpnQRCaption(name, mode, vless, hy2)
+	if payload == "" && path == "" {
+		sendHTML(token, chat, cap, kb)
 		return
 	}
-	// One message: VLESS QR + caption (links) + operator keyboard
-	qp := ensureQRFile(filepath.Join(dir, "qr-vless.png"), vless)
-	if qp == "" {
-		qp = ensureQRFile(filepath.Join(dir, "qr.png"), vless)
+	if path == "" {
+		sendHTML(token, chat, cap, kb)
+		return
 	}
-	if qp == "" {
-		sendHTML(token, chat, cap.String(), kb)
-	} else if err := sendPhotoFile(token, chat, qp, cap.String(), kb); err != nil {
-		sendHTML(token, chat, cap.String()+nl+"⚠️ QR: <code>"+esc(err.Error())+"</code>", kb)
-	}
-	// Second QR (HY2) — photo only, no extra menu (already on first)
-	if hy2 != "" {
-		qp2 := ensureQRFile(filepath.Join(dir, "qr-hy2.png"), hy2)
-		if qp2 != "" {
-			c2 := "📱 HY2 · " + name
-			_ = sendPhotoFile(token, chat, qp2, c2, nil)
+	if edit && msgID > 0 {
+		if err := editPhotoFile(token, chat, msgID, path, cap, kb); err != nil {
+			// fallback: new message
+			_ = sendPhotoFile(token, chat, path, cap, kb)
 		}
+		return
+	}
+	if err := sendPhotoFile(token, chat, path, cap, kb); err != nil {
+		sendHTML(token, chat, cap+string([]byte{10})+"⚠️ <code>"+esc(err.Error())+"</code>", kb)
 	}
 }
 

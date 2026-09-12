@@ -160,6 +160,7 @@ func runRelay(args []string) {
 		fmt.Println("exit_enabled", on)
 		fmt.Println("sing-box re-applied on core; relays will sync on next agent poll")
 	case "status":
+		_ = relay.PruneDuplicates()
 		devs := relay.List()
 		if len(devs) == 0 {
 			b, err := os.ReadFile(filepath.Join(paths.StateDir(), "relay", "bundle.json"))

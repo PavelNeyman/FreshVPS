@@ -76,7 +76,7 @@ func handleMessage(token string, m *message, admin int64) {
 				{btn(T("main_menu"), "m:menu", "primary")},
 			},
 		}
-		sendHTML(token, chat, "🔑 <code>"+esc(tok)+"</code>", kb)
+		sendHTML(token, chat, formatSessionHTML(tok), kb)
 		return
 	}
 
@@ -113,9 +113,9 @@ func handleMessage(token string, m *message, admin int64) {
 			sendHTML(token, chat, Tf("lang_now", label), langKeyboard())
 		}
 	case "/status":
-		sendHTML(token, chat, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
+		sendHTML(token, chat, formatStatusPretty(), backKeyboard())
 	case "/vpn_list":
-		sendHTML(token, chat, T("vpn_users")+"\n\n<pre>"+esc(formatVPNList(runVPN("list")))+"</pre>", backKeyboard())
+		sendHTML(token, chat, formatVPNListPretty(runVPN("list")), backKeyboard())
 	case "/vpn_add":
 		if arg1 == "" {
 			setState(chat, "wait_vpn_add_name", "")
@@ -148,7 +148,7 @@ func handleMessage(token string, m *message, admin int64) {
 				{btn(T("main_menu"), "m:menu", "primary")},
 			},
 		}
-		sendHTML(token, chat, "🔑 <code>"+esc(tok)+"</code>", kb)
+		sendHTML(token, chat, formatSessionHTML(tok), kb)
 	case "/admin":
 		sendHTML(token, chat, T("admin_body"), mainKeyboard())
 	default:

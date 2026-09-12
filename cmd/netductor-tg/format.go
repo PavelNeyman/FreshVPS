@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+
+	qrcode "github.com/skip2/go-qrcode"
 
 	"github.com/PavelNeyman/netductor/internal/addons"
 )
@@ -356,32 +359,77 @@ func formatVPNLinkHTML(name string) (caption string, vless, hy2, sub string) {
 	return b.String(), vless, hy2, sub
 }
 
-func vpnQRPath(name string) string {
-	candidates := []string{
-		"/etc/netductor/clients/" + name + "/qr.png",
-		"/etc/netductor/clients/" + name + "/qr-subscription.png",
-		"/var/lib/netductor/clients/" + name + "/qr.png",
+func ensureQRFile(path, payload string) string {
+	if payload == "" {
+		return ""
 	}
-	for _, p := range candidates {
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p
-		}
+	if st, err := os.Stat(path); err == nil && !st.IsDir() && st.Size() > 0 {
+		return path
 	}
-	return ""
+	_ = os.MkdirAll(filepath.Dir(path), 0o700)
+	if err := qrcode.WriteFile(payload, qrcode.Medium, 512, path); err != nil {
+		return ""
+	}
+	_ = os.Chmod(path, 0o600)
+	return path
 }
 
-
 func deliverVPNLink(token string, chat int64, replyTo int, name string) {
-	caption, _, _, _ := formatVPNLinkHTML(name)
+	_, vless, hy2, sub := formatVPNLinkHTML(name)
 	kb := userCardKeyboard(name, "")
-	qr := vpnQRPath(name)
-	if qr != "" {
-		sendPhotoFile(token, chat, qr, caption, kb)
+	ru := getLang() != "en"
+
+	// 1) Text with both URIs (Shadowrocket: add two nodes or import lines)
+	var text strings.Builder
+	if ru {
+		text.WriteString("🔗 <b>VPN · " + esc(name) + "</b>\n\n")
+		text.WriteString("<i>Shadowrocket: добавьте <b>оба</b> узла (VLESS и Hysteria2) — одной ссылки мало.</i>\n\n")
+	} else {
+		text.WriteString("🔗 <b>VPN · " + esc(name) + "</b>\n\n")
+		text.WriteString("<i>Shadowrocket: add <b>both</b> nodes (VLESS + Hysteria2).</i>\n\n")
+	}
+	if vless != "" {
+		text.WriteString("<b>1) VLESS Reality</b>\n<code>" + esc(vless) + "</code>\n\n")
+	}
+	if hy2 != "" {
+		text.WriteString("<b>2) Hysteria2</b>\n<code>" + esc(hy2) + "</code>\n\n")
+	}
+	if vless == "" && hy2 == "" && sub != "" {
+		text.WriteString("<code>" + esc(sub) + "</code>\n")
+	}
+	if vless == "" && hy2 == "" {
+		if ru {
+			text.WriteString("❌ Нет ссылок. Проверьте имя пользователя.")
+		} else {
+			text.WriteString("❌ No links. Check user name.")
+		}
+		sendHTML(token, chat, text.String(), kb)
 		return
 	}
-	if replyTo > 0 {
-		reply(token, chat, replyTo, caption, kb)
-	} else {
-		sendHTML(token, chat, caption, kb)
+	sendHTML(token, chat, text.String(), kb)
+
+	dir := filepath.Join("/etc/netductor/clients", name)
+	// 2) QR VLESS
+	if vless != "" {
+		qp := ensureQRFile(filepath.Join(dir, "qr-vless.png"), vless)
+		if qp == "" {
+			qp = ensureQRFile(filepath.Join(dir, "qr.png"), vless)
+		}
+		cap := "📱 QR · VLESS Reality · " + name
+		if qp == "" {
+			sendHTML(token, chat, "⚠️ QR VLESS: cannot write image", nil)
+		} else if err := sendPhotoFile(token, chat, qp, cap, nil); err != nil {
+			sendHTML(token, chat, "⚠️ QR VLESS: <code>"+esc(err.Error())+"</code>", nil)
+		}
+	}
+	// 3) QR HY2
+	if hy2 != "" {
+		qp := ensureQRFile(filepath.Join(dir, "qr-hy2.png"), hy2)
+		cap := "📱 QR · Hysteria2 · " + name
+		if qp == "" {
+			sendHTML(token, chat, "⚠️ QR HY2: cannot write image", nil)
+		} else if err := sendPhotoFile(token, chat, qp, cap, nil); err != nil {
+			sendHTML(token, chat, "⚠️ QR HY2: <code>"+esc(err.Error())+"</code>", nil)
+		}
 	}
 }

@@ -112,6 +112,14 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	case "m:edge_bind":
 		setState(chat, "wait_edge_bind_dev", "")
 		reply(token, chat, msgID, T("bind_prompt"), backTo("routers"))
+	case "m:addons":
+		editHTML(token, cq.Message.Chat.ID, cq.Message.MessageID, "🧩 <b>"+T("addons")+"</b>", addonsKeyboard())
+	case "m:addon:lampac":
+		out := runND("addons", "lampac")
+		if out == "" {
+			out = runND("addon", "lampac")
+		}
+		editHTML(token, cq.Message.Chat.ID, cq.Message.MessageID, "📺 <b>Lampac</b>\n<pre>"+esc(out)+"</pre>", addonsKeyboard())
 	case "m:status":
 		reply(token, chat, msgID, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
 	case "m:vpn_list":

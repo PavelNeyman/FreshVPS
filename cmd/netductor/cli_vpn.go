@@ -3,6 +3,8 @@ package main
 import (
 	"github.com/PavelNeyman/netductor/internal/audit"
 	"fmt"
+	"strings"
+	"time"
 	"os"
 
 	"github.com/PavelNeyman/netductor/internal/edge"
@@ -97,7 +99,44 @@ func runVPN(args []string) {
 		case "hy2":
 			s, ok = vpn.ReadClient(name, "link-hy2.txt")
 		default:
+			// preferred: relay VLESS when online, else core subscription
+			r, err := vpn.ListNative()
+			if err == nil {
+				for _, u := range r {
+					if u.Name == name {
+						vless := vpn.VLESSLink(name, u.UUID)
+						via := "core"
+						for _, d := range relay.List() {
+							if relay.Online(d, 2*time.Minute) && d.PublicIP != "" && d.PBK != "" {
+								sni := d.SNI
+								if sni == "" {
+									sni = "ya.ru"
+								}
+								vless = vpn.ClientLinkForRelay(name, u.UUID, d.PublicIP, d.PBK, d.SID, sni)
+								via = "relay:" + d.ID
+								break
+							}
+						}
+						fmt.Println(vless)
+						if via != "core" {
+							fmt.Fprintln(os.Stderr, "via", via)
+						}
+						if hy, ok2 := vpn.ReadClient(name, "link-hy2.txt"); ok2 {
+							fmt.Println(strings.TrimSpace(hy))
+						}
+						return
+					}
+				}
+			}
 			s, ok = vpn.ReadClient(name, "subscription.txt", "link.txt")
+		}
+		if kind == "vless" || kind == "hy2" {
+			if !ok {
+				fmt.Fprintln(os.Stderr, "not found")
+				os.Exit(1)
+			}
+			fmt.Println(s)
+			return
 		}
 		if !ok {
 			fmt.Fprintln(os.Stderr, "not found")

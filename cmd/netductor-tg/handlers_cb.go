@@ -123,12 +123,23 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		reply(token, chat, msgID, T("add_prompt"), backTo("vpn"))
 	case "m:vpn_link", "m:vpn_disable", "m:vpn_enable", "m:vpn_revoke":
 		action := strings.TrimPrefix(data, "m:")
-		setState(chat, "wait_vpn_name:"+action, "")
-		label := map[string]string{
-			"vpn_link": T("label_link"), "vpn_disable": T("label_disable"),
-			"vpn_enable": T("label_enable"), "vpn_revoke": T("label_revoke"),
-		}[action]
-		reply(token, chat, msgID, Tf("name_prompt", label), backTo("vpn"))
+		// map m:vpn_link -> link
+		act := strings.TrimPrefix(action, "vpn_")
+		title := map[string]string{
+			"link": "🔗 <b>Ссылка / QR</b> — выберите пользователя:",
+			"disable": "🚫 <b>Disable</b> — выберите пользователя:",
+			"enable": "✅ <b>Enable</b> — выберите пользователя:",
+			"revoke": "🗑 <b>Revoke</b> — выберите пользователя:",
+		}[act]
+		if getLang() == "en" {
+			title = map[string]string{
+				"link": "🔗 <b>Link / QR</b> — pick a user:",
+				"disable": "🚫 <b>Disable</b> — pick a user:",
+				"enable": "✅ <b>Enable</b> — pick a user:",
+				"revoke": "🗑 <b>Revoke</b> — pick a user:",
+			}[act]
+		}
+		reply(token, chat, msgID, title+string([]byte{10, 10})+formatVPNListPretty(runVPN("list")), vpnUsersKeyboardFor(act))
 	case "m:admin":
 		reply(token, chat, msgID, T("admin_body"), backKeyboard())
 	case "m:session":

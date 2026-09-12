@@ -68,11 +68,11 @@ Commands (from VPS):
 			time.Sleep(time.Duration(cfg.Interval) * time.Second)
 			continue
 		}
-		if _, err := os.Stat("/etc/netductor-agent/applied_template"); err != nil {
+		if _, err := os.Stat(filepath.Join(agentDir(), "applied_template")); err != nil {
 			res := applyTemplate(client, cfg)
 			fmt.Fprintf(os.Stderr, "apply_template: %s\n", res)
 			if !strings.HasPrefix(res, "template:") {
-				_ = os.WriteFile("/etc/netductor-agent/applied_template", []byte(res+"\n"), 0o600)
+				_ = os.WriteFile(filepath.Join(agentDir(), "applied_template"), []byte(res+"\n"), 0o600)
 			}
 		}
 		if err := heartbeat(client, cfg); err != nil {
@@ -85,8 +85,15 @@ Commands (from VPS):
 	}
 }
 
+func agentDir() string {
+	if v := os.Getenv("NETDUCTOR_AGENT_DIR"); v != "" {
+		return v
+	}
+	return "/etc/netductor-agent"
+}
+
 func deviceTokenPath() string {
-	return "/etc/netductor-agent/device_token"
+	return filepath.Join(agentDir(), "device_token")
 }
 
 func loadDeviceToken() string {

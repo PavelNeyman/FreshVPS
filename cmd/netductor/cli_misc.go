@@ -67,6 +67,11 @@ func runBackupCmd() {
 
 
 func runSelfInstall() {
+	runUpdate(false)
+}
+
+// runUpdate replaces the local binary and optionally restarts services.
+func runUpdate(restart bool) {
 	exe, err := os.Executable()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -78,17 +83,27 @@ func runSelfInstall() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	_ = os.MkdirAll("/opt/netductor/bin", 0o755)
 	tmp := dest + ".new"
 	if err := os.WriteFile(tmp, data, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	_ = exec.Command("systemctl", "stop", "netductor-api").Run()
 	if err := os.Rename(tmp, dest); err != nil {
-		fmt.Fprintf(os.Stderr, "wrote %s (dest busy). restart api then: mv %s %s\n", tmp, tmp, dest)
-		return
+		fmt.Fprintf(os.Stderr, "wrote %s (rename failed: %v)\n", tmp, err)
+	} else {
+		fmt.Println("updated", dest)
 	}
-	fmt.Println("updated", dest)
-	fmt.Println("restart: systemctl restart netductor-api")
+	// keep parallel copy for unit ExecStart paths
+	_ = exec.Command("cp", "-f", dest, "/opt/netductor/bin/netductor").Run()
+	if restart {
+		_ = exec.Command("systemctl", "start", "netductor-api").Run()
+		_ = exec.Command("systemctl", "try-restart", "netductor-telegram-bot").Run()
+		fmt.Println("services restarted")
+	} else {
+		fmt.Println("restart: systemctl start netductor-api")
+	}
 }
 
 

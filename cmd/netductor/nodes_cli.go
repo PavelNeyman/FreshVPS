@@ -67,6 +67,22 @@ func runNodes(args []string) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "local-cmd":
+		if len(args) < 2 {
+			os.Exit(2)
+		}
+		switch args[1] {
+		case "reboot":
+			fmt.Println("rebooting core in 2s")
+			go func() {}()
+			// best-effort
+			_ = os.WriteFile("/tmp/netductor-reboot", []byte("1"), 0o644)
+			fmt.Println("use: systemctl reboot")
+		case "upgrade":
+			fmt.Println("core upgrade: pull release binary manually or via install")
+		default:
+			fmt.Println("unknown", args[1])
+		}
 	case "id":
 		fmt.Println(nodes.LocalStableID())
 	default:

@@ -14,18 +14,19 @@ const RelayUplinkName = "relay-uplink"
 
 // RelayBundle is generated on core and consumed on RU relay VPS.
 type RelayBundle struct {
-	Version    int    `json:"version"`
-	CreatedAt  string `json:"created_at"`
-	CoreIP     string `json:"core_ip"`
-	CoreVless  int    `json:"core_vless_port"`
-	CoreSNI    string `json:"core_sni"`
-	CorePBK    string `json:"core_pbk"`
-	CoreSID    string `json:"core_sid"`
-	UplinkUUID string `json:"uplink_uuid"`
-	// Inbound on relay (own Reality keypair)
-	RelaySNI string `json:"relay_sni"`
-	// Users allowed on relay inbound (same UUIDs as core for familiar client profiles)
-	Users []RelayUser `json:"users"`
+	Version      int         `json:"version"`
+	CreatedAt    string      `json:"created_at"`
+	CoreIP       string      `json:"core_ip"`
+	CoreVless    int         `json:"core_vless_port"`
+	CoreSNI      string      `json:"core_sni"`
+	CorePBK      string      `json:"core_pbk"`
+	CoreSID      string      `json:"core_sid"`
+	UplinkUUID   string      `json:"uplink_uuid"`
+	RelaySNI     string      `json:"relay_sni"`
+	Users        []RelayUser `json:"users"`
+	AgentToken   string      `json:"agent_token,omitempty"`
+	AgentID      string      `json:"agent_id,omitempty"`
+	CoreAgentURL string      `json:"core_agent_url,omitempty"`
 }
 
 type RelayUser struct {
@@ -33,7 +34,6 @@ type RelayUser struct {
 	UUID string `json:"uuid"`
 }
 
-// EnsureRelayUplink creates a dedicated core user for RU→core traffic.
 func EnsureRelayUplink() (uuid string, err error) {
 	r, err := loadRegistry()
 	if err != nil {
@@ -46,6 +46,7 @@ func EnsureRelayUplink() (uuid string, err error) {
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", msg, err)
 	}
+	_ = msg
 	r, err = loadRegistry()
 	if err != nil {
 		return "", err
@@ -57,7 +58,6 @@ func EnsureRelayUplink() (uuid string, err error) {
 	return u.UUID, nil
 }
 
-// ExportRelayBundle builds join material for a RU VPS.
 func ExportRelayBundle(relaySNI string) (*RelayBundle, error) {
 	if relaySNI == "" {
 		relaySNI = "ya.ru"
@@ -99,9 +99,6 @@ func ExportRelayBundle(relaySNI string) (*RelayBundle, error) {
 	return b, nil
 }
 
-// WriteRelaySingBox generates /usr/local/etc/sing-box/config.json for RU hop.
-// Inbound: VLESS Reality (relay keys) for end users.
-// Outbound: VLESS Vision to core as relay-uplink.
 func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 	if b == nil {
 		return fmt.Errorf("nil bundle")
@@ -118,7 +115,6 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 		users = append(users, vu{UUID: u.UUID, Flow: "xtls-rprx-vision"})
 	}
 	if len(users) == 0 {
-		// still allow uplink-only test with one placeholder skipped — require ≥1 user
 		return fmt.Errorf("bundle has no end users — add vpn users on core first")
 	}
 	cfg := map[string]any{
@@ -149,7 +145,7 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 					"enabled": true, "server_name": b.CoreSNI,
 					"utls":    map[string]any{"enabled": true, "fingerprint": "chrome"},
 					"reality": map[string]any{
-						"enabled": true,
+						"enabled":    true,
 						"public_key": b.CorePBK,
 						"short_id":   b.CoreSID,
 					},
@@ -177,7 +173,6 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 	return os.Rename(tmp, singboxConf)
 }
 
-// ClientLinkForRelay builds VLESS URI pointing at RU public IP (not core).
 func ClientLinkForRelay(name, uuid, relayIP, pbk, sid, sniName string) string {
 	if sniName == "" {
 		sniName = "ya.ru"

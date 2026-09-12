@@ -209,15 +209,47 @@ func langKeyboard() map[string]any {
 }
 
 func userCardKeyboard(name, subText string) map[string]any {
+	// Do NOT put full subscription into copy_text (Telegram max 256 chars → whole message fails).
 	rows := [][]map[string]any{
 		{btn(T("show_links"), "u:link:"+name, "primary")},
 		{btn(T("vpn_enable"), "u:enable:"+name, "success"), btn(T("vpn_disable"), "u:disable:"+name, "danger")},
 		{btn(T("vpn_revoke"), "u:revoke:"+name, "danger")},
-		{btn(T("main_menu"), "m:menu", "primary")},
-	}
-	if subText != "" {
-		rows = append([][]map[string]any{{btnCopy(T("copy_token"), subText)}}, rows...)
+		{btn(T("main_menu"), "m:menu", "primary"), btn(T("cat_vpn"), "m:cat:vpn", "")},
 	}
 	return map[string]any{"inline_keyboard": rows}
 }
 
+func vpnUsersKeyboard() map[string]any {
+	raw := runVPN("list")
+	rows := [][]map[string]any{}
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 1 {
+			parts = strings.Fields(line)
+		}
+		if len(parts) < 1 || parts[0] == "" {
+			continue
+		}
+		name := parts[0]
+		en := ""
+		if len(parts) > 1 {
+			en = parts[1]
+		}
+		label := "🔗 " + name
+		if en == "off" {
+			label = "🔴 " + name
+		} else if en == "on" {
+			label = "🟢 " + name
+		}
+		rows = append(rows, []map[string]any{btn(label, "u:link:"+name, "primary")})
+		if len(rows) >= 20 {
+			break
+		}
+	}
+	rows = append(rows, []map[string]any{btn(T("vpn_link"), "m:vpn_link", ""), btn(T("main_menu"), "m:menu", "primary")})
+	return map[string]any{"inline_keyboard": rows}
+}

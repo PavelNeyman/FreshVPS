@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
-	"path/filepath"
+	"strings"
+	"time"
 
-	"github.com/PavelNeyman/netductor/internal/paths"
+	"github.com/PavelNeyman/netductor/internal/relay"
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
 
@@ -24,21 +26,117 @@ func registerRelayAPI(mux *http.ServeMux) {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(b)
+		if id, tok, err := relay.IssueToken("relay"); err == nil {
+			b.AgentID = id
+			b.AgentToken = tok
+			b.CoreAgentURL = "http://" + b.CoreIP + ":8788"
+		}
+		writeJSON(w, 200, b)
 	})
 	mux.HandleFunc("/api/relay/status", func(w http.ResponseWriter, r *http.Request) {
 		if !requireSession(w, r) {
 			return
 		}
-		p := filepath.Join(paths.StateDir(), "relay", "bundle.json")
-		out := map[string]any{"path": p, "has_bundle": false}
-		if raw, err := os.ReadFile(p); err == nil {
-			out["has_bundle"] = true
-			var v any
-			_ = json.Unmarshal(raw, &v)
-			out["bundle"] = v
+		devs := relay.List()
+		type row struct {
+			relay.Device
+			Online bool `json:"online"`
 		}
-		writeJSON(w, 200, out)
+		var out []row
+		for _, d := range devs {
+			out = append(out, row{Device: d, Online: relay.Online(d, 2*time.Minute)})
+		}
+		writeJSON(w, 200, map[string]any{
+			"config_ver": relay.ConfigVer(),
+			"devices":    out,
+		})
 	})
+	mux.HandleFunc("/api/relay/links", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		// mobile links from last heartbeat identity
+		devs := relay.List()
+		var links []map[string]string
+		reg, _ := vpn.ExportRelayBundle("ya.ru") // users only
+		for _, d := range devs {
+			if d.PublicIP == "" || d.PBK == "" {
+				continue
+			}
+			for _, u := range reg.Users {
+				links = append(links, map[string]string{
+					"relay": d.ID,
+					"name":  u.Name,
+					"link":  vpn.ClientLinkForRelay(u.Name, u.UUID, d.PublicIP, d.PBK, d.SID, d.SNI),
+				})
+			}
+		}
+		writeJSON(w, 200, map[string]any{"links": links})
+	})
+
+	// Agent-facing (token = device token)
+	mux.HandleFunc("/api/relay/agent/heartbeat", handleRelayAgentHeartbeat)
+	mux.HandleFunc("/api/relay/agent/config", handleRelayAgentConfig)
+}
+
+func agentToken(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	if strings.HasPrefix(h, "Bearer ") {
+		return strings.TrimSpace(h[7:])
+	}
+	return r.Header.Get("X-Relay-Token")
+}
+
+func handleRelayAgentHeartbeat(w http.ResponseWriter, r *http.Request) {
+	tok := agentToken(r)
+	if tok == "" {
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+	raw, _ := io.ReadAll(r.Body)
+	var in relay.HeartbeatIn
+	_ = json.Unmarshal(raw, &in)
+	d, ver, err := relay.Heartbeat(tok, in)
+	if err != nil {
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"ok": true, "config_ver": ver, "need_sync": in.ConfigVer < ver, "id": d.ID,
+	})
+}
+
+func handleRelayAgentConfig(w http.ResponseWriter, r *http.Request) {
+	tok := agentToken(r)
+	if relay.FindByToken(tok) == nil {
+		http.Error(w, "unauthorized", 401)
+		return
+	}
+	b, err := vpn.ExportRelayBundle("ya.ru")
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	// do not issue new agent token on pull
+	b.AgentToken = ""
+	b.AgentID = ""
+	writeJSON(w, 200, b)
+}
+
+// startRelayAgentListener binds :8788 for agent plane (all interfaces).
+func startRelayAgentListener() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/relay/agent/heartbeat", handleRelayAgentHeartbeat)
+	mux.HandleFunc("/api/relay/agent/config", handleRelayAgentConfig)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	addr := os.Getenv("NETDUCTOR_RELAY_API")
+	if addr == "" {
+		addr = ":8788"
+	}
+	go func() {
+		_ = http.ListenAndServe(addr, mux)
+	}()
 }

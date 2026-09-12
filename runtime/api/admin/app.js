@@ -35,6 +35,7 @@
     document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('hide', p.id !== 'tab-' + name));
     if (name === 'addons') refreshAddons();
+    if (name === 'relay') refreshRelay();
   }
   async function refreshNodes() {
     const data = await (await api('/api/nodes')).json();
@@ -51,6 +52,18 @@
       $('#node-id').value = b.dataset.id;
       $('#node-hn').value = b.dataset.hn || '';
     });
+  }
+  async function refreshRelay() {
+    try {
+      const r = await api('/api/relay/export?sni=ya.ru');
+      const b = await r.json();
+      $('#relay-bundle').textContent = JSON.stringify(b, null, 2);
+      const enc = btoa(unescape(encodeURIComponent(JSON.stringify(b))));
+      const cmd = 'wget -qO /usr/local/bin/netductor https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64 && chmod 755 /usr/local/bin/netductor && echo '+enc+' | base64 -d > /root/bundle.json && netductor relay join /root/bundle.json';
+      $('#relay-oneline').textContent = cmd;
+    } catch (e) {
+      $('#relay-bundle').textContent = 'error: ' + e;
+    }
   }
   async function refreshAddons() {
     try {
@@ -254,6 +267,7 @@
     } catch (e) { $('#login-err').textContent = 'Invalid session'; }
   };
   if ($('#btn-lp-refresh')) $('#btn-lp-refresh').onclick = () => refreshAddons();
+  if ($('#btn-relay-export')) $('#btn-relay-export').onclick = () => refreshRelay();
   $('#btn-logout').onclick = logout;
   $('#btn-lang').onclick = () => {
     state.lang = state.lang === 'en' ? 'ru' : 'en';

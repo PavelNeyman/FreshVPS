@@ -92,6 +92,10 @@ func runRelay(args []string) {
 		}
 		fmt.Fprintln(os.Stderr, "relay agent →", url)
 		relay.AgentLoop(url, tok, 30*time.Second)
+	case "sync":
+		ver := relay.BumpConfigVer()
+		fmt.Println("config_ver", ver)
+		fmt.Println("relays will pull on next heartbeat (~30s)")
 	case "exit":
 		if len(args) < 2 || args[1] == "status" {
 			fmt.Println("exit_enabled", relay.ExitEnabled())

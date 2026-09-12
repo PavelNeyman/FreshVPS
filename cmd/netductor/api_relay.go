@@ -51,6 +51,24 @@ func registerRelayAPI(mux *http.ServeMux) {
 			"devices":    out,
 		})
 	})
+	mux.HandleFunc("/api/relay/exit", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		if r.Method == http.MethodPost {
+			var body struct {
+				Enabled *bool `json:"enabled"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			on := r.URL.Query().Get("enabled") == "1" || r.URL.Query().Get("on") == "1"
+			if body.Enabled != nil {
+				on = *body.Enabled
+			}
+			_ = relay.SetExitEnabled(on)
+			_ = vpn.ApplyConfig()
+		}
+		writeJSON(w, 200, map[string]any{"exit_enabled": relay.ExitEnabled()})
+	})
 	mux.HandleFunc("/api/relay/links", func(w http.ResponseWriter, r *http.Request) {
 		if !requireSession(w, r) {
 			return

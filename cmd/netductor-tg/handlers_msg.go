@@ -43,7 +43,7 @@ func handleMessage(token string, m *message, admin int64) {
 	}
 		if st == "wait_relay_host" {
 		setState(chat, "wait_relay_user:"+text, "")
-		sendHTML(token, chat, "Логин SSH (обычно <code>root</code>), или отправьте <code>root</code>:", backTo("relay"))
+		sendHTML(token, chat, "Логин SSH (обычно <code>root</code>), или отправьте <code>root</code>:", backTo("nodes"))
 		return
 	}
 	if strings.HasPrefix(st, "wait_relay_user:") {
@@ -53,7 +53,7 @@ func handleMessage(token string, m *message, admin int64) {
 			user = "root"
 		}
 		setState(chat, "wait_relay_pass:"+host+"|"+user, "")
-		sendHTML(token, chat, "Пароль root (один раз; после установки останется только SSH-ключ core):", backTo("relay"))
+		sendHTML(token, chat, "Пароль root (один раз; после установки останется только SSH-ключ core):", backTo("nodes"))
 		return
 	}
 	if strings.HasPrefix(st, "wait_relay_pass:") {

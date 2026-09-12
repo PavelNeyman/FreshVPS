@@ -42,9 +42,11 @@ func agentTick(client *http.Client, coreBase, token string, applied *int) error 
 	if out, err := exec.Command("systemctl", "is-active", "sing-box").Output(); err == nil {
 		sbOK = strings.TrimSpace(string(out)) == "active"
 	}
+	cpu, memU, memT, load1 := sampleMetrics()
 	body, _ := json.Marshal(HeartbeatIn{
 		PublicIP: ip, PBK: pub, SID: sid, SNI: sni,
 		Version: "agent-1", SingBoxOK: sbOK, ConfigVer: *applied,
+		CPUPercent: cpu, MemUsedMB: memU, MemTotalMB: memT, Load1: load1,
 	})
 	req, err := http.NewRequest(http.MethodPost, coreBase+"/api/relay/agent/heartbeat", bytes.NewReader(body))
 	if err != nil {
@@ -121,4 +123,33 @@ func publicIP() string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+
+func sampleMetrics() (cpu float64, memUsed, memTotal int64, load1 float64) {
+	// loadavg
+	if b, err := os.ReadFile("/proc/loadavg"); err == nil {
+		fmt.Sscanf(string(b), "%f", &load1)
+	}
+	// meminfo
+	if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+		var total, avail int64
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(line, "MemTotal:") {
+				fmt.Sscanf(line, "MemTotal: %d", &total)
+			}
+			if strings.HasPrefix(line, "MemAvailable:") {
+				fmt.Sscanf(line, "MemAvailable: %d", &avail)
+			}
+		}
+		memTotal = total / 1024
+		if total > 0 {
+			memUsed = (total - avail) / 1024
+		}
+	}
+	cpu = load1 * 50 // rough indicator on small VPS
+	if cpu > 100 {
+		cpu = 100
+	}
+	return
 }

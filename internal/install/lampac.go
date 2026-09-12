@@ -22,7 +22,7 @@ func InstallLampac() error {
 	_ = os.MkdirAll(filepath.Join(paths.OptDir(), "lampac"), 0o755)
 	// stop existing
 	_ = exec.Command("docker", "rm", "-f", "netductor-lampac").Run()
-	img := env("NETDUCTOR_LAMPAC_IMAGE", "immisterio/lampac:latest")
+	img := env("NETDUCTOR_LAMPAC_IMAGE", "ghcr.io/lampac-nextgen/lampac:latest")
 	port := env("NETDUCTOR_LAMPAC_PORT", "9118")
 	cmd := exec.Command("docker", "run", "-d",
 		"--name", "netductor-lampac",

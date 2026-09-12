@@ -33,6 +33,13 @@ func registerRelayAPI(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, b)
 	})
+	mux.HandleFunc("/api/relay/sync", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		ver := relay.BumpConfigVer()
+		writeJSON(w, 200, map[string]any{"ok": true, "config_ver": ver})
+	})
 	mux.HandleFunc("/api/relay/status", func(w http.ResponseWriter, r *http.Request) {
 		if !requireSession(w, r) {
 			return

@@ -101,7 +101,8 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		setState(chat, "wait_edge_bind_dev", "")
 		reply(token, chat, msgID, T("bind_prompt"), backTo("routers"))
 		case "m:cat:relay":
-		reply(token, chat, msgID, T("relay_title")+string([]byte{10,10})+formatRelayHelp(), relayKeyboard())
+		// Relay is part of Nodes
+		reply(token, chat, msgID, T("nodes_title")+string([]byte{10, 10})+formatNodesListHTML()+string([]byte{10, 10})+"<i>relay = role in nodes</i>", nodesKeyboard())
 	case "m:relay:export":
 		out := runND("relay", "export", "-o", "/tmp/nd-relay-bundle.json", "--sni", "ya.ru")
 		b, err := os.ReadFile("/tmp/nd-relay-bundle.json")
@@ -112,12 +113,14 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		reply(token, chat, msgID, "📦 <b>bundle</b>"+string([]byte{10})+"<pre>"+esc(truncate(msg, 3500))+"</pre>", relayKeyboard())
 	case "m:relay:enroll":
 		setState(chat, "wait_relay_host", "")
-		reply(token, chat, msgID, "📡 <b>Enroll relay</b>"+string([]byte{10,10})+"Введите <b>IP</b> (или host) новой RU VPS:", backTo("relay"))
+		reply(token, chat, msgID, "📡 <b>Enroll relay</b>"+string([]byte{10,10})+"Введите <b>IP</b> (или host) новой RU VPS:", backTo("nodes"))
 	case "m:relay:oneline":
 		reply(token, chat, msgID, formatRelayOneline(), relayKeyboard())
 	case "m:relay:sync":
 		out := runND("relay", "sync")
 		reply(token, chat, msgID, "🔄 <b>Sync</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>"+string([]byte{10})+formatRelayListHTML(), relayKeyboard())
+	case "m:relay:exit:menu":
+		reply(token, chat, msgID, "🇷🇺 <b>RU exit</b>"+string([]byte{10})+"<i>When ON, traffic from core exits via RU IP (access to RU services from abroad).</i>", relayKeyboard())
 	case "m:relay:exit:on":
 		out := runND("relay", "exit", "on")
 		reply(token, chat, msgID, "🇷🇺 <b>RU exit ON</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>"+string([]byte{10})+"<i>Трафик с core уходит через РФ (доступ к RU-сервисам из-за границы)</i>", relayKeyboard())

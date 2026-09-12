@@ -174,6 +174,64 @@ func sendPhotoFile(token string, chat int64, path, caption string, kb map[string
 	return nil
 }
 
+
+func editPhotoFile(token string, chat int64, msgID int, path, caption string, kb map[string]any) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if len(caption) > 1000 {
+		caption = caption[:1000] + "…"
+	}
+	media := map[string]any{
+		"type": "photo", "media": "attach://photo", "parse_mode": "HTML",
+	}
+	if caption != "" {
+		media["caption"] = caption
+	}
+	mb, _ := json.Marshal(media)
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	_ = w.WriteField("chat_id", strconv.FormatInt(chat, 10))
+	_ = w.WriteField("message_id", strconv.Itoa(msgID))
+	_ = w.WriteField("media", string(mb))
+	if kb != nil {
+		jb, _ := json.Marshal(kb)
+		_ = w.WriteField("reply_markup", string(jb))
+	}
+	part, err := w.CreateFormFile("photo", filepath.Base(path))
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(part, f); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+token+"/editMessageMedia", &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var wr struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	_ = json.Unmarshal(body, &wr)
+	if !wr.OK {
+		return fmt.Errorf("editMessageMedia: %s", wr.Description)
+	}
+	return nil
+}
+
 func answerCallback(token, id string) {
 	_, _ = apiPost(token, "answerCallbackQuery", map[string]any{"callback_query_id": id})
 }

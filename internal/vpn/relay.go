@@ -181,6 +181,7 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 		"dns": map[string]any{
 			"servers": []any{
 				map[string]any{"type": "udp", "tag": "ru-dns", "server": "77.88.8.8"},
+				map[string]any{"type": "udp", "tag": "quad9", "server": "9.9.9.9"},
 				map[string]any{"type": "udp", "tag": "cf", "server": "1.1.1.1"},
 				map[string]any{"type": "local", "tag": "local"},
 			},
@@ -190,7 +191,7 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 					"server":        "ru-dns",
 				},
 			},
-			"final": "cf", "strategy": "ipv4_only",
+			"final": "quad9", "strategy": "ipv4_only",
 		},
 		"inbounds": inbounds,
 		"outbounds": []any{
@@ -223,7 +224,7 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 				map[string]any{"inbound": []string{"relay-in"}, "outbound": "uplink"},
 			},
 			"final": "uplink",
-			"default_domain_resolver": "cf",
+			"default_domain_resolver": "quad9",
 			"auto_detect_interface":   true,
 		},
 	}

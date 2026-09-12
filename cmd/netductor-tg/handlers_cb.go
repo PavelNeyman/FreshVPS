@@ -40,6 +40,28 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		return
 	}
 
+	if strings.HasPrefix(data, "m:nd:") {
+		// m:nd:o|m|u|r:<id>
+		rest := strings.TrimPrefix(data, "m:nd:")
+		parts := strings.SplitN(rest, ":", 2)
+		if len(parts) == 2 {
+			act, id := parts[0], parts[1]
+			switch act {
+			case "o": // open card
+				reply(token, chat, msgID, formatNodeDetailHTML(id), nodeCardKeyboard(id))
+			case "m": // metrics
+				reply(token, chat, msgID, formatNodeDetailHTML(id), nodeCardKeyboard(id))
+			case "u": // upgrade
+				out := enqueueNodeCmd(id, "upgrade")
+				reply(token, chat, msgID, "🔄 <b>Upgrade queued</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>", nodeCardKeyboard(id))
+			case "r": // reboot
+				out := enqueueNodeCmd(id, "reboot")
+				reply(token, chat, msgID, "♻️ <b>Reboot queued</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>", nodeCardKeyboard(id))
+			}
+		}
+		return
+	}
+
 	if strings.HasPrefix(data, "m:lang:") {
 		l := strings.TrimPrefix(data, "m:lang:")
 		setLang(l)
@@ -76,7 +98,7 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		setState(chat, "", "")
 		reply(token, chat, msgID, T("nodes_title")+string([]byte{10, 10})+T("nodes_hint"), nodesKeyboard())
 	case "m:nodes_list":
-		reply(token, chat, msgID, T("nodes_title")+string([]byte{10, 10})+formatNodesListHTML()+string([]byte{10, 10})+"<i>"+T("nodes_hint")+"</i>", nodesKeyboard())
+		reply(token, chat, msgID, T("nodes_title")+string([]byte{10, 10})+formatNodesListHTML()+string([]byte{10, 10})+"<i>"+T("nodes_hint")+"</i>", nodesListKeyboard())
 	case "m:node_rename":
 		setState(chat, "", "")
 		reply(token, chat, msgID, T("nodes_rename")+string([]byte{10, 10})+formatNodesListHTML(), nodesRenameKeyboard())

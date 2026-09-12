@@ -16,7 +16,7 @@ import (
 
 func runRelay(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: netductor relay export|join|links|status")
+		fmt.Fprintln(os.Stderr, "usage: netductor relay export|join|links|status|exit on|exit off|exit")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -92,6 +92,25 @@ func runRelay(args []string) {
 		}
 		fmt.Fprintln(os.Stderr, "relay agent →", url)
 		relay.AgentLoop(url, tok, 30*time.Second)
+	case "exit":
+		if len(args) < 2 || args[1] == "status" {
+			fmt.Println("exit_enabled", relay.ExitEnabled())
+			return
+		}
+		on := args[1] == "on" || args[1] == "1" || args[1] == "true"
+		if args[1] == "off" || args[1] == "0" || args[1] == "false" {
+			on = false
+		} else if args[1] != "on" && args[1] != "1" && args[1] != "true" {
+			fmt.Fprintln(os.Stderr, "usage: netductor relay exit on|off")
+			os.Exit(2)
+		}
+		if err := relay.SetExitEnabled(on); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		_ = vpn.ApplyConfig()
+		fmt.Println("exit_enabled", on)
+		fmt.Println("sing-box re-applied on core; relays will sync on next agent poll")
 	case "status":
 		devs := relay.List()
 		if len(devs) == 0 {

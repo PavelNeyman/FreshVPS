@@ -28,8 +28,9 @@ type Device struct {
 }
 
 type registry struct {
-	ConfigVer int       `json:"config_ver"` // bump when users change
-	Devices   []Device  `json:"devices"`
+	ConfigVer   int      `json:"config_ver"`
+	ExitEnabled bool     `json:"exit_enabled"` // abroad → exit via RU
+	Devices     []Device `json:"devices"`
 }
 
 var mu sync.Mutex
@@ -184,4 +185,26 @@ func Online(d Device, within time.Duration) bool {
 		return false
 	}
 	return time.Since(d.LastSeen) < within
+}
+
+func ExitEnabled() bool {
+	mu.Lock()
+	defer mu.Unlock()
+	r, err := load()
+	if err != nil || r == nil {
+		return false
+	}
+	return r.ExitEnabled
+}
+
+func SetExitEnabled(on bool) error {
+	mu.Lock()
+	defer mu.Unlock()
+	r, err := load()
+	if err != nil {
+		return err
+	}
+	r.ExitEnabled = on
+	r.ConfigVer++
+	return save(r)
 }

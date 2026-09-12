@@ -27,6 +27,8 @@ type RelayBundle struct {
 	AgentToken   string      `json:"agent_token,omitempty"`
 	AgentID      string      `json:"agent_id,omitempty"`
 	CoreAgentURL string      `json:"core_agent_url,omitempty"`
+	ExitUUID     string      `json:"exit_uuid,omitempty"`
+	ExitPort     int         `json:"exit_port,omitempty"`
 }
 
 type RelayUser struct {
@@ -88,6 +90,14 @@ func ExportRelayBundle(relaySNI string) (*RelayBundle, error) {
 		UplinkUUID: up,
 		RelaySNI:   relaySNI,
 		Users:      users,
+		ExitPort:   4443,
+	}
+	// dedicated UUID for core→RU exit feeder
+	if eu := secret("relay_exit_uuid"); eu != "" {
+		b.ExitUUID = eu
+	} else {
+		b.ExitUUID = genUUID()
+		_ = os.WriteFile(filepath.Join(paths.EtcDir(), "secrets", "relay_exit_uuid"), append([]byte(b.ExitUUID), 10), 0o600)
 	}
 	if b.CorePBK == "" || b.CoreSID == "" {
 		return nil, fmt.Errorf("core Reality secrets missing")
@@ -117,25 +127,48 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 	if len(users) == 0 {
 		return fmt.Errorf("bundle has no end users — add vpn users on core first")
 	}
-	cfg := map[string]any{
-		"log": map[string]any{"level": "info", "timestamp": true},
-		"inbounds": []any{
-			map[string]any{
-				"type": "vless", "tag": "relay-in", "listen": "::", "listen_port": 443,
-				"users": users,
-				"tls": map[string]any{
-					"enabled": true, "server_name": b.RelaySNI,
-					"reality": map[string]any{
-						"enabled": true,
-						"handshake": map[string]any{
-							"server": b.RelaySNI, "server_port": 443,
-						},
-						"private_key": privKey,
-						"short_id":    []string{shortID},
+	exitPort := b.ExitPort
+	if exitPort <= 0 {
+		exitPort = 4443
+	}
+	inbounds := []any{
+		map[string]any{
+			"type": "vless", "tag": "relay-in", "listen": "::", "listen_port": 443,
+			"users": users,
+			"tls": map[string]any{
+				"enabled": true, "server_name": b.RelaySNI,
+				"reality": map[string]any{
+					"enabled": true,
+					"handshake": map[string]any{
+						"server": b.RelaySNI, "server_port": 443,
 					},
+					"private_key": privKey,
+					"short_id":    []string{shortID},
 				},
 			},
 		},
+	}
+	// Exit feeder: core connects here when "RU exit" mode is on; traffic leaves via RU IP.
+	if b.ExitUUID != "" {
+		inbounds = append(inbounds, map[string]any{
+			"type": "vless", "tag": "exit-in", "listen": "::", "listen_port": exitPort,
+			"users": []vu{{UUID: b.ExitUUID, Flow: "xtls-rprx-vision"}},
+			"tls": map[string]any{
+				"enabled": true, "server_name": b.RelaySNI,
+				"reality": map[string]any{
+					"enabled": true,
+					"handshake": map[string]any{
+						"server": b.RelaySNI, "server_port": 443,
+					},
+					"private_key": privKey,
+					"short_id":    []string{shortID},
+				},
+			},
+		})
+	}
+	cfg := map[string]any{
+		"log": map[string]any{"level": "info", "timestamp": true},
+		"inbounds": inbounds,
 		"outbounds": []any{
 			map[string]any{
 				"type": "vless", "tag": "uplink",
@@ -156,6 +189,7 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 		"route": map[string]any{
 			"rules": []any{
 				map[string]any{"action": "sniff"},
+				map[string]any{"inbound": []string{"exit-in"}, "outbound": "direct"},
 				map[string]any{"inbound": []string{"relay-in"}, "outbound": "uplink"},
 			},
 			"final": "uplink",

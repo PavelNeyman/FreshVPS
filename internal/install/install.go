@@ -64,6 +64,8 @@ func Run(opts Options) error {
 			err = InstallTelegram()
 		case "backup":
 			err = InstallBackup()
+		case "lampac":
+			err = InstallLampac()
 		default:
 			fmt.Fprintf(os.Stderr, "skip unknown component %s\n", c)
 		}

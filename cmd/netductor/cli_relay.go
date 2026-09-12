@@ -16,7 +16,7 @@ import (
 
 func runRelay(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: netductor relay export|join|links|status|exit on|exit off|exit")
+		fmt.Fprintln(os.Stderr, "usage: netductor relay export|join|links|status|sync|exit|provision --host --user --password")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -92,6 +92,50 @@ func runRelay(args []string) {
 		}
 		fmt.Fprintln(os.Stderr, "relay agent →", url)
 		relay.AgentLoop(url, tok, 30*time.Second)
+	case "provision":
+		host, user, pass, sni := "", "root", "", "ya.ru"
+		port := 22
+		for i := 1; i < len(args); i++ {
+			a := args[i]
+			switch {
+			case a == "--host" && i+1 < len(args):
+				i++; host = args[i]
+			case a == "--user" && i+1 < len(args):
+				i++; user = args[i]
+			case a == "--password" && i+1 < len(args):
+				i++; pass = args[i]
+			case a == "--port" && i+1 < len(args):
+				i++; fmt.Sscanf(args[i], "%d", &port)
+			case a == "--sni" && i+1 < len(args):
+				i++; sni = args[i]
+			}
+		}
+		if host == "" || pass == "" {
+			fmt.Fprintln(os.Stderr, "required: --host and --password")
+			os.Exit(2)
+		}
+		b, err := vpn.ExportRelayBundle(sni)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if id, tok, err := relay.IssueToken("relay"); err == nil {
+			b.AgentID = id
+			b.AgentToken = tok
+			b.CoreAgentURL = "http://" + b.CoreIP + ":8788"
+		}
+		raw, _ := json.MarshalIndent(b, "", "  ")
+		res, err := relay.ProvisionFromCore(relay.ProvisionIn{
+			Host: host, Port: port, User: user, Password: pass, SNI: sni,
+		}, string(raw))
+		if res != nil {
+			fmt.Println(res.Log)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("provisioned", host)
 	case "sync":
 		ver := relay.BumpConfigVer()
 		fmt.Println("config_ver", ver)

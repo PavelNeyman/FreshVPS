@@ -628,12 +628,14 @@ func runServe(args []string) {
 	fmt.Fprintf(os.Stderr, "netductor serve on http://%s admin=%s\n", addr, root)
 	if tlsCert != "" && tlsKey != "" {
 		fmt.Fprintf(os.Stderr, "netductor serve TLS on https://%s\n", addr)
+		startRelayAgentListener()
 		if err := http.ListenAndServeTLS(addr, tlsCert, tlsKey, mux); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		return
 	}
+	startRelayAgentListener()
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

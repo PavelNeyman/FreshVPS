@@ -176,6 +176,15 @@ func runND(args ...string) string {
 
 func statusInline() string {
 	var b strings.Builder
+	if getLang() != "en" {
+		b.WriteString("📊 <b>Статус</b>
+
+")
+	} else {
+		b.WriteString("📊 <b>Status</b>
+
+")
+	}
 	host, _ := os.Hostname()
 	ru := getLang() != "en"
 	act, inact := "active", "inactive"

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/PavelNeyman/netductor/internal/audit"
 	"fmt"
 	"os"
 
@@ -44,6 +45,7 @@ func runVPN(args []string) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		audit.Log("cli", "vpn.add", rest[0], note)
 	case "note":
 		if len(rest) < 1 {
 			os.Exit(2)

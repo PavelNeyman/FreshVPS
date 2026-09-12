@@ -610,9 +610,15 @@ func runServe(args []string) {
 			return
 		}
 	}
-	if bind != "127.0.0.1" && bind != "localhost" && os.Getenv("NETDUCTOR_API_PUBLIC") != "1" {
-		fmt.Fprintln(os.Stderr, "refusing non-local API bind without NETDUCTOR_API_PUBLIC=1")
-		os.Exit(2)
+	if bind != "127.0.0.1" && bind != "localhost" {
+		if os.Getenv("NETDUCTOR_API_PUBLIC") != "1" {
+			fmt.Fprintln(os.Stderr, "refusing non-local API bind without NETDUCTOR_API_PUBLIC=1")
+			os.Exit(2)
+		}
+		if tlsCert == "" || tlsKey == "" {
+			fmt.Fprintln(os.Stderr, "public API bind requires --tls-cert and --tls-key (or NETDUCTOR_TLS_*)")
+			os.Exit(2)
+		}
 	}
 	mux := buildAPIMux()
 	root := adminRoot()

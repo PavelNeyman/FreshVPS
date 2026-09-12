@@ -220,9 +220,18 @@ func langKeyboard() map[string]any {
 }
 
 func userCardKeyboard(name, subText string) map[string]any {
-	// Do NOT put full subscription into copy_text (Telegram max 256 chars → whole message fails).
+	return userCardKeyboardMode(name, "vless")
+}
+
+// mode: vless | hy2 — top button toggles QR in the same message
+func userCardKeyboardMode(name, mode string) map[string]any {
+	toggle := btn("📱 HY2 QR", "u:hy2qr:"+name, "primary")
+	if mode == "hy2" {
+		toggle = btn("📱 VLESS QR", "u:vlessqr:"+name, "primary")
+	}
 	rows := [][]map[string]any{
-		{btn(T("show_links"), "u:link:"+name, "primary")},
+		{toggle},
+		{btn(T("show_links"), "u:link:"+name, "")},
 		{btn(T("vpn_enable"), "u:enable:"+name, "success"), btn(T("vpn_disable"), "u:disable:"+name, "danger")},
 		{btn(T("vpn_revoke"), "u:revoke:"+name, "danger")},
 		{btn(T("main_menu"), "m:menu", "primary"), btn(T("cat_vpn"), "m:cat:vpn", "")},

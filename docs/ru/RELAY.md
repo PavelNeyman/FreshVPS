@@ -50,3 +50,9 @@ After `relay join`, RU runs `netductor-relay-agent`:
 - Mobile links: `GET /api/relay/links` or TG (uses last reported IP+pbk)
 
 Open on **core** firewall: **8788/tcp** from the RU IP (or world if needed).
+
+## Provision с core
+
+`netductor relay provision --host IP --user root --password …`
+
+Core ставит свой SSH-ключ, отключает пароль, join + agent.

@@ -27,6 +27,7 @@ func relayKeyboard() map[string]any {
 		{btn(T("relay_oneline"), "m:relay:oneline", "primary")},
 		{btn(T("relay_list"), "m:relay:list", "")},
 		{btn("🇷🇺 RU exit ON", "m:relay:exit:on", "success"), btn("RU exit OFF", "m:relay:exit:off", "danger")},
+		{btn("🔄 Sync relays", "m:relay:sync", "primary")},
 		{btn(T("main_menu"), "m:menu", "primary")},
 	}}
 }

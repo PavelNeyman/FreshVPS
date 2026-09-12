@@ -141,9 +141,11 @@ func handleRelayAgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if n, ok, err := nodes.Get(d.ID); err == nil && ok && n.DesiredHN != "" {
 		desired = n.DesiredHN
 	}
+	cmds := relay.TakeCmds(d.ID)
 	writeJSON(w, 200, map[string]any{
 		"ok": true, "config_ver": ver, "need_sync": in.ConfigVer < ver, "id": d.ID,
 		"desired_hostname": desired,
+		"commands": cmds,
 	})
 }
 

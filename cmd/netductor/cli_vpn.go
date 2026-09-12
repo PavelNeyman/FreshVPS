@@ -11,7 +11,7 @@ import (
 
 func runVPN(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: netductor vpn add|list|link|note|disable|enable|revoke|apply|session|edge-list|edge-cmd ...")
+		fmt.Fprintln(os.Stderr, "usage: netductor vpn add|list|link|note|disable|enable|revoke|apply|set-sni|session ...")
 		os.Exit(2)
 	}
 	cmd := args[0]
@@ -103,6 +103,16 @@ func runVPN(args []string) {
 			os.Exit(1)
 		}
 		fmt.Println(s)
+	case "set-sni":
+		if len(rest) < 1 {
+			fmt.Fprintln(os.Stderr, "usage: netductor vpn set-sni <hostname>  (e.g. www.microsoft.com)")
+			os.Exit(2)
+		}
+		if err := vpn.SetSNI(rest[0]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("sni set to", rest[0], "— links rewritten, sing-box re-applied")
 	case "apply":
 		if err := vpn.ApplyConfig(); err != nil {
 			fmt.Fprintln(os.Stderr, err)

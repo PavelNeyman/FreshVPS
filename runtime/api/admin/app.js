@@ -23,7 +23,8 @@
   function logout() {
     state.token = ''; localStorage.removeItem('nd_token');
     $('#dash').classList.add('hide'); $('#login').classList.remove('hide');
-    $('#btn-logout').classList.add('hide');
+    const blp=$('#btn-lp-refresh'); if(blp) blp.onclick=()=>refreshAddons();
+  $('#btn-logout').classList.add('hide');
   }
   function showDash() {
     $('#login').classList.add('hide'); $('#dash').classList.remove('hide');
@@ -33,6 +34,7 @@
   function tab(name) {
     document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('hide', p.id !== 'tab-' + name));
+    if (name === 'addons') refreshAddons();
   }
   async function refreshNodes() {
     const data = await (await api('/api/nodes')).json();
@@ -50,6 +52,23 @@
       $('#node-hn').value = b.dataset.hn || '';
     });
   }
+  async function refreshAddons() {
+    try {
+      const lp = await (await api('/api/addons/lampac')).json();
+      const st = !lp.installed ? 'not installed' : (lp.running ? 'running' : 'stopped');
+      $('#lp-status').textContent = st + (lp.image ? ' · ' + lp.image : '');
+      $('#lp-health').textContent = lp.healthy ? 'healthy' : (lp.running ? 'unhealthy' : '—');
+      $('#lp-res').textContent = (lp.cpu || '—') + ' / ' + (lp.mem || '—');
+      $('#lp-ver').textContent = lp.version_hash || '—';
+      $('#lp-ping').textContent = lp.ping_ok ? 'ok' : 'fail';
+      $('#lp-chr').textContent = lp.chromium_ok ? 'ok' : 'fail';
+      if (lp.ui_url) $('#lp-ui').href = lp.ui_url;
+      if (lp.admin_url) $('#lp-admin').href = lp.admin_url;
+    } catch (e) {
+      $('#lp-status').textContent = 'error';
+    }
+  }
+
   async function refreshOverview() {
     try {
       const st = await (await api('/api/status')).json();
@@ -222,7 +241,7 @@
   }
   function refreshAll() {
     refreshNodes().catch(()=>{});
-    refreshOverview(); refreshUsers(); refreshRouters(); refreshTemplates(); refreshMetrics(); refreshProbes();
+    refreshOverview(); refreshUsers(); refreshRouters(); refreshTemplates(); refreshMetrics(); refreshProbes(); refreshAddons();
   }
 
   $('#btn-login').onclick = async () => {
@@ -234,6 +253,7 @@
       showDash();
     } catch (e) { $('#login-err').textContent = 'Invalid session'; }
   };
+  if ($('#btn-lp-refresh')) $('#btn-lp-refresh').onclick = () => refreshAddons();
   $('#btn-logout').onclick = logout;
   $('#btn-lang').onclick = () => {
     state.lang = state.lang === 'en' ? 'ru' : 'en';

@@ -344,14 +344,59 @@ func formatRelayListHTML() string {
 	return "📡 <b>Nodes / relay</b>" + nl + "RU exit: <code>" + esc(ex) + "</code>" + nl + nl + body
 }
 
+func formatNodeDetailHTML(id string) string {
+	nl := string([]byte{10})
+	out := runND("nodes", "list")
+	var line string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "id="+id) || strings.HasPrefix(strings.TrimSpace(l), "id="+id) {
+			line = l
+			break
+		}
+	}
+	// relay metrics from status
+	st := runND("relay", "status")
+	var b strings.Builder
+	b.WriteString("🖥 <b>Node</b> <code>" + esc(id) + "</code>" + nl + nl)
+	if line != "" {
+		for _, p := range strings.Split(line, "\t") {
+			b.WriteString("• <code>" + esc(p) + "</code>" + nl)
+		}
+	}
+	if st != "" {
+		b.WriteString(nl + "<b>relay status</b>" + nl)
+		for _, l := range strings.Split(st, "\n") {
+			if strings.Contains(l, id) {
+				b.WriteString("<code>" + esc(l) + "</code>" + nl)
+			}
+		}
+	}
+	b.WriteString(nl + "<i>Reboot/Upgrade: queued for agent (relay) or local (core).</i>")
+	return b.String()
+}
+
+func enqueueNodeCmd(id, cmd string) string {
+	// relay queue
+	out := runND("relay", "cmd", id, cmd)
+	if out != "" && !strings.Contains(out, "unknown") && !strings.Contains(out, "usage") {
+		return out
+	}
+	// core local
+	if cmd == "reboot" {
+		return runND("nodes", "local-cmd", "reboot")
+	}
+	if cmd == "upgrade" {
+		return runND("nodes", "local-cmd", "upgrade")
+	}
+	return out
+}
+
 func ensureQRFile(path, payload string) string {
 	if payload == "" {
 		return ""
 	}
-	if st, err := os.Stat(path); err == nil && !st.IsDir() && st.Size() > 0 {
-		return path
-	}
 	_ = os.MkdirAll(filepath.Dir(path), 0o700)
+	// Always regenerate — cached PNG may still encode core IP while link is relay.
 	if err := qrcode.WriteFile(payload, qrcode.Medium, 512, path); err != nil {
 		return ""
 	}

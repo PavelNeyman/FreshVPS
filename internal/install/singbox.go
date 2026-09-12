@@ -64,7 +64,7 @@ afterBin:
 		sni = readSecret("singbox_reality_sni")
 	}
 	if sni == "" {
-		sni = "www.microsoft.com"
+		sni = "ya.ru"
 	}
 	_ = writeSecret("singbox_reality_sni", sni)
 	if _, err := os.Stat("/etc/sing-box/certs/hy2.crt"); err != nil {

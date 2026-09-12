@@ -103,7 +103,7 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	case "m:status":
 		reply(token, chat, msgID, formatStatusPretty(), backKeyboard())
 	case "m:vpn_list":
-		reply(token, chat, msgID, formatVPNListPretty(runVPN("list")), backTo("vpn"))
+		reply(token, chat, msgID, formatVPNListPretty(runVPN("list")), vpnUsersKeyboard())
 	case "m:vpn_add":
 		setState(chat, "wait_vpn_add_name", "")
 		reply(token, chat, msgID, T("add_prompt"), backTo("vpn"))

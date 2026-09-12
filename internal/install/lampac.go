@@ -14,7 +14,7 @@ import (
 func InstallLampac() error {
 	// Called only as component or from env hook at end of Run.
 	if _, err := exec.LookPath("docker"); err != nil {
-		if err := aptInstall("docker.io"); err != nil {
+		if err := aptInstall("docker.io", "docker-cli"); err != nil {
 			return fmt.Errorf("docker for lampac: %w", err)
 		}
 		_ = exec.Command("systemctl", "enable", "--now", "docker").Run()

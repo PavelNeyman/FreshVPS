@@ -78,3 +78,20 @@ After `relay join`, RU runs `netductor-relay-agent`:
 - Mobile links: `GET /api/relay/links` or TG (uses last reported IP+pbk)
 
 Open on **core** firewall: **8788/tcp** from the RU IP (or world if needed).
+
+## Provision from core (preferred)
+
+Do **not** SSH into the RU VPS yourself. On core (or TG **Enroll relay**):
+
+```bash
+netductor relay provision --host 92.x.x.x --user root --password '…' --sni ya.ru
+```
+
+Core will:
+
+1. SSH with the one-time password  
+2. Install the **same** SSH public key as on core (`/root/.ssh/id_ed25519.pub`)  
+3. Disable password authentication  
+4. Install `netductor`, join the relay bundle, start agent  
+
+Afterwards: manage via TG/Admin/CLI only. Emergency SSH: same key as core.

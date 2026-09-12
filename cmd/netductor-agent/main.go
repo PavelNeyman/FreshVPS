@@ -360,6 +360,9 @@ func runCmd(client *http.Client, cfg config, action, arg string) string {
 		b, _ := json.Marshal(collectMetrics())
 		return string(b)
 	case "reboot":
+		if !strings.Contains(arg, "confirm=yes") {
+			return "reboot: need arg confirm=yes"
+		}
 		go func() {
 			time.Sleep(2 * time.Second)
 			_ = exec.Command("reboot").Run()
@@ -410,6 +413,9 @@ func runCmd(client *http.Client, cfg config, action, arg string) string {
 	case "apply_template", "bootstrap_apply":
 		return applyTemplate(client, cfg)
 	case "agent_update":
+		if !strings.Contains(arg, "confirm=yes") {
+			return "agent_update: need confirm=yes in arg (URL|sha|confirm=yes)"
+		}
 		return agentUpdate(arg)
 	case "sysupgrade":
 		return doSysupgrade(arg)

@@ -111,9 +111,9 @@ func sni() string {
 			return v
 		}
 	}
-	// Default: NOT Cloudflare (often fingerprint-blocked). Override via
-	// SINGBOX_REALITY_SNI or secrets/singbox_reality_sni.
-	return "www.microsoft.com"
+	// RU whitelist-oriented default (home ISP). Mobile often needs RU relay.
+	// Override: SINGBOX_REALITY_SNI or netductor vpn set-sni.
+	return "ya.ru"
 }
 
 func vlessPort() int {

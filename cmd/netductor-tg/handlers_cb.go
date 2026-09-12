@@ -25,6 +25,10 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			switch action {
 			case "link":
 				deliverVPNLink(token, chat, 0, name)
+			case "hy2qr":
+				showVPNQR(token, chat, msgID, name, "hy2", true)
+			case "vlessqr":
+				showVPNQR(token, chat, msgID, name, "vless", true)
 			case "enable":
 				reply(token, chat, msgID, "✅ <pre>"+esc(runVPN("enable", name))+"</pre>", backKeyboard())
 			case "disable":

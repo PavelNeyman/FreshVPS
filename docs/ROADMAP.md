@@ -3,16 +3,18 @@
 ## Done
 - Go-only control plane (install, VPN, API, TUI, TG, edge)
 - Production auth: session hash-at-rest, device tokens, enroll rate-limit, TG admin allowlist
-- Node registry with **stable UUID** + separate hostname (bidirectional rename)
-- APT install hardened (skip installed pkgs, optional fail2ban)
-- Admin UI + Nodes tab
+- Node registry with **stable UUID** + separate hostname
+- `buildAPIMux` + httptest API tests; agent enroll/heartbeat tests
+- `netductor update` (stop api → replace binary → restart)
+- Audit log: nodes.rename, session.revoke, edge.approve/deny/revoke, vpn.add
+- APT install hardened
 
 ## Next
-- OpenWrt e2e on real hardware (enroll → template → VPN client)
+- OpenWrt e2e on real hardware
 - MikroTik scheduler agent production tick
-- Split `cmd/netductor` / `cmd/netductor-tg` into smaller packages
 - Backup offsite
+- Typed edge.Device
 
 ## Tests
-- VPS smoke (clean + upgrade path)
-- Human/router when hardware available
+- `go test ./...` on every change
+- VPS clean install smoke

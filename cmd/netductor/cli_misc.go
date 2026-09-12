@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -84,6 +86,13 @@ func runUpdate(restart bool) {
 		os.Exit(1)
 	}
 	_ = os.MkdirAll("/opt/netductor/bin", 0o755)
+	if want := os.Getenv("NETDUCTOR_UPDATE_SHA256"); want != "" {
+		sum := sha256Hex(data)
+		if sum != strings.TrimSpace(want) {
+			fmt.Fprintln(os.Stderr, "sha256 mismatch", sum, "!=", want)
+			os.Exit(1)
+		}
+	}
 	tmp := dest + ".new"
 	if err := os.WriteFile(tmp, data, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -151,3 +160,8 @@ func runProbe(args []string) {
 
 
 
+
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}

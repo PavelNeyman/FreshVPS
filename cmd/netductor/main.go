@@ -36,6 +36,8 @@ func main() {
 		runVPN(os.Args[2:])
 	case "nodes":
 		runNodes(os.Args[2:])
+	case "addons", "addon":
+		runAddons(os.Args[2:])
 	case "edge":
 		runEdgeCLI(os.Args[2:])
 	case "status":
@@ -76,7 +78,7 @@ func printHelp() {
 
   tui|menu [--mode vps|openwrt|workstation|operator]
   backup | self-install | update
-  version | doctor | status | vpn | edge | serve | install | probe | collect | help
+  version | doctor | status | vpn | addons | edge | serve | install | probe | collect | help
 
   (no args on a TTY → interactive menu)
 

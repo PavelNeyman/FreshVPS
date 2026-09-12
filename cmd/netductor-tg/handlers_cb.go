@@ -53,10 +53,10 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 				reply(token, chat, msgID, formatNodeDetailHTML(id), nodeCardKeyboard(id))
 			case "u": // upgrade
 				out := enqueueNodeCmd(id, "upgrade")
-				reply(token, chat, msgID, "🔄 <b>Upgrade queued</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>", nodeCardKeyboard(id))
+				reply(token, chat, msgID, T("upgrade_queued")+string([]byte{10})+"<pre>"+esc(out)+"</pre>", nodeCardKeyboard(id))
 			case "r": // reboot
 				out := enqueueNodeCmd(id, "reboot")
-				reply(token, chat, msgID, "♻️ <b>Reboot queued</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>", nodeCardKeyboard(id))
+				reply(token, chat, msgID, T("reboot_queued")+string([]byte{10})+"<pre>"+esc(out)+"</pre>", nodeCardKeyboard(id))
 			}
 		}
 		return
@@ -146,14 +146,14 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		reply(token, chat, msgID, "📦 <b>bundle</b>"+string([]byte{10})+"<pre>"+esc(truncate(msg, 3500))+"</pre>", relayKeyboard())
 	case "m:relay:enroll":
 		setState(chat, "wait_relay_host", "")
-		reply(token, chat, msgID, "📡 <b>Enroll relay</b>"+string([]byte{10,10})+"Введите <b>IP</b> (или host) новой RU VPS:", backTo("nodes"))
+		reply(token, chat, msgID, T("enroll_title")+string([]byte{10,10})+T("enroll_ip"), backTo("nodes"))
 	case "m:relay:oneline":
 		reply(token, chat, msgID, formatRelayOneline(), relayKeyboard())
 	case "m:relay:sync":
 		out := runND("relay", "sync")
 		reply(token, chat, msgID, "🔄 <b>Sync</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>"+string([]byte{10})+formatRelayListHTML(), relayKeyboard())
 	case "m:relay:exit:menu":
-		reply(token, chat, msgID, "🇷🇺 <b>RU exit</b>"+string([]byte{10})+"<i>When ON, traffic from core exits via RU IP (access to RU services from abroad).</i>", relayKeyboard())
+		reply(token, chat, msgID, T("ru_exit_help"), relayKeyboard())
 	case "m:relay:exit:on":
 		out := runND("relay", "exit", "on")
 		reply(token, chat, msgID, "🇷🇺 <b>RU exit ON</b>"+string([]byte{10})+"<pre>"+esc(out)+"</pre>"+string([]byte{10})+"<i>Трафик с core уходит через РФ (доступ к RU-сервисам из-за границы)</i>", relayKeyboard())

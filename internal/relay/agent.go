@@ -64,10 +64,14 @@ func agentTick(client *http.Client, coreBase, token string, applied *int) error 
 		return fmt.Errorf("heartbeat %s: %s", resp.Status, string(raw))
 	}
 	var hr struct {
-		ConfigVer int `json:"config_ver"`
-		NeedSync  bool `json:"need_sync"`
+		ConfigVer        int    `json:"config_ver"`
+		NeedSync         bool   `json:"need_sync"`
+		DesiredHostname  string `json:"desired_hostname"`
 	}
 	_ = json.Unmarshal(raw, &hr)
+	if hn := strings.TrimSpace(hr.DesiredHostname); hn != "" {
+		_ = applyHostname(hn)
+	}
 	if hr.NeedSync || hr.ConfigVer > *applied {
 		if err := pullAndApply(client, coreBase, token); err != nil {
 			return err
@@ -152,4 +156,15 @@ func sampleMetrics() (cpu float64, memUsed, memTotal int64, load1 float64) {
 		cpu = 100
 	}
 	return
+}
+
+
+func applyHostname(hn string) error {
+	hn = strings.TrimSpace(hn)
+	if hn == "" {
+		return nil
+	}
+	_ = exec.Command("hostnamectl", "set-hostname", hn).Run()
+	_ = os.WriteFile("/etc/hostname", []byte(hn+"\n"), 0o644)
+	return nil
 }

@@ -2,8 +2,9 @@ package edge
 
 import (
 	"fmt"
-	"strings"
+	"time"
 
+	"github.com/PavelNeyman/netductor/internal/relay"
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
 
@@ -16,26 +17,38 @@ func edgeVPNUser(deviceID string) string {
 }
 
 // EnsureVPNClient creates VPN user for device and returns subscription links.
+// Primary VLESS is the online RU relay when available (whitelist-friendly).
 func EnsureVPNClient(deviceID string) (map[string]string, error) {
 	name := edgeVPNUser(deviceID)
 	users, _ := vpn.ListNative()
 	found := false
+	var uuid string
 	for _, u := range users {
 		if u.Name == name {
 			found = true
+			uuid = u.UUID
 			break
 		}
 	}
 	if !found {
 		if _, err := vpn.AddNative(name, "edge device "+deviceID); err != nil {
-			// may fail apply without sing-box — still try links
 			_ = err
 		}
+		users, _ = vpn.ListNative()
+		for _, u := range users {
+			if u.Name == name {
+				uuid = u.UUID
+				break
+			}
+		}
 	}
-	sub, _ := vpn.ReadClient(name, "subscription.txt", "link.txt")
-	vless, _ := vpn.ReadClient(name, "link-vless.txt", "link.txt")
+	vless := edgeRelayOrCoreLink(name, uuid)
 	hy2, _ := vpn.ReadClient(name, "link-hy2.txt")
-	if sub == "" && vless == "" {
+	sub := vless
+	if hy2 != "" {
+		sub = vless + "\n" + hy2
+	}
+	if vless == "" {
 		return nil, fmt.Errorf("no vpn links for %s — is sing-box installed?", name)
 	}
 	return map[string]string{
@@ -43,7 +56,27 @@ func EnsureVPNClient(deviceID string) (map[string]string, error) {
 		"subscription": sub,
 		"vless":        vless,
 		"hy2":          hy2,
+		"primary":      "relay",
+		"fallback":     "wan",
 	}, nil
+}
+
+func edgeRelayOrCoreLink(name, uuid string) string {
+	if uuid != "" {
+		for _, d := range relay.List() {
+			if !relay.Online(d, 2*time.Minute) || d.PublicIP == "" || d.PBK == "" {
+				continue
+			}
+			sni := d.SNI
+			if sni == "" {
+				sni = "ya.ru"
+			}
+			return vpn.ClientLinkForRelay(name, uuid, d.PublicIP, d.PBK, d.SID, sni)
+		}
+		return vpn.VLESSLink(name, uuid)
+	}
+	v, _ := vpn.ReadClient(name, "link-vless.txt", "link.txt")
+	return v
 }
 
 func TemplateWithVPN(deviceID string) (Template, error) {
@@ -78,6 +111,3 @@ func TemplateWithVPN(deviceID string) (Template, error) {
 	t["vpn"] = vpnSec
 	return t, nil
 }
-
-// used only to avoid unused strings import if sanitize only
-var _ = strings.TrimSpace

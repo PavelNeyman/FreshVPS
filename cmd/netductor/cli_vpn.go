@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/PavelNeyman/netductor/internal/edge"
+	"github.com/PavelNeyman/netductor/internal/relay"
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
 
@@ -114,6 +115,7 @@ func runVPN(args []string) {
 		}
 		fmt.Println("sni set to", rest[0], "— links rewritten, sing-box re-applied")
 	case "apply":
+		relay.BumpConfigVer()
 		if err := vpn.ApplyConfig(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)

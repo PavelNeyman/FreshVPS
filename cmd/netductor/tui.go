@@ -176,6 +176,7 @@ func menuItemsFor(mode runMode) []list.Item {
 			menuItem{"Edge — list devices", "", "edge-list"},
 			menuItem{"Nodes registry", "", "nodes-list"},
 			menuItem{"Set hostname", "nd-<role>-<marker> e.g. nd-core-nl01", "hostname"},
+			menuItem{"Addons — Lampac", "status / health", "addons-lampac"},
 			menuItem{"Live probes", "", "probe"},
 			menuItem{"Collect metrics", "", "collect"},
 			menuItem{"Change mode…", "", "change-mode"},
@@ -273,6 +274,9 @@ func (m model) handleAction(id string) (tea.Model, tea.Cmd) {
 	case "doctor":
 		m.output = capture(func() { _ = runDoctorNative() })
 		m.screen = screenOutput
+	case "addons-lampac":
+		out, _ := exec.Command("netductor", "addons", "lampac").CombinedOutput()
+		return m, tea.Printf("%s", string(out))
 	case "probe":
 		m.output = capture(func() { runProbe(nil) })
 		m.screen = screenOutput

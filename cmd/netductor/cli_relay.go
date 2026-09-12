@@ -136,6 +136,16 @@ func runRelay(args []string) {
 			os.Exit(1)
 		}
 		fmt.Println("provisioned", host)
+	case "cmd":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage: netductor relay cmd <id> <reboot|upgrade|metrics>")
+			os.Exit(2)
+		}
+		if err := relay.EnqueueCmd(args[1], args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("queued", args[2], "for", args[1])
 	case "sync":
 		ver := relay.BumpConfigVer()
 		fmt.Println("config_ver", ver)

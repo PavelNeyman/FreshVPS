@@ -59,7 +59,14 @@ afterBin:
 		_ = writeSecret("singbox_reality_private", priv)
 		_ = writeSecret("singbox_reality_public", pub)
 	}
-	sni := env("SINGBOX_REALITY_SNI", "www.cloudflare.com")
+	sni := env("SINGBOX_REALITY_SNI", "")
+	if sni == "" {
+		sni = readSecret("singbox_reality_sni")
+	}
+	if sni == "" {
+		sni = "www.microsoft.com"
+	}
+	_ = writeSecret("singbox_reality_sni", sni)
 	if _, err := os.Stat("/etc/sing-box/certs/hy2.crt"); err != nil {
 		_ = exec.Command("openssl", "req", "-x509", "-nodes", "-newkey", "ec",
 			"-pkeyopt", "ec_paramgen_curve:prime256v1",

@@ -76,7 +76,18 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	if strings.HasPrefix(data, "m:nr:") {
 		id := strings.TrimPrefix(data, "m:nr:")
 		setState(chat, "wait_node_newname", id)
-		reply(token, chat, msgID, fmt.Sprintf(T("nodes_pick"), esc(id)), backKeyboard())
+		host := id
+		for _, r := range parseNodesList() {
+			if r.ID == id {
+				if r.Host != "" {
+					host = r.Host
+				}
+				break
+			}
+		}
+		prompt := fmt.Sprintf(T("nodes_pick"), esc(host))
+		prompt += string([]byte{10}) + "id: <code>" + esc(id) + "</code>"
+		reply(token, chat, msgID, prompt, backTo("nodes"))
 		return
 	}
 

@@ -22,7 +22,11 @@ type Device struct {
 	SNI        string    `json:"sni"`
 	Version    string    `json:"version"`
 	SingBoxOK  bool      `json:"singbox_ok"`
-	ConfigVer  int       `json:"config_ver"` // last applied
+	ConfigVer  int       `json:"config_ver"`
+	CPUPercent float64   `json:"cpu_percent"`
+	MemUsedMB  int64     `json:"mem_used_mb"`
+	MemTotalMB int64     `json:"mem_total_mb"`
+	Load1      float64   `json:"load1"`
 	LastSeen   time.Time `json:"last_seen"`
 	CreatedAt  time.Time `json:"created_at"`
 }
@@ -131,13 +135,17 @@ func FindByToken(token string) *Device {
 }
 
 type HeartbeatIn struct {
-	PublicIP  string `json:"public_ip"`
-	PBK       string `json:"pbk"`
-	SID       string `json:"sid"`
-	SNI       string `json:"sni"`
-	Version   string `json:"version"`
-	SingBoxOK bool   `json:"singbox_ok"`
-	ConfigVer int    `json:"config_ver"`
+	PublicIP   string  `json:"public_ip"`
+	PBK        string  `json:"pbk"`
+	SID        string  `json:"sid"`
+	SNI        string  `json:"sni"`
+	Version    string  `json:"version"`
+	SingBoxOK  bool    `json:"singbox_ok"`
+	ConfigVer  int     `json:"config_ver"`
+	CPUPercent float64 `json:"cpu_percent"`
+	MemUsedMB  int64   `json:"mem_used_mb"`
+	MemTotalMB int64   `json:"mem_total_mb"`
+	Load1      float64 `json:"load1"`
 }
 
 func Heartbeat(token string, in HeartbeatIn) (*Device, int, error) {
@@ -160,6 +168,10 @@ func Heartbeat(token string, in HeartbeatIn) (*Device, int, error) {
 		r.Devices[i].Version = in.Version
 		r.Devices[i].SingBoxOK = in.SingBoxOK
 		r.Devices[i].ConfigVer = in.ConfigVer
+		r.Devices[i].CPUPercent = in.CPUPercent
+		r.Devices[i].MemUsedMB = in.MemUsedMB
+		r.Devices[i].MemTotalMB = in.MemTotalMB
+		r.Devices[i].Load1 = in.Load1
 		r.Devices[i].LastSeen = time.Now().UTC()
 		_ = save(r)
 		d := r.Devices[i]

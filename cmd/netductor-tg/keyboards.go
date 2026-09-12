@@ -22,13 +22,12 @@ func btnCopy(text, copyPayload string) map[string]any {
 }
 
 func relayKeyboard() map[string]any {
+	// nested under Nodes — same actions, back goes to nodes
 	return map[string]any{"inline_keyboard": [][]map[string]any{
-		{btn(T("relay_export"), "m:relay:export", "primary")},
-		{btn("➕ Enroll relay (SSH)", "m:relay:enroll", "primary")},
-		{btn(T("relay_list"), "m:relay:list", "")},
+		{btn("➕ Enroll relay", "m:relay:enroll", "primary")},
 		{btn("🇷🇺 RU exit ON", "m:relay:exit:on", "success"), btn("RU exit OFF", "m:relay:exit:off", "danger")},
-		{btn("🔄 Sync relays", "m:relay:sync", "primary")},
-		{btn(T("main_menu"), "m:menu", "primary")},
+		{btn("🔄 Sync", "m:relay:sync", ""), btn("📋 Nodes", "m:cat:nodes", "primary")},
+		{btn(T("main_menu"), "m:menu", "")},
 	}}
 }
 
@@ -39,7 +38,6 @@ func mainKeyboard() map[string]any {
 			{btn(T("cat_vpn"), "m:cat:vpn", "primary"), btn(T("cat_routers"), "m:cat:routers", "primary")},
 			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "")},
 			{btn(T("addons"), "m:addons", ""), btn(T("nodes"), "m:cat:nodes", "primary")},
-			{btn(T("relay"), "m:cat:relay", "primary")},
 			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
 		},
 	}
@@ -68,13 +66,15 @@ func nodesKeyboard() map[string]any {
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{
 			{btn("📋 List", "m:nodes_list", "primary"), btn("✏️ Rename", "m:node_rename", "")},
+			{btn("➕ Enroll relay", "m:relay:enroll", "primary")},
+			{btn("🔄 Sync relays", "m:relay:sync", ""), btn("🇷🇺 RU exit", "m:relay:exit:menu", "primary")},
 			{btn(T("main_menu"), "m:menu", "")},
 		},
 	}
 }
 
 type nodeRow struct {
-	ID, Host, Role, Kind, IP, Desired string
+	ID, Host, Role, Kind, IP, Status, Desired string
 }
 
 func parseNodesList() []nodeRow {
@@ -106,6 +106,8 @@ func parseNodesList() []nodeRow {
 				r.Kind = strings.TrimPrefix(p, "kind=")
 			case strings.HasPrefix(p, "ip="):
 				r.IP = strings.TrimPrefix(p, "ip=")
+			case strings.HasPrefix(p, "status="):
+				r.Status = strings.TrimPrefix(p, "status=")
 			case strings.HasPrefix(p, "desired="):
 				r.Desired = strings.TrimPrefix(p, "desired=")
 			case i == 0 && !strings.Contains(p, "="):
@@ -125,31 +127,41 @@ func formatNodesListHTML() string {
 	if len(rows) == 0 {
 		return T("nodes_empty")
 	}
+	nl := string([]byte{10})
 	var b strings.Builder
 	for i, r := range rows {
 		label := r.Host
 		if label == "" {
 			label = r.ID
 		}
-		b.WriteString(fmt.Sprintf("%d. <b>%s</b>", i+1, esc(label)))
-		if r.ID != "" && r.ID != r.Host {
-			b.WriteString(" <code>"+esc(r.ID)+"</code>")
+		icon := "•"
+		st := strings.ToLower(r.Status)
+		switch {
+		case st == "online":
+			icon = "🟢"
+		case st == "offline":
+			icon = "🔴"
+		case r.Role == "relay":
+			icon = "📡"
+		case r.Role == "core":
+			icon = "🗄"
 		}
+		b.WriteString(fmt.Sprintf("%s <b>%d. %s</b>", icon, i+1, esc(label)))
 		if r.Role != "" {
-			b.WriteString(" · "+esc(r.Role))
-		}
-		if r.Kind != "" {
-			b.WriteString(" · "+esc(r.Kind))
+			b.WriteString(" · <code>" + esc(r.Role) + "</code>")
 		}
 		if r.IP != "" {
-			b.WriteString(" · "+esc(r.IP))
+			b.WriteString(" · <code>" + esc(r.IP) + "</code>")
+		}
+		if r.Status != "" {
+			b.WriteString(" · " + esc(r.Status))
 		}
 		if r.Desired != "" {
-			b.WriteString(" → <i>"+esc(r.Desired)+"</i>")
+			b.WriteString(" → <i>" + esc(r.Desired) + "</i>")
 		}
-		b.WriteByte(10)
+		b.WriteString(nl)
 	}
-	return strings.TrimRight(b.String(), "\n")
+	return strings.TrimRight(b.String(), nl)
 }
 
 func nodesRenameKeyboard() map[string]any {
@@ -203,6 +215,8 @@ func backTo(cat string) map[string]any {
 		up, label = "m:cat:vpn", T("back_vpn")
 	case "routers":
 		up, label = "m:cat:routers", T("back_routers")
+	case "relay", "nodes":
+		up, label = "m:cat:nodes", T("nodes")
 	}
 	return map[string]any{
 		"inline_keyboard": [][]map[string]any{

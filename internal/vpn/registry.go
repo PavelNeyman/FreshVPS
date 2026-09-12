@@ -189,8 +189,10 @@ func writeArtifacts(name, uuid, hy2pass string) error {
 	_ = os.WriteFile(filepath.Join(dir, "subscription.txt"), []byte(sub), 0o600)
 	_ = os.WriteFile(filepath.Join(dir, "link.txt"), []byte(vless+"\n"), 0o600)
 	// base64 sub optional skip for simplicity or simple std encoding
-	_ = qrcode.WriteFile(vless, qrcode.Medium, 256, filepath.Join(dir, "qr.png"))
-	_ = qrcode.WriteFile(sub, qrcode.Medium, 256, filepath.Join(dir, "qr-subscription.png"))
+	_ = qrcode.WriteFile(vless, qrcode.Medium, 512, filepath.Join(dir, "qr.png"))
+	_ = qrcode.WriteFile(vless, qrcode.Medium, 512, filepath.Join(dir, "qr-vless.png"))
+	_ = qrcode.WriteFile(hy2, qrcode.Medium, 512, filepath.Join(dir, "qr-hy2.png"))
+	_ = qrcode.WriteFile(sub, qrcode.Medium, 512, filepath.Join(dir, "qr-subscription.png"))
 	_ = os.Chmod(filepath.Join(dir, "qr.png"), 0o600)
 	_ = os.Chmod(filepath.Join(dir, "qr-subscription.png"), 0o600)
 	return nil

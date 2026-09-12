@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -117,13 +118,16 @@ func reply(token string, chat int64, msgID int, text string, kb map[string]any) 
 }
 
 
-func sendPhotoFile(token string, chat int64, path, caption string, kb map[string]any) {
+func sendPhotoFile(token string, chat int64, path, caption string, kb map[string]any) error {
 	f, err := os.Open(path)
 	if err != nil {
-		sendHTML(token, chat, caption+"\n\n<i>QR file missing</i>", kb)
-		return
+		return err
 	}
 	defer f.Close()
+	// Telegram caption max 1024
+	if len(caption) > 1000 {
+		caption = caption[:1000] + "…"
+	}
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 	_ = w.WriteField("chat_id", strconv.FormatInt(chat, 10))
@@ -135,23 +139,39 @@ func sendPhotoFile(token string, chat int64, path, caption string, kb map[string
 		jb, _ := json.Marshal(kb)
 		_ = w.WriteField("reply_markup", string(jb))
 	}
-	part, err := w.CreateFormFile("photo", "qr.png")
+	part, err := w.CreateFormFile("photo", filepath.Base(path))
 	if err != nil {
-		return
+		return err
 	}
-	_, _ = io.Copy(part, f)
-	_ = w.Close()
+	if _, err := io.Copy(part, f); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
 	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+token+"/sendPhoto", &buf)
 	if err != nil {
-		return
+		return err
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return
+		return err
 	}
 	defer resp.Body.Close()
-	_, _ = io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("sendPhoto %s: %s", resp.Status, string(body))
+	}
+	var wr struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	_ = json.Unmarshal(body, &wr)
+	if !wr.OK {
+		return fmt.Errorf("sendPhoto: %s", wr.Description)
+	}
+	return nil
 }
 
 func answerCallback(token, id string) {

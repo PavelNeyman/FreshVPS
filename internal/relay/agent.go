@@ -64,13 +64,17 @@ func agentTick(client *http.Client, coreBase, token string, applied *int) error 
 		return fmt.Errorf("heartbeat %s: %s", resp.Status, string(raw))
 	}
 	var hr struct {
-		ConfigVer        int    `json:"config_ver"`
-		NeedSync         bool   `json:"need_sync"`
-		DesiredHostname  string `json:"desired_hostname"`
+		ConfigVer       int      `json:"config_ver"`
+		NeedSync        bool     `json:"need_sync"`
+		DesiredHostname string   `json:"desired_hostname"`
+		Commands        []string `json:"commands"`
 	}
 	_ = json.Unmarshal(raw, &hr)
 	if hn := strings.TrimSpace(hr.DesiredHostname); hn != "" {
 		_ = applyHostname(hn)
+	}
+	for _, c := range hr.Commands {
+		_ = runAgentCmd(c)
 	}
 	if hr.NeedSync || hr.ConfigVer > *applied {
 		if err := pullAndApply(client, coreBase, token); err != nil {
@@ -166,5 +170,22 @@ func applyHostname(hn string) error {
 	}
 	_ = exec.Command("hostnamectl", "set-hostname", hn).Run()
 	_ = os.WriteFile("/etc/hostname", []byte(hn+"\n"), 0o644)
+	return nil
+}
+
+
+func runAgentCmd(cmd string) error {
+	switch strings.TrimSpace(cmd) {
+	case "reboot":
+		go func() {
+			time.Sleep(2 * time.Second)
+			_ = exec.Command("systemctl", "reboot").Run()
+		}()
+	case "upgrade":
+		_ = exec.Command("bash", "-c", "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade").Run()
+		_ = exec.Command("bash", "-c", "wget -qO /tmp/nd.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64 && cp /tmp/nd.bin /usr/local/bin/netductor && systemctl restart sing-box netductor-relay-agent").Run()
+	case "metrics":
+		// next heartbeat already samples metrics
+	}
 	return nil
 }

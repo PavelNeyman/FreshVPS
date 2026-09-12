@@ -39,3 +39,14 @@ netductor relay links
 ```
 
 Домашние клиенты — ссылки **core**; мобильные — **relay links**.
+
+## Managed agent (no SSH after join)
+
+After `relay join`, RU runs `netductor-relay-agent`:
+
+- Heartbeat → core `:8788` (`NETDUCTOR_RELAY_API`)
+- Auto-pulls user list when core VPN users change
+- Core shows status: `netductor relay status` / Admin Relay / TG Relay
+- Mobile links: `GET /api/relay/links` or TG (uses last reported IP+pbk)
+
+Open on **core** firewall: **8788/tcp** from the RU IP (or world if needed).

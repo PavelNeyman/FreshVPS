@@ -25,6 +25,7 @@ func DefaultComponents() []string {
 }
 
 func Run(opts Options) error {
+	currentComps = opts.Components
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("install requires root")
 	}

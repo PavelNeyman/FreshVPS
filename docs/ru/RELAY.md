@@ -56,3 +56,7 @@ Open on **core** firewall: **8788/tcp** from the RU IP (or world if needed).
 `netductor relay provision --host IP --user root --password …`
 
 Core ставит свой SSH-ключ, отключает пароль, join + agent.
+
+## OpenWrt: основной uplink = relay
+
+Клиенты и роутеры — только на **relay**. На relay: RU → direct, остальное → core. Fallback на WAN если relay недоступен. Второй peer на core — только аварийно (DPI).

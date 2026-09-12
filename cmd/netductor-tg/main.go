@@ -175,6 +175,44 @@ func sendPhotoFile(token string, chat int64, path, caption string, kb map[string
 }
 
 
+func deleteMessage(token string, chat int64, msgID int) error {
+	return apiPOST(token, "deleteMessage", map[string]any{
+		"chat_id": chat, "message_id": msgID,
+	})
+}
+
+func apiPOST(token, method string, fields map[string]any) error {
+	form := url.Values{}
+	for k, v := range fields {
+		switch t := v.(type) {
+		case int:
+			form.Set(k, strconv.Itoa(t))
+		case int64:
+			form.Set(k, strconv.FormatInt(t, 10))
+		case string:
+			form.Set(k, t)
+		default:
+			b, _ := json.Marshal(t)
+			form.Set(k, string(b))
+		}
+	}
+	resp, err := http.PostForm("https://api.telegram.org/bot"+token+"/"+method, form)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var wr struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	_ = json.Unmarshal(body, &wr)
+	if !wr.OK {
+		return fmt.Errorf("%s: %s", method, wr.Description)
+	}
+	return nil
+}
+
 func editPhotoFile(token string, chat int64, msgID int, path, caption string, kb map[string]any) error {
 	f, err := os.Open(path)
 	if err != nil {

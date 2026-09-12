@@ -24,7 +24,7 @@ func btnCopy(text, copyPayload string) map[string]any {
 func relayKeyboard() map[string]any {
 	return map[string]any{"inline_keyboard": [][]map[string]any{
 		{btn(T("relay_export"), "m:relay:export", "primary")},
-		{btn(T("relay_oneline"), "m:relay:oneline", "primary")},
+		{btn("➕ Enroll relay (SSH)", "m:relay:enroll", "primary")},
 		{btn(T("relay_list"), "m:relay:list", "")},
 		{btn("🇷🇺 RU exit ON", "m:relay:exit:on", "success"), btn("RU exit OFF", "m:relay:exit:off", "danger")},
 		{btn("🔄 Sync relays", "m:relay:sync", "primary")},

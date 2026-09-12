@@ -86,9 +86,9 @@ func BindTemplate(deviceID, templateID string, overlay map[string]any) error {
 	if !ok {
 		return fmt.Errorf("unknown device")
 	}
-	d["template_id"] = templateID
+	d.TemplateID = templateID
 	if overlay != nil {
-		d["overlay"] = overlay
+		d.Overlay = overlay
 	}
 	m[deviceID] = d
 	return saveDevices(m)
@@ -101,11 +101,10 @@ func TemplateForDevice(deviceID string) (Template, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown device")
 	}
-	st, _ := d["status"].(string)
-	if st != StatusApproved {
+	if d.Status != StatusApproved {
 		return nil, fmt.Errorf("not approved")
 	}
-	tid, _ := d["template_id"].(string)
+	tid := d.TemplateID
 	if tid == "" {
 		tid = "default"
 	}
@@ -117,7 +116,7 @@ func TemplateForDevice(deviceID string) (Template, error) {
 	for k, v := range t {
 		out[k] = v
 	}
-	if ov, ok := d["overlay"].(map[string]any); ok {
+	if ov := d.Overlay; ov != nil {
 		out["overlay"] = ov
 		for _, sec := range []string{"network", "wifi", "vpn"} {
 			base, _ := out[sec].(map[string]any)

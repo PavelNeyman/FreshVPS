@@ -27,6 +27,7 @@ type Device struct {
 	MemUsedMB  int64     `json:"mem_used_mb"`
 	MemTotalMB int64     `json:"mem_total_mb"`
 	Load1      float64   `json:"load1"`
+	PendingCmds []string  `json:"pending_cmds,omitempty"` // reboot | upgrade | metrics
 	LastSeen   time.Time `json:"last_seen"`
 	CreatedAt  time.Time `json:"created_at"`
 }
@@ -277,4 +278,45 @@ func Rename(id, name string) error {
 		}
 	}
 	return os.ErrNotExist
+}
+
+func EnqueueCmd(id, cmd string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	r, err := load()
+	if err != nil {
+		return err
+	}
+	for i := range r.Devices {
+		if r.Devices[i].ID != id {
+			continue
+		}
+		for _, c := range r.Devices[i].PendingCmds {
+			if c == cmd {
+				return save(r)
+			}
+		}
+		r.Devices[i].PendingCmds = append(r.Devices[i].PendingCmds, cmd)
+		return save(r)
+	}
+	return os.ErrNotExist
+}
+
+func TakeCmds(id string) []string {
+	mu.Lock()
+	defer mu.Unlock()
+	r, err := load()
+	if err != nil {
+		return nil
+	}
+	for i := range r.Devices {
+		if r.Devices[i].ID != id {
+			continue
+		}
+		cmds := append([]string{}, r.Devices[i].PendingCmds...)
+		r.Devices[i].PendingCmds = nil
+		_ = save(r)
+		return cmds
+	}
+	return nil
 }

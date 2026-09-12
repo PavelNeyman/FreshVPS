@@ -84,28 +84,12 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		}
 		reply(token, chat, msgID, Tf("lang_now", label), langKeyboard())
 	case "m:routers":
-		t := strings.TrimSpace(routersText())
-		if t == "" {
-			reply(token, chat, msgID, T("routers_title")+"\n\n"+T("routers_empty"), backTo("routers"))
-		} else {
-			if len(t) > 3500 {
-				t = t[:3500] + "…"
-			}
-			reply(token, chat, msgID, T("routers_title")+"\n\n<pre>"+esc(t)+"</pre>", backTo("routers"))
-		}
+		reply(token, chat, msgID, formatEdgeListHTML(routersText()), backTo("routers"))
 	case "m:pending":
 		t := pendingText()
-		if t == "" {
-			reply(token, chat, msgID, T("pending_title")+"\n\n"+T("pending_empty"), backTo("routers"))
-		} else {
-			reply(token, chat, msgID, T("pending_title")+"\n\n<pre>"+esc(t)+"</pre>", pendingKeyboard(t))
-		}
+		reply(token, chat, msgID, formatPendingHTML(t), pendingKeyboard(t))
 	case "m:templates":
-		t := templatesText()
-		if t == "" {
-			t = "(none)"
-		}
-		reply(token, chat, msgID, T("templates_title")+"\n\n<pre>"+esc(t)+"</pre>", backTo("routers"))
+		reply(token, chat, msgID, formatTemplatesHTML(templatesText()), backTo("routers"))
 	case "m:edge_apply":
 		setState(chat, "wait_edge_apply", "")
 		reply(token, chat, msgID, T("apply_prompt"), backTo("routers"))
@@ -113,17 +97,13 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 		setState(chat, "wait_edge_bind_dev", "")
 		reply(token, chat, msgID, T("bind_prompt"), backTo("routers"))
 	case "m:addons":
-		editHTML(token, cq.Message.Chat.ID, cq.Message.MessageID, "🧩 <b>"+T("addons")+"</b>", addonsKeyboard())
+		editHTML(token, cq.Message.Chat.ID, cq.Message.MessageID, formatAddonsHTML(), addonsKeyboard())
 	case "m:addon:lampac":
-		out := runND("addons", "lampac")
-		if out == "" {
-			out = runND("addon", "lampac")
-		}
-		editHTML(token, cq.Message.Chat.ID, cq.Message.MessageID, "📺 <b>Lampac</b>\n<pre>"+esc(out)+"</pre>", addonsKeyboard())
+		editHTML(token, cq.Message.Chat.ID, cq.Message.MessageID, formatLampacHTML(), addonsKeyboard())
 	case "m:status":
-		reply(token, chat, msgID, T("status_title")+"\n\n<pre>"+esc(statusText())+"</pre>", backKeyboard())
+		reply(token, chat, msgID, formatStatusPretty(), backKeyboard())
 	case "m:vpn_list":
-		reply(token, chat, msgID, T("vpn_users")+"\n\n<pre>"+esc(formatVPNList(runVPN("list")))+"</pre>", backTo("vpn"))
+		reply(token, chat, msgID, formatVPNListPretty(runVPN("list")), backTo("vpn"))
 	case "m:vpn_add":
 		setState(chat, "wait_vpn_add_name", "")
 		reply(token, chat, msgID, T("add_prompt"), backTo("vpn"))

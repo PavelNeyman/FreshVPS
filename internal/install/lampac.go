@@ -12,10 +12,7 @@ import (
 
 // InstallLampac pulls optional media aggregator (Docker). Off by default.
 func InstallLampac() error {
-	if os.Getenv("NETDUCTOR_LAMPAC") != "1" && !containsComp("lampac") {
-		fmt.Fprintln(os.Stderr, "lampac skipped (set NETDUCTOR_LAMPAC=1 or component lampac)")
-		return nil
-	}
+	// Called only as component or from env hook at end of Run.
 	if _, err := exec.LookPath("docker"); err != nil {
 		if err := aptInstall("docker.io"); err != nil {
 			return fmt.Errorf("docker for lampac: %w", err)

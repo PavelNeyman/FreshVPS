@@ -379,58 +379,54 @@ func deliverVPNLink(token string, chat int64, replyTo int, name string) {
 	_, vless, hy2, sub := formatVPNLinkHTML(name)
 	kb := userCardKeyboard(name, "")
 	ru := getLang() != "en"
+	nl := string([]byte{10})
+	dir := filepath.Join("/etc/netductor/clients", name)
 
-	// 1) Text with both URIs (Shadowrocket: add two nodes or import lines)
-	var text strings.Builder
+	var cap strings.Builder
 	if ru {
-		text.WriteString("🔗 <b>VPN · " + esc(name) + "</b>\n\n")
-		text.WriteString("<i>Shadowrocket: добавьте <b>оба</b> узла (VLESS и Hysteria2) — одной ссылки мало.</i>\n\n")
+		cap.WriteString("🔗 <b>" + esc(name) + "</b>")
+		cap.WriteString(nl)
+		cap.WriteString("<i>Shadowrocket: добавьте оба узла (2-й QR следом)</i>")
 	} else {
-		text.WriteString("🔗 <b>VPN · " + esc(name) + "</b>\n\n")
-		text.WriteString("<i>Shadowrocket: add <b>both</b> nodes (VLESS + Hysteria2).</i>\n\n")
+		cap.WriteString("🔗 <b>" + esc(name) + "</b>")
+		cap.WriteString(nl)
+		cap.WriteString("<i>Shadowrocket: add both nodes (2nd QR follows)</i>")
 	}
+	cap.WriteString(nl + nl)
 	if vless != "" {
-		text.WriteString("<b>1) VLESS Reality</b>\n<code>" + esc(vless) + "</code>\n\n")
+		cap.WriteString("<b>VLESS</b>" + nl + "<code>" + esc(vless) + "</code>" + nl + nl)
 	}
 	if hy2 != "" {
-		text.WriteString("<b>2) Hysteria2</b>\n<code>" + esc(hy2) + "</code>\n\n")
-	}
-	if vless == "" && hy2 == "" && sub != "" {
-		text.WriteString("<code>" + esc(sub) + "</code>\n")
+		cap.WriteString("<b>HY2</b>" + nl + "<code>" + esc(hy2) + "</code>")
 	}
 	if vless == "" && hy2 == "" {
-		if ru {
-			text.WriteString("❌ Нет ссылок. Проверьте имя пользователя.")
+		msg := cap.String()
+		if sub != "" {
+			msg = "<code>" + esc(sub) + "</code>"
+		} else if ru {
+			msg = "❌ Нет ссылок"
 		} else {
-			text.WriteString("❌ No links. Check user name.")
+			msg = "❌ No links"
 		}
-		sendHTML(token, chat, text.String(), kb)
+		sendHTML(token, chat, msg, kb)
 		return
 	}
-	sendHTML(token, chat, text.String(), kb)
-
-	dir := filepath.Join("/etc/netductor/clients", name)
-	// 2) QR VLESS
-	if vless != "" {
-		qp := ensureQRFile(filepath.Join(dir, "qr-vless.png"), vless)
-		if qp == "" {
-			qp = ensureQRFile(filepath.Join(dir, "qr.png"), vless)
-		}
-		cap := "📱 QR · VLESS Reality · " + name
-		if qp == "" {
-			sendHTML(token, chat, "⚠️ QR VLESS: cannot write image", nil)
-		} else if err := sendPhotoFile(token, chat, qp, cap, nil); err != nil {
-			sendHTML(token, chat, "⚠️ QR VLESS: <code>"+esc(err.Error())+"</code>", nil)
-		}
+	// One message: VLESS QR + caption (links) + operator keyboard
+	qp := ensureQRFile(filepath.Join(dir, "qr-vless.png"), vless)
+	if qp == "" {
+		qp = ensureQRFile(filepath.Join(dir, "qr.png"), vless)
 	}
-	// 3) QR HY2
+	if qp == "" {
+		sendHTML(token, chat, cap.String(), kb)
+	} else if err := sendPhotoFile(token, chat, qp, cap.String(), kb); err != nil {
+		sendHTML(token, chat, cap.String()+nl+"⚠️ QR: <code>"+esc(err.Error())+"</code>", kb)
+	}
+	// Second QR (HY2) — photo only, no extra menu (already on first)
 	if hy2 != "" {
-		qp := ensureQRFile(filepath.Join(dir, "qr-hy2.png"), hy2)
-		cap := "📱 QR · Hysteria2 · " + name
-		if qp == "" {
-			sendHTML(token, chat, "⚠️ QR HY2: cannot write image", nil)
-		} else if err := sendPhotoFile(token, chat, qp, cap, nil); err != nil {
-			sendHTML(token, chat, "⚠️ QR HY2: <code>"+esc(err.Error())+"</code>", nil)
+		qp2 := ensureQRFile(filepath.Join(dir, "qr-hy2.png"), hy2)
+		if qp2 != "" {
+			c2 := "📱 HY2 · " + name
+			_ = sendPhotoFile(token, chat, qp2, c2, nil)
 		}
 	}
 }
@@ -466,7 +462,10 @@ func formatRelayOneline() string {
 }
 
 func formatRelayListHTML() string {
-	out := runND("nodes", "list")
+	out := runND("relay", "status")
+	if out == "" || strings.Contains(out, "unknown") {
+		out = runND("nodes", "list")
+	}
 	nl := string([]byte{10})
 	if getLang() != "en" {
 		return "📋 <b>Ноды</b>" + nl + nl + "<pre>" + esc(out) + "</pre>"

@@ -34,6 +34,7 @@
       <button data-tab="metrics" class="tab">Metrics</button>
       <button data-tab="probes" class="tab">Probes</button>
       <button data-tab="addons" class="tab">Addons</button>
+      <button data-tab="relay" class="tab">Relay</button>
     </nav>
 
     <section id="tab-overview" class="tab-panel">
@@ -170,6 +171,17 @@
       <div class="card"><pre id="probes-raw" class="code">—</pre></div>
     </section>
   
+    
+    <section id="tab-relay" class="tab-panel hide">
+      <h2>RU Relay</h2>
+      <p class="muted">Mobile whitelist hop: phone → RU VPS → this core.</p>
+      <button id="btn-relay-export" class="primary">Export bundle (ya.ru)</button>
+      <pre id="relay-bundle" class="code"></pre>
+      <h3>One-liner for RU VPS</h3>
+      <pre id="relay-oneline" class="code"></pre>
+      <p class="muted">After join on RU: <code>netductor relay links</code></p>
+    </section>
+
     <section id="tab-addons" class="tab-panel hide">
       <h2>Addons</h2>
       <div class="card" id="addon-lampac">

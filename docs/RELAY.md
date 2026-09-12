@@ -95,3 +95,23 @@ Core will:
 4. Install `netductor`, join the relay bundle, start agent  
 
 Afterwards: manage via TG/Admin/CLI only. Emergency SSH: same key as core.
+
+## OpenWrt / clients: primary = relay
+
+Recommended:
+
+1. **All clients** (phones, OpenWrt) use **relay VLESS** as the only peer.
+2. **Relay** does split routing: RU domains/private → `direct`, else → core uplink.
+3. **Fallback** on the router: if relay `:443` is down, use WAN (ISP) without VPN — implement via `mwan3` / hotplug or agent healthcheck.
+4. **Optional second peer (core)** only as manual emergency: traffic then hits foreign IP directly and may face DPI/whitelist issues on mobile.
+
+### Why not dual-peer by default
+
+A second peer to core is useful only when the operator accepts that the path may be unstable under whitelist. Prefer fixing relay availability over dual-peer.
+
+### Client tunables (from field profiles)
+
+- Reality fingerprint: `firefox` (or `chrome`)
+- DNS for RU suffixes via `77.88.8.8`, else `1.1.1.1`
+- Prefer IPv4-only on mobile paths
+- Connectivity check interval ~5m (observatory) — future agent work

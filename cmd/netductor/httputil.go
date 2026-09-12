@@ -4,11 +4,38 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 	"os"
 
 	"github.com/PavelNeyman/netductor/internal/paths"
 	"github.com/PavelNeyman/netductor/internal/session"
 )
+
+func setSessionCookie(w http.ResponseWriter, token string, exp int64, secure bool) {
+	c := &http.Cookie{
+		Name:     "nd_session",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Expires:  time.Unix(exp, 0),
+	}
+	if secure {
+		c.Secure = true
+	}
+	http.SetCookie(w, c)
+}
+
+func publicErr(err error) string {
+	if err == nil {
+		return "error"
+	}
+	s := err.Error()
+	if len(s) > 120 {
+		s = s[:120]
+	}
+	return s
+}
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")

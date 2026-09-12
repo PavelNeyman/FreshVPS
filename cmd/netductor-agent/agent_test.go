@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +97,80 @@ func TestCollectMetricsShape(t *testing.T) {
 	m := collectMetrics()
 	if m == nil {
 		t.Fatal()
+	}
+}
+
+func TestEnsureEnrolledPendingAndApproved(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.Setenv("NETDUCTOR_AGENT_DIR", dir)
+	t.Cleanup(func() { _ = os.Unsetenv("NETDUCTOR_AGENT_DIR") })
+
+	state := "pending"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/edge/enroll" && r.Method == http.MethodPost:
+			if r.Header.Get("Authorization") != "Bearer boot" {
+				w.WriteHeader(401)
+				return
+			}
+			if state == "pending" {
+				_ = json.NewEncoder(w).Encode(map[string]any{"status": "pending"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "approved", "device_token": "devtok-32-chars-xxxxxxxxxxxxxxx"})
+		case r.URL.Path == "/api/edge/heartbeat":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		case r.URL.Path == "/api/edge/commands":
+			_ = json.NewEncoder(w).Encode(map[string]any{"commands": []any{
+				map[string]any{"id": "1", "action": "ping", "arg": ""},
+			}})
+		case r.URL.Path == "/api/edge/cmd_result":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := config{Server: srv.URL, Token: "boot", DeviceID: "site1", Interval: 1}
+	err := ensureEnrolled(srv.Client(), &cfg)
+	if err == nil || !strings.Contains(err.Error(), "pending") {
+		t.Fatalf("want pending, got %v", err)
+	}
+
+	state = "approved"
+	if err := ensureEnrolled(srv.Client(), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Token != "devtok-32-chars-xxxxxxxxxxxxxxx" {
+		t.Fatal(cfg.Token)
+	}
+	if loadDeviceToken() == "" {
+		t.Fatal("token not saved")
+	}
+	// second call uses saved token
+	cfg.Token = "boot"
+	if err := ensureEnrolled(srv.Client(), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Token != "devtok-32-chars-xxxxxxxxxxxxxxx" {
+		t.Fatal("should load saved token")
+	}
+
+	if err := heartbeat(srv.Client(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := pollCmds(srv.Client(), cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunCmdPing(t *testing.T) {
+	if runCmd(nil, config{}, "ping", "") != "pong" {
+		t.Fatal()
+	}
+	out := runCmd(nil, config{}, "status", "")
+	if out == "" || out[0] != '{' {
+		t.Fatal(out)
 	}
 }

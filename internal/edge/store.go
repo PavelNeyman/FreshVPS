@@ -85,9 +85,7 @@ func ValidBearer(auth string) bool {
 	defer mu.Unlock()
 	m := loadDevices()
 	for _, d := range m {
-		dt, _ := d["device_token"].(string)
-		st, _ := d["status"].(string)
-		if dt != "" && constEq(raw, dt) && st == StatusApproved {
+		if d.DeviceToken != "" && constEq(raw, d.DeviceToken) && d.Status == StatusApproved {
 			return true
 		}
 	}
@@ -104,8 +102,7 @@ func DeviceIDFromAuth(auth string) string {
 	defer mu.Unlock()
 	m := loadDevices()
 	for id, d := range m {
-		dt, _ := d["device_token"].(string)
-		if dt != "" && constEq(raw, dt) {
+		if d.DeviceToken != "" && constEq(raw, d.DeviceToken) {
 			return id
 		}
 	}
@@ -139,12 +136,32 @@ func RequireApproved(auth, deviceID string) bool {
 	if !ok {
 		return false
 	}
-	st, _ := d["status"].(string)
-	dt, _ := d["device_token"].(string)
-	return st == StatusApproved && dt != "" && constEq(raw, dt)
+	return d.Status == StatusApproved && d.DeviceToken != "" && constEq(raw, d.DeviceToken)
 }
 
-type Device map[string]any
+
+// Device is a registered edge host (OpenWrt / MikroTik / …).
+type Device struct {
+	DeviceID    string         `json:"device_id,omitempty"`
+	Status      string         `json:"status,omitempty"`
+	DeviceToken string         `json:"device_token,omitempty"`
+	Board       string         `json:"board,omitempty"`
+	Hostname    string         `json:"hostname,omitempty"`
+	WANIP       string         `json:"wan_ip,omitempty"`
+	TemplateID  string         `json:"template_id,omitempty"`
+	Overlay     map[string]any `json:"overlay,omitempty"`
+	EnrolledAt  int64          `json:"enrolled_at,omitempty"`
+	ApprovedAt  int64          `json:"approved_at,omitempty"`
+	DeniedAt    int64          `json:"denied_at,omitempty"`
+	RevokedAt   int64          `json:"revoked_at,omitempty"`
+	LastSeen    int64          `json:"last_seen,omitempty"`
+	Healthy     bool           `json:"healthy,omitempty"`
+	Agent       string         `json:"agent,omitempty"`
+	UptimeSec   float64        `json:"uptime_sec,omitempty"`
+	MemPct      float64        `json:"mem_pct,omitempty"`
+	// Extra keeps unknown agent fields without losing them on disk.
+	Extra map[string]any `json:"extra,omitempty"`
+}
 
 func devicesPath() string  { return filepath.Join(paths.EdgeDir(), "devices.json") }
 func commandsPath() string { return filepath.Join(paths.EdgeDir(), "commands.json") }
@@ -175,6 +192,72 @@ func saveDevices(m map[string]Device) error {
 	return os.Rename(tmp, devicesPath())
 }
 
+func strFrom(payload map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := payload[k]; ok {
+			switch t := v.(type) {
+			case string:
+				return t
+			}
+		}
+	}
+	return ""
+}
+
+func floatFrom(payload map[string]any, key string) float64 {
+	v, ok := payload[key]
+	if !ok {
+		return 0
+	}
+	switch t := v.(type) {
+	case float64:
+		return t
+	case int:
+		return float64(t)
+	case int64:
+		return float64(t)
+	}
+	return 0
+}
+
+func mergePayload(d *Device, payload map[string]any) {
+	if s := strFrom(payload, "board"); s != "" {
+		d.Board = s
+	}
+	if s := strFrom(payload, "hostname"); s != "" {
+		d.Hostname = s
+	}
+	if s := strFrom(payload, "wan_ip"); s != "" {
+		d.WANIP = s
+	}
+	if s := strFrom(payload, "agent"); s != "" {
+		d.Agent = s
+	}
+	if v := floatFrom(payload, "uptime_sec"); v > 0 {
+		d.UptimeSec = v
+	}
+	if v := floatFrom(payload, "mem_pct"); v > 0 {
+		d.MemPct = v
+	}
+	// stash unknown keys
+	known := map[string]bool{
+		"device_id": true, "status": true, "device_token": true, "board": true,
+		"hostname": true, "wan_ip": true, "template_id": true, "overlay": true,
+		"enrolled_at": true, "approved_at": true, "denied_at": true, "revoked_at": true,
+		"last_seen": true, "healthy": true, "agent": true, "uptime_sec": true, "mem_pct": true,
+		"extra": true,
+	}
+	for k, v := range payload {
+		if known[k] {
+			continue
+		}
+		if d.Extra == nil {
+			d.Extra = map[string]any{}
+		}
+		d.Extra[k] = v
+	}
+}
+
 // Enroll registers or refreshes pending device. Returns status + optional token if already approved.
 func Enroll(payload map[string]any) (status, deviceToken string, isNew bool) {
 	mu.Lock()
@@ -187,46 +270,31 @@ func Enroll(payload map[string]any) (status, deviceToken string, isNew bool) {
 	existing, ok := m[did]
 	now := time.Now().Unix()
 	if ok {
-		st, _ := existing["status"].(string)
+		st := existing.Status
 		if st == StatusApproved {
-			// merge last_seen / inventory, keep token
-			for k, v := range payload {
-				if k == "device_token" || k == "status" {
-					continue
-				}
-				existing[k] = v
-			}
-			existing["last_seen"] = now
+			mergePayload(&existing, payload)
+			existing.LastSeen = now
+			existing.DeviceID = did
 			m[did] = existing
 			_ = saveDevices(m)
-			dt, _ := existing["device_token"].(string)
-			return StatusApproved, dt, false
+			return StatusApproved, existing.DeviceToken, false
 		}
 		if st == StatusDenied || st == StatusRevoked {
-			existing["last_seen"] = now
-			existing["last_enroll"] = payload
+			existing.LastSeen = now
 			m[did] = existing
 			_ = saveDevices(m)
 			return st, "", false
 		}
-		// pending — update facts
-		for k, v := range payload {
-			existing[k] = v
-		}
-		existing["status"] = StatusPending
-		existing["last_seen"] = now
+		mergePayload(&existing, payload)
+		existing.Status = StatusPending
+		existing.LastSeen = now
+		existing.DeviceID = did
 		m[did] = existing
 		_ = saveDevices(m)
 		return StatusPending, "", false
 	}
-	row := Device{}
-	for k, v := range payload {
-		row[k] = v
-	}
-	row["device_id"] = did
-	row["status"] = StatusPending
-	row["enrolled_at"] = now
-	row["last_seen"] = now
+	row := Device{DeviceID: did, Status: StatusPending, EnrolledAt: now, LastSeen: now}
+	mergePayload(&row, payload)
 	m[did] = row
 	_ = saveDevices(m)
 	return StatusPending, "", true
@@ -240,18 +308,14 @@ func Approve(deviceID string) (deviceToken string, err error) {
 	if !ok {
 		return "", fmt.Errorf("unknown device")
 	}
-	st, _ := d["status"].(string)
-	if st == StatusApproved {
-		dt, _ := d["device_token"].(string)
-		return dt, nil
-	}
-	if st == StatusRevoked {
-		// re-approve allowed → new token
+	if d.Status == StatusApproved {
+		return d.DeviceToken, nil
 	}
 	tok := randomToken(32)
-	d["status"] = StatusApproved
-	d["device_token"] = tok
-	d["approved_at"] = time.Now().Unix()
+	d.Status = StatusApproved
+	d.DeviceToken = tok
+	d.ApprovedAt = time.Now().Unix()
+	d.DeviceID = deviceID
 	m[deviceID] = d
 	_ = saveDevices(m)
 	return tok, nil
@@ -265,9 +329,9 @@ func Deny(deviceID string) error {
 	if !ok {
 		return fmt.Errorf("unknown device")
 	}
-	d["status"] = StatusDenied
-	delete(d, "device_token")
-	d["denied_at"] = time.Now().Unix()
+	d.Status = StatusDenied
+	d.DeviceToken = ""
+	d.DeniedAt = time.Now().Unix()
 	m[deviceID] = d
 	return saveDevices(m)
 }
@@ -280,9 +344,9 @@ func Revoke(deviceID string) error {
 	if !ok {
 		return fmt.Errorf("unknown device")
 	}
-	d["status"] = StatusRevoked
-	delete(d, "device_token")
-	d["revoked_at"] = time.Now().Unix()
+	d.Status = StatusRevoked
+	d.DeviceToken = ""
+	d.RevokedAt = time.Now().Unix()
 	m[deviceID] = d
 	return saveDevices(m)
 }
@@ -294,8 +358,7 @@ func StatusOf(deviceID string) string {
 	if !ok {
 		return ""
 	}
-	st, _ := d["status"].(string)
-	return st
+	return d.Status
 }
 
 func Heartbeat(payload map[string]any) {
@@ -308,23 +371,16 @@ func Heartbeat(payload map[string]any) {
 	}
 	cur, ok := m[did]
 	if !ok {
-		// unknown — ignore or soft pending without token path
 		return
 	}
-	st, _ := cur["status"].(string)
-	if st != StatusApproved {
-		cur["last_seen"] = time.Now().Unix()
+	if cur.Status != StatusApproved {
+		cur.LastSeen = time.Now().Unix()
 		m[did] = cur
 		_ = saveDevices(m)
 		return
 	}
-	for k, v := range payload {
-		if k == "device_token" || k == "status" {
-			continue
-		}
-		cur[k] = v
-	}
-	cur["last_seen"] = time.Now().Unix()
+	mergePayload(&cur, payload)
+	cur.LastSeen = time.Now().Unix()
 	m[did] = cur
 	_ = saveDevices(m)
 }
@@ -336,23 +392,10 @@ func ListDevices() []Device {
 	now := time.Now().Unix()
 	out := make([]Device, 0, len(m))
 	for id, d := range m {
-		row := Device{}
-		for k, v := range d {
-			if k == "device_token" {
-				continue // never leak
-			}
-			row[k] = v
-		}
-		row["device_id"] = id
-		var last int64
-		switch v := d["last_seen"].(type) {
-		case float64:
-			last = int64(v)
-		case int64:
-			last = v
-		}
-		row["healthy"] = (now - last) < 120
-		out = append(out, row)
+		d.DeviceID = id
+		d.DeviceToken = "" // never leak
+		d.Healthy = d.LastSeen > 0 && (now-d.LastSeen) < 120
+		out = append(out, d)
 	}
 	return out
 }
@@ -360,7 +403,7 @@ func ListDevices() []Device {
 func ListPending() []Device {
 	var out []Device
 	for _, d := range ListDevices() {
-		if st, _ := d["status"].(string); st == StatusPending {
+		if d.Status == StatusPending {
 			out = append(out, d)
 		}
 	}
@@ -396,8 +439,7 @@ func statusUnlocked(deviceID string) string {
 	if !ok {
 		return ""
 	}
-	st, _ := d["status"].(string)
-	return st
+	return d.Status
 }
 
 func PollCommands(deviceID string) []map[string]any {

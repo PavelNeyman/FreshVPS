@@ -105,7 +105,15 @@ func sni() string {
 	if v := os.Getenv("SINGBOX_REALITY_SNI"); v != "" {
 		return v
 	}
-	return "www.cloudflare.com"
+	// persisted at install / vpn set-sni
+	if b, err := os.ReadFile(filepath.Join(paths.EtcDir(), "secrets", "singbox_reality_sni")); err == nil {
+		if v := strings.TrimSpace(string(b)); v != "" {
+			return v
+		}
+	}
+	// Default: NOT Cloudflare (often fingerprint-blocked). Override via
+	// SINGBOX_REALITY_SNI or secrets/singbox_reality_sni.
+	return "www.microsoft.com"
 }
 
 func vlessPort() int {
@@ -293,4 +301,36 @@ func ListNative() ([]User, error) {
 
 func CreateSession(hours int) (token string, exp int64, err error) {
 	return session.Create(hours, "cli", "")
+}
+
+
+// SetSNI stores Reality/HY2 SNI and rewrites client links + server config.
+func SetSNI(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("empty sni")
+	}
+	dir := filepath.Join(paths.EtcDir(), "secrets")
+	_ = os.MkdirAll(dir, 0o700)
+	line := value + string([]byte{10})
+	if err := os.WriteFile(filepath.Join(dir, "singbox_reality_sni"), []byte(line), 0o600); err != nil {
+		return err
+	}
+	if err := RewriteAllLinks(); err != nil {
+		return err
+	}
+	return ApplyConfig()
+}
+
+func RewriteAllLinks() error {
+	r, err := loadRegistry()
+	if err != nil {
+		return err
+	}
+	for _, u := range r.Users {
+		if err := writeArtifacts(u.Name, u.UUID, u.Hy2Password); err != nil {
+			return err
+		}
+	}
+	return nil
 }

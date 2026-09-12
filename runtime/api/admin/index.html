@@ -33,6 +33,7 @@
       <button data-tab="templates" class="tab">Templates</button>
       <button data-tab="metrics" class="tab">Metrics</button>
       <button data-tab="probes" class="tab">Probes</button>
+      <button data-tab="addons" class="tab">Addons</button>
     </nav>
 
     <section id="tab-overview" class="tab-panel">
@@ -168,6 +169,28 @@
     <section id="tab-probes" class="tab-panel hide">
       <div class="card"><pre id="probes-raw" class="code">—</pre></div>
     </section>
+  
+    <section id="tab-addons" class="tab-panel hide">
+      <h2>Addons</h2>
+      <div class="card" id="addon-lampac">
+        <h3>Lampac</h3>
+        <div class="grid two">
+          <div><span class="muted">Status</span><div id="lp-status">—</div></div>
+          <div><span class="muted">Health</span><div id="lp-health">—</div></div>
+          <div><span class="muted">CPU / RAM</span><div id="lp-res">—</div></div>
+          <div><span class="muted">Version</span><div id="lp-ver">—</div></div>
+          <div><span class="muted">Ping</span><div id="lp-ping">—</div></div>
+          <div><span class="muted">Chromium</span><div id="lp-chr">—</div></div>
+        </div>
+        <p class="muted">Bound to loopback only (VPN/SSH). Open UI via tunnel.</p>
+        <div class="row">
+          <a id="lp-ui" class="ghost" href="http://127.0.0.1:9118/" target="_blank" rel="noopener">Open UI</a>
+          <a id="lp-admin" class="ghost" href="http://127.0.0.1:9118/admin" target="_blank" rel="noopener">Lampac Admin</a>
+          <button type="button" id="btn-lp-refresh" class="primary">Refresh</button>
+        </div>
+      </div>
+    </section>
+
   </main>
   <script src="/admin/app.js"></script>
 </body>

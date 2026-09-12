@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/PavelNeyman/netductor/internal/install"
 	"github.com/PavelNeyman/netductor/internal/paths"
+	"github.com/PavelNeyman/netductor/internal/relay"
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
 
@@ -38,6 +41,11 @@ func runRelay(args []string) {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
+		}
+		if id, tok, err := relay.IssueToken("relay"); err == nil {
+			b.AgentID = id
+			b.AgentToken = tok
+			b.CoreAgentURL = "http://" + b.CoreIP + ":8788"
 		}
 		raw, _ := json.MarshalIndent(b, "", "  ")
 		if err := os.WriteFile(out, append(raw, '\n'), 0o600); err != nil {
@@ -70,13 +78,39 @@ func runRelay(args []string) {
 			b, _ := os.ReadFile(filepath.Join(dir, e.Name()))
 			fmt.Printf("## %s\n%s\n", e.Name(), string(b))
 		}
+	case "agent":
+		tokB, _ := os.ReadFile("/etc/netductor/secrets/relay_agent_token")
+		urlB, _ := os.ReadFile("/etc/netductor/secrets/relay_core_url")
+		tok := strings.TrimSpace(string(tokB))
+		url := strings.TrimSpace(string(urlB))
+		if len(args) > 1 && args[1] != "" {
+			// optional overrides
+		}
+		if tok == "" || url == "" {
+			fmt.Fprintln(os.Stderr, "missing relay_agent_token or relay_core_url")
+			os.Exit(1)
+		}
+		fmt.Fprintln(os.Stderr, "relay agent →", url)
+		relay.AgentLoop(url, tok, 30*time.Second)
 	case "status":
-		b, err := os.ReadFile(filepath.Join(paths.StateDir(), "relay", "bundle.json"))
-		if err != nil {
-			fmt.Println("role: not a relay (no bundle)")
+		devs := relay.List()
+		if len(devs) == 0 {
+			b, err := os.ReadFile(filepath.Join(paths.StateDir(), "relay", "bundle.json"))
+			if err != nil {
+				fmt.Println("no relays registered")
+				return
+			}
+			fmt.Println(string(b))
 			return
 		}
-		fmt.Println(string(b))
+		for _, d := range devs {
+			on := "offline"
+			if relay.Online(d, 2*time.Minute) {
+				on = "online"
+			}
+			fmt.Printf("%s	%s	%s	ip=%s	sb=%v	ver=%d\n", d.ID, d.Name, on, d.PublicIP, d.SingBoxOK, d.ConfigVer)
+		}
+		fmt.Println("config_ver", relay.ConfigVer())
 	default:
 		fmt.Fprintln(os.Stderr, "unknown relay subcommand")
 		os.Exit(2)

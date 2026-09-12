@@ -262,3 +262,19 @@ func PruneDuplicates() int {
 	_ = save(r)
 	return before - len(out)
 }
+
+func Rename(id, name string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	r, err := load()
+	if err != nil {
+		return err
+	}
+	for i := range r.Devices {
+		if r.Devices[i].ID == id {
+			r.Devices[i].Name = name
+			return save(r)
+		}
+	}
+	return os.ErrNotExist
+}

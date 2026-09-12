@@ -164,6 +164,42 @@ func formatNodesListHTML() string {
 	return strings.TrimRight(b.String(), nl)
 }
 
+func nodeCardKeyboard(id string) map[string]any {
+	// callback_data max 64 bytes
+	rows := [][]map[string]any{
+		{btn("📊 Metrics", "m:nd:m:"+id, "primary"), btn("🔄 Upgrade", "m:nd:u:"+id, "")},
+		{btn("♻️ Reboot", "m:nd:r:"+id, "danger")},
+		{btn("📋 Nodes", "m:cat:nodes", "primary"), btn(T("main_menu"), "m:menu", "")},
+	}
+	return map[string]any{"inline_keyboard": rows}
+}
+
+func nodesListKeyboard() map[string]any {
+	rows := parseNodesList()
+	kb := [][]map[string]any{}
+	for i, r := range rows {
+		name := r.Host
+		if name == "" {
+			name = r.ID
+		}
+		label := fmt.Sprintf("%d. %s", i+1, name)
+		if r.Role != "" {
+			label += " [" + r.Role + "]"
+		}
+		if len(label) > 40 {
+			label = label[:40]
+		}
+		data := "m:nd:o:" + r.ID
+		if len(data) > 64 {
+			data = data[:64]
+		}
+		kb = append(kb, []map[string]any{btn(label, data, "")})
+	}
+	kb = append(kb, []map[string]any{btn("➕ Enroll relay", "m:relay:enroll", "primary")})
+	kb = append(kb, []map[string]any{btn(T("main_menu"), "m:menu", "")})
+	return map[string]any{"inline_keyboard": kb}
+}
+
 func nodesRenameKeyboard() map[string]any {
 	rows := parseNodesList()
 	kb := [][]map[string]any{}

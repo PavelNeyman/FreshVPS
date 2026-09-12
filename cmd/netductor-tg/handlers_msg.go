@@ -41,7 +41,37 @@ func handleMessage(token string, m *message, admin int64) {
 		sendHTML(token, chat, "✅ <pre>"+esc(out)+"</pre>\n\n<pre>"+esc(sub)+"</pre>", userCardKeyboard(name, strings.TrimSpace(sub)))
 		return
 	}
-	if strings.HasPrefix(st, "wait_vpn_name:") {
+		if st == "wait_relay_host" {
+		setState(chat, "wait_relay_user:"+text, "")
+		sendHTML(token, chat, "Логин SSH (обычно <code>root</code>), или отправьте <code>root</code>:", backTo("relay"))
+		return
+	}
+	if strings.HasPrefix(st, "wait_relay_user:") {
+		host := strings.TrimPrefix(st, "wait_relay_user:")
+		user := text
+		if user == "" {
+			user = "root"
+		}
+		setState(chat, "wait_relay_pass:"+host+"|"+user, "")
+		sendHTML(token, chat, "Пароль root (один раз; после установки останется только SSH-ключ core):", backTo("relay"))
+		return
+	}
+	if strings.HasPrefix(st, "wait_relay_pass:") {
+		rest := strings.TrimPrefix(st, "wait_relay_pass:")
+		parts := strings.SplitN(rest, "|", 2)
+		host, user := rest, "root"
+		if len(parts) == 2 {
+			host, user = parts[0], parts[1]
+		}
+		pass := text
+		setState(chat, "", "")
+		sendHTML(token, chat, "⏳ Provisioning <code>"+esc(host)+"</code>… (1–3 мин)", nil)
+		out := runND("relay", "provision", "--host", host, "--user", user, "--password", pass, "--sni", "ya.ru")
+		sendHTML(token, chat, "✅ <b>Relay</b>"+string([]byte{10})+"<pre>"+esc(truncate(out, 3500))+"</pre>"+string([]byte{10})+formatRelayListHTML(), relayKeyboard())
+		return
+	}
+
+if strings.HasPrefix(st, "wait_vpn_name:") {
 		action := strings.TrimPrefix(st, "wait_vpn_name:")
 		name := strings.Fields(text)[0]
 		setState(chat, "", "")

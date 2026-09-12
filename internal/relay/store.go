@@ -220,3 +220,45 @@ func SetExitEnabled(on bool) error {
 	r.ConfigVer++
 	return save(r)
 }
+
+// PruneDuplicates keeps the newest online device per PublicIP (or per token family).
+func PruneDuplicates() int {
+	mu.Lock()
+	defer mu.Unlock()
+	r, err := load()
+	if err != nil || r == nil {
+		return 0
+	}
+	best := map[string]Device{}
+	order := []string{}
+	for _, d := range r.Devices {
+		key := d.PublicIP
+		if key == "" {
+			key = d.ID
+		}
+		prev, ok := best[key]
+		if !ok {
+			best[key] = d
+			order = append(order, key)
+			continue
+		}
+		// prefer online (later LastSeen) and higher config
+		if d.LastSeen.After(prev.LastSeen) {
+			best[key] = d
+		}
+	}
+	var out []Device
+	for _, k := range order {
+		if d, ok := best[k]; ok {
+			out = append(out, d)
+			delete(best, k)
+		}
+	}
+	for _, d := range best {
+		out = append(out, d)
+	}
+	before := len(r.Devices)
+	r.Devices = out
+	_ = save(r)
+	return before - len(out)
+}

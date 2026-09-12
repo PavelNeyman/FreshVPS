@@ -45,6 +45,13 @@ netductor vpn list
 
 Expect doctor **ok**, services **active**, at least user `operator`.
 
+
+Default Reality SNI is **ya.ru** (RU whitelist). Mobile often needs a **RU relay VPS** — [VPN-USERS.md](VPN-USERS.md).
+
+```bash
+netductor vpn set-sni ya.ru
+```
+
 ## 4. VPN client
 
 ```bash

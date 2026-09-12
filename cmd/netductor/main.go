@@ -60,6 +60,8 @@ func main() {
 		fmt.Println("restored")
 	case "self-install":
 		runSelfInstall()
+	case "update":
+		runUpdate(true)
 	case "serve":
 		runServe(os.Args[2:])
 	default:
@@ -73,7 +75,7 @@ func printHelp() {
 	fmt.Print(`netductor — network control plane
 
   tui|menu [--mode vps|openwrt|workstation|operator]
-  backup | self-install
+  backup | self-install | update
   version | doctor | status | vpn | edge | serve | install | probe | collect | help
 
   (no args on a TTY → interactive menu)

@@ -321,6 +321,24 @@ func Approve(deviceID string) (deviceToken string, err error) {
 	return tok, nil
 }
 
+func RotateToken(deviceID string) (string, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	m := loadDevices()
+	d, ok := m[deviceID]
+	if !ok {
+		return "", fmt.Errorf("unknown device")
+	}
+	if d.Status != StatusApproved {
+		return "", fmt.Errorf("not approved")
+	}
+	tok := randomToken(32)
+	d.DeviceToken = tok
+	m[deviceID] = d
+	_ = saveDevices(m)
+	return tok, nil
+}
+
 func Deny(deviceID string) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -410,10 +428,21 @@ func ListPending() []Device {
 	return out
 }
 
+var allowedEdgeActions = map[string]bool{
+	"ping": true, "status": true, "metrics": true, "logread": true,
+	"wifi_reload": true, "network_reload": true,
+	"uci_get": true, "uci_show": true, "uci_set": true, "uci_commit": true, "uci_batch": true,
+	"config_backup": true, "config_restore": true, "apply_template": true, "bootstrap_apply": true,
+	"reboot": true, "agent_update": true, "sysupgrade": true, "apply_rsc": true,
+}
+
 func EnqueueCmd(deviceID, action, arg string) string {
 	mu.Lock()
 	defer mu.Unlock()
 	_ = ensure()
+	if !allowedEdgeActions[action] {
+		return ""
+	}
 	if st := statusUnlocked(deviceID); st != StatusApproved && st != "" {
 		return ""
 	}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/PavelNeyman/netductor/internal/audit"
 	"github.com/PavelNeyman/netductor/internal/edge"
 )
 
@@ -30,6 +31,7 @@ func runEdgeCLI(args []string) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		audit.Log("cli", "edge.approve", args[1], "")
 		fmt.Println("approved", args[1], "token="+tok)
 	case "deny":
 		if len(args) < 2 {
@@ -40,6 +42,7 @@ func runEdgeCLI(args []string) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		audit.Log("cli", "edge.deny", args[1], "")
 		fmt.Println("denied")
 	case "revoke":
 		if len(args) < 2 {
@@ -50,6 +53,7 @@ func runEdgeCLI(args []string) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		audit.Log("cli", "edge.revoke", args[1], "")
 		fmt.Println("revoked")
 	case "cmd":
 		if len(args) < 3 {

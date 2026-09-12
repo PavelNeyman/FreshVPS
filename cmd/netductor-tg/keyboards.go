@@ -27,7 +27,7 @@ func mainKeyboard() map[string]any {
 			{btn(T("status"), "m:status", "primary")},
 			{btn(T("cat_vpn"), "m:cat:vpn", "primary"), btn(T("cat_routers"), "m:cat:routers", "primary")},
 			{btn(T("session"), "m:session", ""), btn(T("admin"), "m:admin", "")},
-			{btn(T("nodes"), "m:cat:nodes", "primary")},
+			{btn(T("addons"), "m:addons", ""), btn(T("nodes"), "m:cat:nodes", "primary")},
 			{btn(T("lang"), "m:lang", ""), btn(T("help"), "m:help", "")},
 		},
 	}
@@ -43,6 +43,13 @@ func vpnKeyboard() map[string]any {
 			{btn(T("main_menu"), "m:menu", "")},
 		},
 	}
+}
+
+func addonsKeyboard() map[string]any {
+	return map[string]any{"inline_keyboard": [][]map[string]any{
+		{btn("Lampac", "m:addon:lampac", "primary")},
+		{btn(T("back"), "m:menu", "")},
+	}}
 }
 
 func nodesKeyboard() map[string]any {

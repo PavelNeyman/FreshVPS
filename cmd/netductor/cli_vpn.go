@@ -94,6 +94,8 @@ func runVPN(args []string) {
 		var s string
 		var ok bool
 		switch kind {
+		case "core":
+			s, ok = vpn.ReadClient(name, "link-vless.txt", "link.txt")
 		case "hy2":
 			s, ok = vpn.ReadClient(name, "link-hy2.txt")
 		case "vless":

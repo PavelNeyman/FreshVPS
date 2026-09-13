@@ -136,6 +136,41 @@ func runRelay(args []string) {
 			os.Exit(1)
 		}
 		fmt.Println("provisioned", host)
+	case "device":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: netductor relay device <id>")
+			os.Exit(2)
+		}
+		for _, d := range relay.List() {
+			if d.ID != args[1] {
+				continue
+			}
+			on := "offline"
+			if relay.Online(d, 2*time.Minute) {
+				on = "online"
+			}
+			fmt.Println("status:", on)
+			fmt.Println("sb=", d.SingBoxOK, "cpu=", d.CPUPercent, "mem=", d.MemUsedMB, "/", d.MemTotalMB, "load=", d.Load1)
+			if len(d.PendingCmds) > 0 {
+				fmt.Println("pending:", d.PendingCmds)
+			}
+			if d.LastCmd != "" {
+				ok := "fail"
+				if d.LastCmdOK {
+					ok = "ok"
+				}
+				fmt.Println("last_cmd:", d.LastCmd, ok, d.LastCmdAt.Format(time.RFC3339))
+				if d.LastCmdLog != "" {
+					log := d.LastCmdLog
+					if len(log) > 1500 {
+						log = log[len(log)-1500:]
+					}
+					fmt.Println(log)
+				}
+			}
+			return
+		}
+		fmt.Println("not found")
 	case "cmd":
 		if len(args) < 3 {
 			fmt.Fprintln(os.Stderr, "usage: netductor relay cmd <id> <reboot|upgrade|metrics>")

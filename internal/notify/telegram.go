@@ -26,44 +26,53 @@ func htmlEsc(s string) string {
 	return s
 }
 
-// Telegram sends a message to the configured admin chat (HTML-safe).
+func postTG(tok string, method string, vals url.Values) error {
+	u := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tok, method)
+	resp, err := http.PostForm(u, vals)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("telegram HTTP %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// Telegram sends via sendRichMessage when possible.
 func Telegram(msg string) error {
 	tok := secret("telegram_bot_token")
 	chat := secret("telegram_admin_id")
 	if tok == "" || chat == "" {
 		return fmt.Errorf("telegram secrets not configured")
 	}
-	u := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", tok)
-	resp, err := http.PostForm(u, url.Values{
+	// try rich
+	u := fmt.Sprintf("https://api.telegram.org/bot%s/sendRichMessage", tok)
+	body := fmt.Sprintf(`{"chat_id":%s,"rich_message":{"html":%q}}`, chat, msg)
+	resp, err := http.Post(u, "application/json", strings.NewReader(body))
+	if err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode < 300 {
+			return nil
+		}
+	}
+	return postTG(tok, "sendMessage", url.Values{
 		"chat_id": {chat}, "text": {msg}, "parse_mode": {"HTML"},
 	})
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		// fallback plain text without parse_mode
-		resp2, err2 := http.PostForm(u, url.Values{"chat_id": {chat}, "text": {msg}})
-		if err2 != nil {
-			return fmt.Errorf("telegram HTTP %d", resp.StatusCode)
-		}
-		defer resp2.Body.Close()
-		if resp2.StatusCode >= 300 {
-			return fmt.Errorf("telegram HTTP %d", resp2.StatusCode)
-		}
-	}
-	return nil
 }
 
-// TelegramCmd reports a finished node command.
+// TelegramCmd reports a finished node command with a small table.
 func TelegramCmd(node, cmd string, ok bool, log string) error {
 	mark := "✅"
 	if !ok {
 		mark = "❌"
 	}
-	if len(log) > 1200 {
-		log = log[len(log)-1200:]
+	if len(log) > 800 {
+		log = log[len(log)-800:]
 	}
-	msg := fmt.Sprintf("%s <b>%s</b> · <code>%s</code>\n<pre>%s</pre>", mark, htmlEsc(cmd), htmlEsc(node), htmlEsc(log))
+	msg := fmt.Sprintf(
+		"%s <b>%s</b>\n\n<table bordered striped>\n<tr><th>field</th><th>value</th></tr>\n<tr><td>node</td><td>%s</td></tr>\n<tr><td>cmd</td><td>%s</td></tr>\n<tr><td>ok</td><td>%v</td></tr>\n</table>\n<details><summary>log</summary>\n<pre>%s</pre>\n</details>",
+		mark, htmlEsc(cmd), htmlEsc(node), htmlEsc(cmd), ok, htmlEsc(log),
+	)
 	return Telegram(msg)
 }

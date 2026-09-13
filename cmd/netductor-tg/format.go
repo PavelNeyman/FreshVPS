@@ -427,12 +427,49 @@ func formatNodeDetailHTML(id string) string {
 			b.WriteString(nl + "<pre>" + esc(detail) + "</pre>")
 		}
 	} else {
+		cpu, memU, memT, load1 := sampleHostMetrics()
+		b.WriteString(nl + "<code>status: online</code>" + nl)
+		b.WriteString(fmt.Sprintf("<code>cpu= %.1f mem= %d / %d load= %.2f</code>"+nl, cpu, memU, memT, load1))
 		for _, u := range []string{"sing-box", "netductor-api", "netductor-telegram-bot"} {
 			st, _ := exec.Command("systemctl", "is-active", u).CombinedOutput()
 			b.WriteString("• " + esc(u) + ": <code>" + esc(strings.TrimSpace(string(st))) + "</code>" + nl)
 		}
+		// last core upgrade log tail
+		if lb, err := os.ReadFile("/var/lib/netductor/core-upgrade.log"); err == nil && len(lb) > 0 {
+			s := string(lb)
+			if len(s) > 600 {
+				s = s[len(s)-600:]
+			}
+			b.WriteString(nl + "<b>last upgrade</b>" + nl + "<pre>" + esc(s) + "</pre>")
+		}
 	}
 	return b.String()
+}
+
+func sampleHostMetrics() (cpu float64, memUsed, memTotal int64, load1 float64) {
+	if b, err := os.ReadFile("/proc/loadavg"); err == nil {
+		fmt.Sscanf(string(b), "%f", &load1)
+	}
+	if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+		var total, avail int64
+		for _, line := range strings.Split(string(b), string([]byte{10})) {
+			if strings.HasPrefix(line, "MemTotal:") {
+				fmt.Sscanf(line, "MemTotal: %d", &total)
+			}
+			if strings.HasPrefix(line, "MemAvailable:") {
+				fmt.Sscanf(line, "MemAvailable: %d", &avail)
+			}
+		}
+		memTotal = total / 1024
+		if total > 0 {
+			memUsed = (total - avail) / 1024
+		}
+	}
+	cpu = load1 * 50
+	if cpu > 100 {
+		cpu = 100
+	}
+	return
 }
 
 func enqueueNodeCmd(id, cmd string) string {

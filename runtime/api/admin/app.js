@@ -351,3 +351,21 @@
     toast('desired hostname set');
     refreshNodes();
   });
+
+document.getElementById('btn-node-upgrade')?.addEventListener('click', async () => {
+  const id = document.getElementById('node-id')?.value?.trim();
+  if (!id) return toast('select node');
+  await api('/api/relay/cmd', { method: 'POST', body: JSON.stringify({ id, cmd: 'upgrade' }) });
+  toast('upgrade queued');
+});
+document.getElementById('btn-node-reboot')?.addEventListener('click', async () => {
+  const id = document.getElementById('node-id')?.value?.trim();
+  if (!id) return toast('select node');
+  await api('/api/relay/cmd', { method: 'POST', body: JSON.stringify({ id, cmd: 'reboot' }) });
+  toast('reboot queued');
+});
+document.getElementById('btn-relay-sync')?.addEventListener('click', async () => {
+  await api('/api/relay/sync', { method: 'POST' });
+  toast('sync bumped');
+  refreshRelay?.();
+});

@@ -276,6 +276,14 @@ func answerCallback(token, id string) {
 	_, _ = apiPost(token, "answerCallbackQuery", map[string]any{"callback_query_id": id})
 }
 
+func answerCallbackText(token, id, text string) {
+	_, _ = apiPost(token, "answerCallbackQuery", map[string]any{
+		"callback_query_id": id,
+		"text":              text,
+		"show_alert":        false,
+	})
+}
+
 func formatVPNList(s string) string {
 	if getLang() == "en" {
 		return s

@@ -358,7 +358,11 @@ func formatVPNLinkHTML(name string) (caption string, vless, hy2, sub string) {
 	var b strings.Builder
 	b.WriteString("🔗 <b>VPN · " + esc(name) + "</b>" + nl + nl)
 	if vless != "" {
-		b.WriteString("<b>VLESS</b>" + nl + "<code>" + esc(vless) + "</code>" + nl + nl)
+		b.WriteString("<b>VLESS · primary</b>" + nl + "<code>" + esc(vless) + "</code>" + nl + nl)
+		coreL := strings.TrimSpace(runVPN("link", name, "core"))
+		if coreL != "" && coreL != vless && !strings.Contains(coreL, "not found") {
+			b.WriteString("<b>VLESS · core (домашний, быстрее)</b>" + nl + "<code>" + esc(coreL) + "</code>" + nl + nl)
+		}
 	}
 	if hy2 != "" {
 		b.WriteString("<b>HY2</b>" + nl + "<code>" + esc(hy2) + "</code>" + nl)

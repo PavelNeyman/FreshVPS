@@ -20,7 +20,9 @@ func Default() map[string]any {
 		},
 		"alerts": map[string]any{
 			"cpu_pct": 90, "mem_pct": 92, "disk_pct": 90,
-			"service_not_active": true, "probe_fail": true, "cooldown_sec": 1800,
+			"service_not_active": true, "probe_fail": true,
+			"service_down": true, "relay_offline": true,
+			"cooldown_sec": 900,
 		},
 	}
 }

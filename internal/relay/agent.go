@@ -81,6 +81,9 @@ func agentTick(client *http.Client, coreBase, token string, applied *int, lastDo
 	for _, c := range hr.Commands {
 		ok, log := runAgentCmd(c)
 		*lastDone, *lastOK, *lastLog = c, ok, log
+		// report immediately so core can TG-notify without waiting next tick
+		_ = reportCmdDone(client, coreBase, token, c, ok, log, ip, pub, sid, sni, sbOK, *applied, cpu, memU, memT, load1)
+		*lastDone, *lastOK, *lastLog = "", false, ""
 	}
 	if hr.NeedSync || hr.ConfigVer > *applied {
 		if err := pullAndApply(client, coreBase, token); err != nil {
@@ -180,7 +183,30 @@ func applyHostname(hn string) error {
 }
 
 
+func reportCmdDone(client *http.Client, coreBase, token, cmd string, ok bool, log, ip, pub, sid, sni string, sbOK bool, applied int, cpu float64, memU, memT int64, load1 float64) error {
+	body, _ := json.Marshal(HeartbeatIn{
+		PublicIP: ip, PBK: pub, SID: sid, SNI: sni,
+		Version: "agent-1", SingBoxOK: sbOK, ConfigVer: applied,
+		CPUPercent: cpu, MemUsedMB: memU, MemTotalMB: memT, Load1: load1,
+		CmdDone: cmd, CmdOK: ok, CmdLog: log,
+	})
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(coreBase, "/")+"/api/relay/agent/heartbeat", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+	return nil
+}
+
 func runAgentCmd(cmd string) (ok bool, log string) {
+
 	switch strings.TrimSpace(cmd) {
 	case "reboot":
 		go func() {

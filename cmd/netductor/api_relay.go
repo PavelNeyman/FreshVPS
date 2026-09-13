@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/PavelNeyman/netductor/internal/nodes"
+	"github.com/PavelNeyman/netductor/internal/notify"
 	"github.com/PavelNeyman/netductor/internal/relay"
 	"github.com/PavelNeyman/netductor/internal/vpn"
 )
@@ -145,6 +147,17 @@ func handleRelayAgentHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "unauthorized", 401)
 		return
+	}
+	if strings.TrimSpace(in.CmdDone) != "" {
+		ok := "✅"
+		if !in.CmdOK {
+			ok = "❌"
+		}
+		log := in.CmdLog
+		if len(log) > 800 {
+			log = log[len(log)-800:]
+		}
+		_ = notify.Telegram(fmt.Sprintf("%s <b>Relay cmd</b> <code>%s</code> on <code>%s</code>\n<pre>%s</pre>", ok, in.CmdDone, d.ID, log))
 	}
 	// Register as node role=relay so rename / fleet UI work
 	host := d.Name

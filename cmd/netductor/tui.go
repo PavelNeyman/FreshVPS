@@ -174,7 +174,11 @@ func menuItemsFor(mode runMode) []list.Item {
 			menuItem{"VPN — add user", "form: name + note", "vpn-add"},
 			menuItem{"Session token", "hours form", "session"},
 			menuItem{"Edge — list devices", "", "edge-list"},
-			menuItem{"Nodes registry", "", "nodes-list"},
+			menuItem{"Nodes registry", "core + relay fleet", "nodes-list"},
+			menuItem{"Relay status", "online / metrics / last cmd", "relay-status"},
+			menuItem{"Relay sync", "push user list to relays", "relay-sync"},
+			menuItem{"RU exit ON", "core traffic via RU", "relay-exit-on"},
+			menuItem{"RU exit OFF", "", "relay-exit-off"},
 			menuItem{"Set hostname", "nd-<role>-<marker> e.g. nd-core-nl01", "hostname"},
 			menuItem{"Addons — Lampac", "status / health", "addons-lampac"},
 			menuItem{"Live probes", "", "probe"},
@@ -288,20 +292,20 @@ func (m model) handleAction(id string) (tea.Model, tea.Cmd) {
 		m.screen = screenOutput
 	case "nodes-list":
 		m.output = capture(func() {
-			list, err := nodes.List()
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			if len(list) == 0 {
-				fmt.Println("(empty registry)")
-				return
-			}
-			for _, n := range list {
-				line := n.ID + " host=" + n.Hostname + " role=" + n.Role + " kind=" + n.Kind + " ip=" + n.PublicIP + " desired=" + n.DesiredHN
-				fmt.Println(line)
-			}
+			runNodes([]string{"list"})
 		})
+		m.screen = screenOutput
+	case "relay-status":
+		m.output = capture(func() { runRelay([]string{"status"}) })
+		m.screen = screenOutput
+	case "relay-sync":
+		m.output = capture(func() { runRelay([]string{"sync"}) })
+		m.screen = screenOutput
+	case "relay-exit-on":
+		m.output = capture(func() { runRelay([]string{"exit", "on"}) })
+		m.screen = screenOutput
+	case "relay-exit-off":
+		m.output = capture(func() { runRelay([]string{"exit", "off"}) })
 		m.screen = screenOutput
 	case "vpn-list":
 		m.output = capture(func() {

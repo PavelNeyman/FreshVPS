@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -73,13 +74,29 @@ func runNodes(args []string) {
 		}
 		switch args[1] {
 		case "reboot":
-			fmt.Println("rebooting core in 2s")
-			go func() {}()
-			// best-effort
-			_ = os.WriteFile("/tmp/netductor-reboot", []byte("1"), 0o644)
-			fmt.Println("use: systemctl reboot")
+			fmt.Println("core reboot scheduled in 3s")
+			go func() {
+				time.Sleep(3 * time.Second)
+				_ = exec.Command("systemctl", "reboot").Run()
+			}()
 		case "upgrade":
-			fmt.Println("core upgrade: pull release binary manually or via install")
+			out, err := exec.Command("bash", "-c", `set -e
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq 2>&1 | tail -3
+apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade 2>&1 | tail -20
+wget -qO /tmp/nd.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64
+wget -qO /tmp/nd-tg.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-tg-linux-amd64
+cp /tmp/nd.bin /usr/local/bin/netductor
+cp /tmp/nd-tg.bin /opt/netductor/bin/netductor-tg 2>/dev/null || true
+cp /tmp/nd-tg.bin /usr/local/bin/netductor-tg 2>/dev/null || true
+systemctl restart sing-box netductor-api netductor-telegram-bot 2>&1 || true
+echo CORE_UPGRADE_DONE
+`).CombinedOutput()
+			fmt.Print(string(out))
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
 		default:
 			fmt.Println("unknown", args[1])
 		}

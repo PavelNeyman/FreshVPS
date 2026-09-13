@@ -4,13 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/PavelNeyman/netductor/internal/metrics"
 	"github.com/PavelNeyman/netductor/internal/notify"
 	"github.com/PavelNeyman/netductor/internal/paths"
 	"github.com/PavelNeyman/netductor/internal/probes"
+	"github.com/PavelNeyman/netductor/internal/relay"
 )
 
 func runCollect() int {
@@ -68,6 +71,15 @@ func runCollect() int {
 	}
 
 	live := probes.Run(cfg)
+	// dynamic: TCP 443 to each enrolled relay
+	for _, d := range relay.List() {
+		if d.PublicIP == "" {
+			continue
+		}
+		p := map[string]any{"name": "relay-" + d.PublicIP, "type": "tcp", "host": d.PublicIP, "port": 443, "timeout": 5}
+		res := probes.Run(map[string]any{"probes": []any{p}})
+		live = append(live, res...)
+	}
 	m["probes"] = live
 
 	// history
@@ -108,19 +120,50 @@ func splitKeep(b []byte, max int) []byte {
 func evaluateSimpleAlerts(m map[string]any, live []map[string]any, cfg map[string]any) {
 	al, _ := cfg["alerts"].(map[string]any)
 	if al == nil {
-		return
+		al = map[string]any{"probe_fail": true, "service_down": true, "relay_offline": true}
 	}
-	send := func(msg string) { _ = notify.Telegram(msg) }
-	// probe failures
-	if v, ok := al["probe_fail"].(bool); ok && v {
+	enabled := func(k string) bool {
+		v, ok := al[k].(bool)
+		return !ok || v // default on
+	}
+	if enabled("probe_fail") {
 		for _, p := range live {
 			if ok, _ := p["ok"].(bool); !ok {
 				name, _ := p["name"].(string)
 				err, _ := p["error"].(string)
-				send(fmt.Sprintf("⚠️ Probe %s failed: %s", name, err))
+				notify.AlertOnce("probe:"+name, fmt.Sprintf("⚠️ Probe <b>%s</b> failed: %s", name, err))
+			} else {
+				name, _ := p["name"].(string)
+				notify.ClearAlert("probe:" + name)
 			}
 		}
 	}
-	_ = time.Now() // keep import if needed
+	if enabled("service_down") {
+		for _, u := range []string{"sing-box", "netductor-api", "netductor-telegram-bot"} {
+			out, err := exec.Command("systemctl", "is-active", u).CombinedOutput()
+			st := strings.TrimSpace(string(out))
+			if err != nil || st != "active" {
+				notify.AlertOnce("svc:"+u, fmt.Sprintf("🔴 Service <b>%s</b> is %s", u, st))
+			} else {
+				notify.ClearAlert("svc:" + u)
+			}
+		}
+	}
+	if enabled("relay_offline") {
+		for _, d := range relay.List() {
+			key := "relay:" + d.ID
+			if !relay.Online(d, 3*time.Minute) {
+				notify.AlertOnce(key, fmt.Sprintf("🔴 Relay offline: <b>%s</b> (%s)", d.Name, d.PublicIP))
+			} else {
+				notify.ClearAlert(key)
+				if !d.SingBoxOK {
+					notify.AlertOnce(key+":sb", fmt.Sprintf("⚠️ Relay <b>%s</b> sing-box not active", d.Name))
+				} else {
+					notify.ClearAlert(key + ":sb")
+				}
+			}
+		}
+	}
 	_ = m
 }
+

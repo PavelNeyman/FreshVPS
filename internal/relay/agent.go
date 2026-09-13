@@ -23,13 +23,16 @@ func AgentLoop(coreBase, token string, interval time.Duration) {
 	}
 	client := &http.Client{Timeout: 20 * time.Second}
 	applied := 0
+	var lastDone string
+	var lastOK bool
+	var lastLog string
 	for {
-		_ = agentTick(client, coreBase, token, &applied)
+		_ = agentTick(client, coreBase, token, &applied, &lastDone, &lastOK, &lastLog)
 		time.Sleep(interval)
 	}
 }
 
-func agentTick(client *http.Client, coreBase, token string, applied *int) error {
+func agentTick(client *http.Client, coreBase, token string, applied *int, lastDone *string, lastOK *bool, lastLog *string) error {
 	coreBase = strings.TrimRight(coreBase, "/")
 	pub := readSecret("singbox_reality_public")
 	sid := readSecret("singbox_short_id")
@@ -47,7 +50,9 @@ func agentTick(client *http.Client, coreBase, token string, applied *int) error 
 		PublicIP: ip, PBK: pub, SID: sid, SNI: sni,
 		Version: "agent-1", SingBoxOK: sbOK, ConfigVer: *applied,
 		CPUPercent: cpu, MemUsedMB: memU, MemTotalMB: memT, Load1: load1,
+		CmdDone: *lastDone, CmdOK: *lastOK, CmdLog: *lastLog,
 	})
+	*lastDone, *lastOK, *lastLog = "", false, ""
 	req, err := http.NewRequest(http.MethodPost, coreBase+"/api/relay/agent/heartbeat", bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -74,7 +79,8 @@ func agentTick(client *http.Client, coreBase, token string, applied *int) error 
 		_ = applyHostname(hn)
 	}
 	for _, c := range hr.Commands {
-		_ = runAgentCmd(c)
+		ok, log := runAgentCmd(c)
+		*lastDone, *lastOK, *lastLog = c, ok, log
 	}
 	if hr.NeedSync || hr.ConfigVer > *applied {
 		if err := pullAndApply(client, coreBase, token); err != nil {
@@ -174,18 +180,27 @@ func applyHostname(hn string) error {
 }
 
 
-func runAgentCmd(cmd string) error {
+func runAgentCmd(cmd string) (ok bool, log string) {
 	switch strings.TrimSpace(cmd) {
 	case "reboot":
 		go func() {
 			time.Sleep(2 * time.Second)
 			_ = exec.Command("systemctl", "reboot").Run()
 		}()
+		return true, "reboot scheduled in 2s"
 	case "upgrade":
-		_ = exec.Command("bash", "-c", "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade").Run()
-		_ = exec.Command("bash", "-c", "wget -qO /tmp/nd.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64 && cp /tmp/nd.bin /usr/local/bin/netductor && systemctl restart sing-box netductor-relay-agent").Run()
+		out, err := exec.Command("bash", "-c", `export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq 2>&1 | tail -5
+apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade 2>&1 | tail -30
+wget -qO /tmp/nd.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64 && cp /tmp/nd.bin /usr/local/bin/netductor
+systemctl restart sing-box netductor-relay-agent 2>&1
+echo DONE
+`).CombinedOutput()
+		return err == nil, string(out)
 	case "metrics":
-		// next heartbeat already samples metrics
+		return true, "metrics on next heartbeat"
+	default:
+		return false, "unknown cmd: " + cmd
 	}
-	return nil
 }
+

@@ -492,27 +492,28 @@ func formatNodeCardHTML(c nodeCard) string {
 		st = "—"
 	}
 	idShort := c.ID
-	if len(idShort) > 20 {
+	if len(idShort) > 18 {
 		idShort = idShort[:8] + "…" + idShort[len(idShort)-6:]
 	}
-	t1 := table2([][2]string{
-		{"host", host},
-		{"role", role},
-		{"id", idShort},
-		{"ip", c.IP},
-		{"status", st},
-	})
-	t2 := table2([][2]string{
-		{"cpu", fmt.Sprintf("%.1f%%", c.CPU)},
-		{"mem", fmt.Sprintf("%d / %d MB", c.MemUsed, c.MemTotal)},
-		{"load", fmt.Sprintf("%.2f", c.Load)},
-	})
 	var b strings.Builder
 	b.WriteString("🖥 <b>" + esc(host) + "</b>" + nl + nl)
-	b.WriteString("<b>identity</b>" + nl + "<pre>" + esc(t1) + "</pre>")
-	b.WriteString("<b>resources</b>" + nl + "<pre>" + esc(t2) + "</pre>")
+	b.WriteString("<table bordered striped>" + nl)
+	b.WriteString("<tr><th>field</th><th>value</th></tr>" + nl)
+	b.WriteString("<tr><td>role</td><td>" + esc(role) + "</td></tr>" + nl)
+	b.WriteString("<tr><td>id</td><td>" + esc(idShort) + "</td></tr>" + nl)
+	if c.IP != "" {
+		b.WriteString("<tr><td>ip</td><td>" + esc(c.IP) + "</td></tr>" + nl)
+	}
+	b.WriteString("<tr><td>status</td><td>" + esc(st) + "</td></tr>" + nl)
+	b.WriteString("</table>" + nl + nl)
+	b.WriteString("<table bordered striped>" + nl)
+	b.WriteString("<tr><th>metric</th><th>value</th></tr>" + nl)
+	b.WriteString(fmt.Sprintf("<tr><td>cpu</td><td>%.1f%%</td></tr>"+nl, c.CPU))
+	b.WriteString(fmt.Sprintf("<tr><td>mem</td><td>%d / %d MB</td></tr>"+nl, c.MemUsed, c.MemTotal))
+	b.WriteString(fmt.Sprintf("<tr><td>load</td><td>%.2f</td></tr>"+nl, c.Load))
+	b.WriteString("</table>")
 	if len(c.Lines) > 0 {
-		b.WriteString("<b>extra</b>" + nl)
+		b.WriteString(nl + nl)
 		for _, line := range c.Lines {
 			b.WriteString(line + nl)
 		}
@@ -562,7 +563,9 @@ func loadNodeCard(id string) nodeCard {
 	if c.Status == "" {
 		c.Status = "online"
 	}
-	var svcRows [][2]string
+	var sb strings.Builder
+	sb.WriteString("<table bordered striped>" + string([]byte{10}))
+	sb.WriteString("<tr><th>service</th><th>state</th></tr>" + string([]byte{10}))
 	for _, u := range []string{"sing-box", "netductor-api", "netductor-telegram-bot"} {
 		out, _ := exec.Command("systemctl", "is-active", u).CombinedOutput()
 		st := strings.TrimSpace(string(out))
@@ -571,9 +574,10 @@ func loadNodeCard(id string) nodeCard {
 		} else {
 			st = "🔴 " + st
 		}
-		svcRows = append(svcRows, [2]string{u, st})
+		sb.WriteString("<tr><td>" + esc(u) + "</td><td>" + esc(st) + "</td></tr>" + string([]byte{10}))
 	}
-	c.Lines = append(c.Lines, "<pre>"+esc(table2(svcRows))+"</pre>")
+	sb.WriteString("</table>")
+	c.Lines = append(c.Lines, sb.String())
 	if lb, err := os.ReadFile("/var/lib/netductor/core-upgrade.log"); err == nil {
 		s := strings.TrimSpace(string(lb))
 		if s != "" && s != "started" {
@@ -597,16 +601,20 @@ func formatCmdQueuedHTML(kind, nodeID, raw string) string {
 	if host == "" {
 		host = nodeID
 	}
-	title := "🔄 Upgrade"
+	title := "🔄 <b>Upgrade</b>"
 	if kind == "reboot" {
-		title = "♻️ Reboot"
+		title = "♻️ <b>Reboot</b>"
 	}
-	t := table2([][2]string{
-		{"node", host},
-		{"role", c.Role},
-		{"status", "queued"},
-	})
-	return title + nl + nl + "<pre>" + esc(t) + "</pre>" + "<i>" + T("cmd_wait_hint") + "</i>"
+	var b strings.Builder
+	b.WriteString(title + nl + nl)
+	b.WriteString("<table bordered striped>" + nl)
+	b.WriteString("<tr><th>field</th><th>value</th></tr>" + nl)
+	b.WriteString("<tr><td>node</td><td>" + esc(host) + "</td></tr>" + nl)
+	b.WriteString("<tr><td>role</td><td>" + esc(c.Role) + "</td></tr>" + nl)
+	b.WriteString("<tr><td>status</td><td>queued</td></tr>" + nl)
+	b.WriteString("</table>" + nl)
+	b.WriteString("<i>" + T("cmd_wait_hint") + "</i>")
+	return b.String()
 }
 
 func enqueueNodeCmd(id, cmd string) string {

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/PavelNeyman/netductor/internal/nodes"
-	"github.com/PavelNeyman/netductor/internal/notify"
 	"github.com/PavelNeyman/netductor/internal/relay"
 )
 
@@ -75,29 +74,17 @@ func runNodes(args []string) {
 		}
 		switch args[1] {
 		case "reboot":
-			fmt.Println("core reboot scheduled in 3s")
-			go func() {
-				time.Sleep(3 * time.Second)
-				_ = exec.Command("systemctl", "reboot").Run()
-			}()
+			_ = exec.Command("bash", "-c", "nohup bash -c 'sleep 3; systemctl reboot' >/dev/null 2>&1 &").Run()
+			fmt.Println("queued")
 		case "upgrade":
 			logf := "/var/lib/netductor/core-upgrade.log"
+			sh := "/var/lib/netductor/core-upgrade.sh"
 			_ = os.MkdirAll("/var/lib/netductor", 0o755)
 			_ = os.WriteFile(logf, append([]byte("started"), 10), 0o600)
-			go func() {
-				script := "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq 2>&1 | tail -5; apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade 2>&1 | tail -40; wget -qO /tmp/nd.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64; wget -qO /tmp/nd-tg.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-tg-linux-amd64; cp /tmp/nd.bin /usr/local/bin/netductor; install -m 755 /tmp/nd-tg.bin /opt/netductor/bin/netductor-tg; install -m 755 /tmp/nd-tg.bin /usr/local/bin/netductor-tg; systemctl restart sing-box netductor-api 2>&1 || true; echo CORE_UPGRADE_DONE"
-				out, err := exec.Command("bash", "-c", script).CombinedOutput()
-				msg := string(out)
-				ok := err == nil
-				if err != nil {
-					msg += string([]byte{10}) + "ERR: " + err.Error()
-				}
-				_ = os.WriteFile(logf, []byte(msg), 0o600)
-				_ = notify.TelegramCmd("nd-core", "upgrade", ok, msg)
-				_ = exec.Command("systemctl", "restart", "netductor-telegram-bot").Run()
-			}()
-			fmt.Println("core upgrade started in background")
-			fmt.Println("log:", logf)
+			raw, _ := exec.Command("bash", "-c", "echo IyEvYmluL2Jhc2gKc2V0IC14CmV4cG9ydCBERUJJQU5fRlJPTlRFTkQ9bm9uaW50ZXJhY3RpdmUKYXB0LWdldCB1cGRhdGUgLXFxIDI+JjEgfCB0YWlsIC01CmFwdC1nZXQgLXkgLW8gRHBrZzo6T3B0aW9uczo6PS0tZm9yY2UtY29uZmRlZiAtbyBEcGtnOjpPcHRpb25zOjo9LS1mb3JjZS1jb25mb2xkIHVwZ3JhZGUgMj4mMSB8IHRhaWwgLTQwCndnZXQgLXFPIC90bXAvbmQuYmluIGh0dHBzOi8vZ2l0aHViLmNvbS9QYXZlbE5leW1hbi9uZXRkdWN0b3IvcmVsZWFzZXMvZG93bmxvYWQvdjAuNy4wLWRldi9uZXRkdWN0b3ItbGludXgtYW1kNjQKd2dldCAtcU8gL3RtcC9uZC10Zy5iaW4gaHR0cHM6Ly9naXRodWIuY29tL1BhdmVsTmV5bWFuL25ldGR1Y3Rvci9yZWxlYXNlcy9kb3dubG9hZC92MC43LjAtZGV2L25ldGR1Y3Rvci10Zy1saW51eC1hbWQ2NApjcCAvdG1wL25kLmJpbiAvdXNyL2xvY2FsL2Jpbi9uZXRkdWN0b3IKaW5zdGFsbCAtbSA3NTUgL3RtcC9uZC10Zy5iaW4gL29wdC9uZXRkdWN0b3IvYmluL25ldGR1Y3Rvci10ZwppbnN0YWxsIC1tIDc1NSAvdG1wL25kLXRnLmJpbiAvdXNyL2xvY2FsL2Jpbi9uZXRkdWN0b3ItdGcKc3lzdGVtY3RsIHJlc3RhcnQgc2luZy1ib3ggbmV0ZHVjdG9yLWFwaSAyPiYxIHx8IHRydWUKZWNobyBDT1JFX1VQR1JBREVfRE9ORQpUT0s9JChjYXQgL2V0Yy9uZXRkdWN0b3Ivc2VjcmV0cy90ZWxlZ3JhbV9ib3RfdG9rZW4gMj4vZGV2L251bGwpCkNIQVQ9JChjYXQgL2V0Yy9uZXRkdWN0b3Ivc2VjcmV0cy90ZWxlZ3JhbV9hZG1pbl9pZCAyPi9kZXYvbnVsbCkKaWYgWyAtbiAiJFRPSyIgXSAmJiBbIC1uICIkQ0hBVCIgXTsgdGhlbgogIGN1cmwgLXNTIC1YIFBPU1QgImh0dHBzOi8vYXBpLnRlbGVncmFtLm9yZy9ib3Qke1RPS30vc2VuZE1lc3NhZ2UiIC1kIGNoYXRfaWQ9IiRDSEFUIiAtLWRhdGEtdXJsZW5jb2RlICJ0ZXh0PeKchSB1cGdyYWRlIMK3IG5kLWNvcmUgZG9uZSIgPi9kZXYvbnVsbCAyPiYxIHx8IHRydWUKZmkKc3lzdGVtY3RsIHJlc3RhcnQgbmV0ZHVjdG9yLXRlbGVncmFtLWJvdCAyPiYxIHx8IHRydWUK | base64 -d").Output()
+			_ = os.WriteFile(sh, raw, 0o700)
+			_ = exec.Command("bash", "-c", "nohup bash "+sh+" >>"+logf+" 2>&1 &").Run()
+			fmt.Println("queued")
 		default:
 			fmt.Println("unknown", args[1])
 		}

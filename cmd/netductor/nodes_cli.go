@@ -80,23 +80,19 @@ func runNodes(args []string) {
 				_ = exec.Command("systemctl", "reboot").Run()
 			}()
 		case "upgrade":
-			out, err := exec.Command("bash", "-c", `set -e
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq 2>&1 | tail -3
-apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade 2>&1 | tail -20
-wget -qO /tmp/nd.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64
-wget -qO /tmp/nd-tg.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-tg-linux-amd64
-cp /tmp/nd.bin /usr/local/bin/netductor
-cp /tmp/nd-tg.bin /opt/netductor/bin/netductor-tg 2>/dev/null || true
-cp /tmp/nd-tg.bin /usr/local/bin/netductor-tg 2>/dev/null || true
-systemctl restart sing-box netductor-api netductor-telegram-bot 2>&1 || true
-echo CORE_UPGRADE_DONE
-`).CombinedOutput()
-			fmt.Print(string(out))
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
+			logf := "/var/lib/netductor/core-upgrade.log"
+			_ = os.MkdirAll("/var/lib/netductor", 0o755)
+			_ = os.WriteFile(logf, []byte("started\n"), 0o600)
+			go func() {
+				out, err := exec.Command("bash", "-c", "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq 2>&1 | tail -5; apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade 2>&1 | tail -40; wget -qO /tmp/nd.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-linux-amd64; wget -qO /tmp/nd-tg.bin https://github.com/PavelNeyman/netductor/releases/download/v0.7.0-dev/netductor-tg-linux-amd64; cp /tmp/nd.bin /usr/local/bin/netductor; install -m 755 /tmp/nd-tg.bin /opt/netductor/bin/netductor-tg; install -m 755 /tmp/nd-tg.bin /usr/local/bin/netductor-tg; systemctl restart sing-box netductor-api 2>&1 || true; systemctl restart netductor-telegram-bot 2>&1 || true; echo CORE_UPGRADE_DONE").CombinedOutput()
+				msg := string(out)
+				if err != nil {
+					msg += "\nERR: " + err.Error()
+				}
+				_ = os.WriteFile(logf, []byte(msg), 0o600)
+			}()
+			fmt.Println("core upgrade started in background")
+			fmt.Println("log:", logf)
 		default:
 			fmt.Println("unknown", args[1])
 		}

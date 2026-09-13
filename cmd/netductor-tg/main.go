@@ -82,30 +82,61 @@ func esc(s string) string {
 	return r.Replace(s)
 }
 
-func sendHTML(token string, chat int64, text string, kb map[string]any) {
+
+// sendRich prefers Bot API 10.1+ sendRichMessage (native tables); falls back to HTML sendMessage.
+func sendRich(token string, chat int64, html string, kb map[string]any) {
 	payload := map[string]any{
-		"chat_id":    chat,
-		"text":       text,
-		"parse_mode": "HTML",
+		"chat_id": chat,
+		"rich_message": map[string]any{
+			"html": html,
+		},
 	}
 	if kb != nil {
 		payload["reply_markup"] = kb
 	}
-	_, _ = apiPost(token, "sendMessage", payload)
+	if _, err := apiPost(token, "sendRichMessage", payload); err == nil {
+		return
+	}
+	// fallback classic
+	payload2 := map[string]any{"chat_id": chat, "text": html, "parse_mode": "HTML"}
+	if kb != nil {
+		payload2["reply_markup"] = kb
+	}
+	_, _ = apiPost(token, "sendMessage", payload2)
 }
 
-func editHTML(token string, chat int64, msgID int, text string, kb map[string]any) error {
+func editRich(token string, chat int64, msgID int, html string, kb map[string]any) error {
 	payload := map[string]any{
 		"chat_id":    chat,
 		"message_id": msgID,
-		"text":       text,
-		"parse_mode": "HTML",
+		"rich_message": map[string]any{
+			"html": html,
+		},
 	}
 	if kb != nil {
 		payload["reply_markup"] = kb
 	}
-	_, err := apiPost(token, "editMessageText", payload)
+	if _, err := apiPost(token, "editMessageText", payload); err == nil {
+		return nil
+	}
+	// fallback classic HTML
+	payload2 := map[string]any{
+		"chat_id": chat, "message_id": msgID, "text": html, "parse_mode": "HTML",
+	}
+	if kb != nil {
+		payload2["reply_markup"] = kb
+	}
+	_, err := apiPost(token, "editMessageText", payload2)
 	return err
+}
+
+
+func sendHTML(token string, chat int64, text string, kb map[string]any) {
+	sendRich(token, chat, text, kb)
+}
+
+func editHTML(token string, chat int64, msgID int, text string, kb map[string]any) error {
+	return editRich(token, chat, msgID, text, kb)
 }
 
 func reply(token string, chat int64, msgID int, text string, kb map[string]any) {

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -299,7 +300,39 @@ func formatVPNListPretty(raw string) string {
 }
 
 func formatStatusPretty() string {
-	return statusInline()
+	nl := string([]byte{10})
+	ru := getLang() != "en"
+	var b strings.Builder
+	host, _ := os.Hostname()
+	if ru {
+		b.WriteString("📊 <b>Статус core</b> · <code>" + esc(host) + "</code>" + nl + nl)
+	} else {
+		b.WriteString("📊 <b>Core status</b> · <code>" + esc(host) + "</code>" + nl + nl)
+	}
+	for _, u := range []string{"sing-box", "blocky", "netductor-api", "netductor-telegram-bot"} {
+		out, _ := exec.Command("systemctl", "is-active", u).CombinedOutput()
+		st := strings.TrimSpace(string(out))
+		icon := "🔴"
+		if st == "active" {
+			icon = "🟢"
+		}
+		b.WriteString(icon + " <code>" + esc(u) + "</code> · " + esc(st) + nl)
+	}
+	b.WriteString(nl + "🗂 <b>")
+	if ru {
+		b.WriteString("Ноды")
+	} else {
+		b.WriteString("Nodes")
+	}
+	b.WriteString("</b>" + nl + formatNodesListHTML() + nl)
+	b.WriteString(nl)
+	if ru {
+		b.WriteString("👥 <b>VPN</b>" + nl)
+	} else {
+		b.WriteString("👥 <b>VPN</b>" + nl)
+	}
+	b.WriteString(formatVPNListPretty(runVPN("list")))
+	return b.String()
 }
 
 func formatVPNLinkHTML(name string) (caption string, vless, hy2, sub string) {
@@ -346,32 +379,36 @@ func formatRelayListHTML() string {
 
 func formatNodeDetailHTML(id string) string {
 	nl := string([]byte{10})
+	_ = runND("nodes", "list")
 	out := runND("nodes", "list")
 	var line string
 	for _, l := range strings.Split(out, "\n") {
-		if strings.Contains(l, "id="+id) || strings.HasPrefix(strings.TrimSpace(l), "id="+id) {
+		if strings.Contains(l, "id="+id) {
 			line = l
 			break
 		}
 	}
-	// relay metrics from status
 	st := runND("relay", "status")
 	var b strings.Builder
-	b.WriteString("🖥 <b>Node</b> <code>" + esc(id) + "</code>" + nl + nl)
+	b.WriteString("🖥 <b>Node</b>" + nl)
 	if line != "" {
 		for _, p := range strings.Split(line, "\t") {
 			b.WriteString("• <code>" + esc(p) + "</code>" + nl)
 		}
+	} else {
+		b.WriteString("<code>" + esc(id) + "</code>" + nl)
 	}
-	if st != "" {
-		b.WriteString(nl + "<b>relay status</b>" + nl)
-		for _, l := range strings.Split(st, "\n") {
-			if strings.Contains(l, id) {
-				b.WriteString("<code>" + esc(l) + "</code>" + nl)
-			}
+	// last command from relay status line / devices
+	for _, l := range strings.Split(st, "\n") {
+		if strings.Contains(l, id) {
+			b.WriteString(nl + "📡 <b>agent</b>" + nl + "<code>" + esc(l) + "</code>" + nl)
 		}
 	}
-	b.WriteString(nl + "<i>Reboot/Upgrade: queued for agent (relay) or local (core).</i>")
+	// pending + last cmd via CLI detail
+	detail := runND("relay", "device", id)
+	if detail != "" && !strings.Contains(detail, "usage") && !strings.Contains(detail, "unknown") {
+		b.WriteString(nl + detail)
+	}
 	return b.String()
 }
 

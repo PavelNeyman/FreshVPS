@@ -52,11 +52,11 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 			case "m": // metrics
 				reply(token, chat, msgID, formatNodeDetailHTML(id), nodeCardKeyboard(id))
 			case "u": // upgrade
-				out := enqueueNodeCmd(id, "upgrade")
-				reply(token, chat, msgID, T("upgrade_queued")+string([]byte{10})+"<pre>"+esc(out)+"</pre>"+string([]byte{10})+"<i>"+T("cmd_wait_hint")+"</i>", nodeCardKeyboard(id))
+				_ = enqueueNodeCmd(id, "upgrade")
+				reply(token, chat, msgID, formatCmdQueuedHTML("upgrade", id, ""), nodeCardKeyboard(id))
 			case "r": // reboot
-				out := enqueueNodeCmd(id, "reboot")
-				reply(token, chat, msgID, T("reboot_queued")+string([]byte{10})+"<pre>"+esc(out)+"</pre>"+string([]byte{10})+"<i>"+T("cmd_wait_hint")+"</i>", nodeCardKeyboard(id))
+				_ = enqueueNodeCmd(id, "reboot")
+				reply(token, chat, msgID, formatCmdQueuedHTML("reboot", id, ""), nodeCardKeyboard(id))
 			}
 		}
 		return

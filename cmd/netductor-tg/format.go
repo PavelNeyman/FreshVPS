@@ -381,18 +381,36 @@ func formatRelayListHTML() string {
 	return "📡 <b>Nodes / relay</b>" + nl + "RU exit: <code>" + esc(ex) + "</code>" + nl + nl + body
 }
 
+
+func nodeRole(id string) string {
+	for _, l := range strings.Split(runND("nodes", "list"), "\n") {
+		if !strings.Contains(l, "id="+id) {
+			continue
+		}
+		for _, p := range strings.Split(l, "\t") {
+			if strings.HasPrefix(p, "role=") {
+				return strings.TrimPrefix(p, "role=")
+			}
+		}
+	}
+	return ""
+}
+
 func formatNodeDetailHTML(id string) string {
 	nl := string([]byte{10})
-	_ = runND("nodes", "list")
 	out := runND("nodes", "list")
-	var line string
+	var line, role string
 	for _, l := range strings.Split(out, "\n") {
 		if strings.Contains(l, "id="+id) {
 			line = l
+			for _, p := range strings.Split(l, "\t") {
+				if strings.HasPrefix(p, "role=") {
+					role = strings.TrimPrefix(p, "role=")
+				}
+			}
 			break
 		}
 	}
-	st := runND("relay", "status")
 	var b strings.Builder
 	b.WriteString("🖥 <b>Node</b>" + nl)
 	if line != "" {
@@ -402,32 +420,31 @@ func formatNodeDetailHTML(id string) string {
 	} else {
 		b.WriteString("<code>" + esc(id) + "</code>" + nl)
 	}
-	// last command from relay status line / devices
-	for _, l := range strings.Split(st, "\n") {
-		if strings.Contains(l, id) {
-			b.WriteString(nl + "📡 <b>agent</b>" + nl + "<code>" + esc(l) + "</code>" + nl)
+	if role == "relay" || strings.HasPrefix(id, "relay-") {
+		detail := runND("relay", "device", id)
+		low := strings.ToLower(detail)
+		if detail != "" && !strings.Contains(low, "not found") && !strings.Contains(low, "usage") {
+			b.WriteString(nl + "<pre>" + esc(detail) + "</pre>")
 		}
-	}
-	// pending + last cmd via CLI detail
-	detail := runND("relay", "device", id)
-	if detail != "" && !strings.Contains(detail, "usage") && !strings.Contains(detail, "unknown") {
-		b.WriteString(nl + detail)
+	} else {
+		for _, u := range []string{"sing-box", "netductor-api", "netductor-telegram-bot"} {
+			st, _ := exec.Command("systemctl", "is-active", u).CombinedOutput()
+			b.WriteString("• " + esc(u) + ": <code>" + esc(strings.TrimSpace(string(st))) + "</code>" + nl)
+		}
 	}
 	return b.String()
 }
 
 func enqueueNodeCmd(id, cmd string) string {
-	// relay queue
+	role := nodeRole(id)
+	isRelay := role == "relay" || strings.HasPrefix(id, "relay-")
+	if !isRelay {
+		return runND("nodes", "local-cmd", cmd)
+	}
 	out := runND("relay", "cmd", id, cmd)
-	if out != "" && !strings.Contains(out, "unknown") && !strings.Contains(out, "usage") {
-		return out
-	}
-	// core local
-	if cmd == "reboot" {
-		return runND("nodes", "local-cmd", "reboot")
-	}
-	if cmd == "upgrade" {
-		return runND("nodes", "local-cmd", "upgrade")
+	low := strings.ToLower(out)
+	if strings.Contains(low, "does not exist") || strings.Contains(low, "not found") || strings.Contains(low, "exit status") {
+		return runND("nodes", "local-cmd", cmd)
 	}
 	return out
 }

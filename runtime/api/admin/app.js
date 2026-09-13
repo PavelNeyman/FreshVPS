@@ -369,3 +369,21 @@ document.getElementById('btn-relay-sync')?.addEventListener('click', async () =>
   toast('sync bumped');
   refreshRelay?.();
 });
+
+async function refreshAlerts() {
+  try {
+    const r = await api('/api/dashboard');
+    const d = await r.json();
+    const el = document.getElementById('alerts-box');
+    if (!el) return;
+    const probes = d.probes || [];
+    const bad = probes.filter(p => p.ok === false);
+    if (bad.length === 0) {
+      el.innerHTML = '<span class="ok">No probe failures</span>';
+      return;
+    }
+    el.innerHTML = bad.map(p => `<div class="alert">⚠️ ${p.name}: ${p.error||'fail'}</div>`).join('');
+  } catch (e) { /* ignore */ }
+}
+document.getElementById('btn-refresh-alerts')?.addEventListener('click', () => refreshAlerts());
+setInterval(() => { try { refreshAlerts(); } catch(_){} }, 60000);

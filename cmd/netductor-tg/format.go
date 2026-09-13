@@ -382,6 +382,7 @@ func formatRelayListHTML() string {
 }
 
 
+
 func nodeRole(id string) string {
 	for _, l := range strings.Split(runND("nodes", "list"), "\n") {
 		if !strings.Contains(l, "id="+id) {
@@ -396,6 +397,16 @@ func nodeRole(id string) string {
 	return ""
 }
 
+func parseNodeFields(line string) map[string]string {
+	m := map[string]string{}
+	for _, p := range strings.Split(line, "\t") {
+		if i := strings.IndexByte(p, '='); i > 0 {
+			m[p[:i]] = p[i+1:]
+		}
+	}
+	return m
+}
+
 func formatNodeDetailHTML(id string) string {
 	nl := string([]byte{10})
 	out := runND("nodes", "list")
@@ -403,46 +414,120 @@ func formatNodeDetailHTML(id string) string {
 	for _, l := range strings.Split(out, "\n") {
 		if strings.Contains(l, "id="+id) {
 			line = l
-			for _, p := range strings.Split(l, "\t") {
-				if strings.HasPrefix(p, "role=") {
-					role = strings.TrimPrefix(p, "role=")
+			role = parseNodeFields(l)["role"]
+			break
+		}
+	}
+	f := parseNodeFields(line)
+	host := f["host"]
+	if host == "" {
+		host = id
+	}
+	st := f["status"]
+	if st == "" {
+		st = "—"
+	}
+	ip := f["ip"]
+	if role == "" {
+		role = nodeRole(id)
+	}
+
+	var cpu float64
+	var memU, memT int64
+	var load1 float64
+	var extra strings.Builder
+
+	isRelay := role == "relay" || strings.HasPrefix(id, "relay-")
+	if isRelay {
+		detail := runND("relay", "device", id)
+		// parse: sb= true cpu= 0.5 mem= 282 / 901 load= 0.01
+		for _, part := range strings.Fields(detail) {
+			_ = part
+		}
+		// crude parse from detail lines
+		for _, dl := range strings.Split(detail, "\n") {
+			dl = strings.TrimSpace(dl)
+			if strings.HasPrefix(dl, "status:") {
+				st = strings.TrimSpace(strings.TrimPrefix(dl, "status:"))
+			}
+			if strings.Contains(dl, "cpu=") || strings.Contains(dl, "mem=") {
+				fmt.Sscanf(strings.ReplaceAll(dl, " ", ""), "sb=%*s cpu=%f mem=%d/%d load=%f", &cpu, &memU, &memT, &load1)
+				// try looser
+				var sb string
+				fmt.Sscanf(dl, "sb= %s cpu= %f mem= %d / %d load= %f", &sb, &cpu, &memU, &memT, &load1)
+			}
+			if strings.HasPrefix(dl, "pending:") || strings.HasPrefix(dl, "last_cmd:") {
+				extra.WriteString("• " + esc(dl) + nl)
+			}
+			if !strings.HasPrefix(dl, "status:") && !strings.Contains(dl, "cpu=") && !strings.HasPrefix(dl, "sb=") && dl != "" && !strings.HasPrefix(dl, "pending") && !strings.HasPrefix(dl, "last_cmd") {
+				// log tail lines
+				if len(dl) > 0 && (strings.Contains(dl, "DONE") || strings.Contains(dl, "ERR") || strings.Contains(dl, "Setting up") || strings.Contains(dl, "upgrade")) {
+					extra.WriteString("<code>" + esc(dl) + "</code>" + nl)
 				}
+			}
+		}
+	} else {
+		cpu, memU, memT, load1 = sampleHostMetrics()
+		st = "online"
+		for _, u := range []string{"sing-box", "netductor-api", "netductor-telegram-bot"} {
+			out, _ := exec.Command("systemctl", "is-active", u).CombinedOutput()
+			icon := "🔴"
+			if strings.TrimSpace(string(out)) == "active" {
+				icon = "🟢"
+			}
+			extra.WriteString(icon + " <code>" + esc(u) + "</code>" + nl)
+		}
+		if lb, err := os.ReadFile("/var/lib/netductor/core-upgrade.log"); err == nil && len(lb) > 0 {
+			s := strings.TrimSpace(string(lb))
+			if s != "" && s != "started" {
+				if len(s) > 500 {
+					s = s[len(s)-500:]
+				}
+				extra.WriteString(nl + "📋 <b>last upgrade</b>" + nl + "<pre>" + esc(s) + "</pre>")
+			}
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("🖥 <b>" + esc(host) + "</b>" + nl)
+	b.WriteString("├ role: <code>" + esc(role) + "</code>" + nl)
+	b.WriteString("├ id: <code>" + esc(id) + "</code>" + nl)
+	if ip != "" {
+		b.WriteString("├ ip: <code>" + esc(ip) + "</code>" + nl)
+	}
+	b.WriteString("├ status: <code>" + esc(st) + "</code>" + nl)
+	b.WriteString(fmt.Sprintf("├ cpu: <code>%.1f%%</code>"+nl, cpu))
+	b.WriteString(fmt.Sprintf("├ mem: <code>%d / %d MB</code>"+nl, memU, memT))
+	b.WriteString(fmt.Sprintf("└ load: <code>%.2f</code>"+nl, load1))
+	if extra.Len() > 0 {
+		b.WriteString(nl + extra.String())
+	}
+	return strings.TrimRight(b.String(), nl)
+}
+
+func formatCmdQueuedHTML(kind, nodeID, raw string) string {
+	nl := string([]byte{10})
+	role := nodeRole(nodeID)
+	host := nodeID
+	for _, l := range strings.Split(runND("nodes", "list"), "\n") {
+		if strings.Contains(l, "id="+nodeID) {
+			f := parseNodeFields(l)
+			if f["host"] != "" {
+				host = f["host"]
 			}
 			break
 		}
 	}
+	title := "🔄 <b>Upgrade</b>"
+	if kind == "reboot" {
+		title = "♻️ <b>Reboot</b>"
+	}
 	var b strings.Builder
-	b.WriteString("🖥 <b>Node</b>" + nl)
-	if line != "" {
-		for _, p := range strings.Split(line, "\t") {
-			b.WriteString("• <code>" + esc(p) + "</code>" + nl)
-		}
-	} else {
-		b.WriteString("<code>" + esc(id) + "</code>" + nl)
-	}
-	if role == "relay" || strings.HasPrefix(id, "relay-") {
-		detail := runND("relay", "device", id)
-		low := strings.ToLower(detail)
-		if detail != "" && !strings.Contains(low, "not found") && !strings.Contains(low, "usage") {
-			b.WriteString(nl + "<pre>" + esc(detail) + "</pre>")
-		}
-	} else {
-		cpu, memU, memT, load1 := sampleHostMetrics()
-		b.WriteString(nl + "<code>status: online</code>" + nl)
-		b.WriteString(fmt.Sprintf("<code>cpu= %.1f mem= %d / %d load= %.2f</code>"+nl, cpu, memU, memT, load1))
-		for _, u := range []string{"sing-box", "netductor-api", "netductor-telegram-bot"} {
-			st, _ := exec.Command("systemctl", "is-active", u).CombinedOutput()
-			b.WriteString("• " + esc(u) + ": <code>" + esc(strings.TrimSpace(string(st))) + "</code>" + nl)
-		}
-		// last core upgrade log tail
-		if lb, err := os.ReadFile("/var/lib/netductor/core-upgrade.log"); err == nil && len(lb) > 0 {
-			s := string(lb)
-			if len(s) > 600 {
-				s = s[len(s)-600:]
-			}
-			b.WriteString(nl + "<b>last upgrade</b>" + nl + "<pre>" + esc(s) + "</pre>")
-		}
-	}
+	b.WriteString(title + nl)
+	b.WriteString("├ node: <code>" + esc(host) + "</code>" + nl)
+	b.WriteString("├ role: <code>" + esc(role) + "</code>" + nl)
+	b.WriteString("├ status: <code>queued</code>" + nl)
+	b.WriteString("└ " + T("cmd_wait_hint"))
 	return b.String()
 }
 

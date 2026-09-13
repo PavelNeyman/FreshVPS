@@ -10,13 +10,18 @@ func handleCallback(token string, cq *callbackQuery, admin int64) {
 	if cq.From.ID != admin {
 		return
 	}
-	answerCallback(token, cq.ID)
 	chat := cq.Message.Chat.ID
 	msgID := 0
 	if cq.Message != nil {
 		msgID = cq.Message.MessageID
 	}
 	data := cq.Data
+	// hourglass toast for long node ops — same UX core & relay
+	if strings.HasPrefix(data, "m:nd:u:") || strings.HasPrefix(data, "m:nd:r:") {
+		answerCallbackText(token, cq.ID, "⏳ …")
+	} else {
+		answerCallback(token, cq.ID)
+	}
 
 	if strings.HasPrefix(data, "u:") {
 		parts := strings.SplitN(data, ":", 3)

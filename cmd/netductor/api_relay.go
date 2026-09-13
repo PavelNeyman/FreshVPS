@@ -34,6 +34,25 @@ func registerRelayAPI(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, b)
 	})
+	mux.HandleFunc("/api/relay/cmd", func(w http.ResponseWriter, r *http.Request) {
+		if !requireSession(w, r) {
+			return
+		}
+		var body struct {
+			ID  string `json:"id"`
+			Cmd string `json:"cmd"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.ID == "" || body.Cmd == "" {
+			http.Error(w, "id and cmd required", 400)
+			return
+		}
+		if err := relay.EnqueueCmd(body.ID, body.Cmd); err != nil {
+			http.Error(w, err.Error(), 404)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true, "queued": body.Cmd, "id": body.ID})
+	})
 	mux.HandleFunc("/api/relay/sync", func(w http.ResponseWriter, r *http.Request) {
 		if !requireSession(w, r) {
 			return

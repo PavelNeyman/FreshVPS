@@ -148,7 +148,6 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 			},
 		},
 	}
-	// Exit feeder: core connects here when "RU exit" mode is on; traffic leaves via RU IP.
 	if b.ExitUUID != "" {
 		inbounds = append(inbounds, map[string]any{
 			"type": "vless", "tag": "exit-in", "listen": "::", "listen_port": exitPort,
@@ -166,15 +165,13 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 			},
 		})
 	}
-	// Split: RU/local → direct (RU IP); rest → core uplink. Inspired by WL client profiles.
 	ruSuffixes := []string{
-		"ru", "su", "xn--p1ai", "рф",
+		"ru", "su", "xn--p1ai",
 		"vk.com", "vk.ru", "userapi.com", "vkuservideo.net",
 		"yandex.ru", "yandex.net", "yandex.com", "ya.ru", "yastatic.net",
 		"mail.ru", "ok.ru", "wildberries.ru", "ozon.ru", "avito.ru",
 		"2gis.com", "2gis.ru", "gosuslugi.ru", "mos.ru", "sberbank.ru",
 		"tinkoff.ru", "tbank.ru", "mts.ru", "megafon.ru", "beeline.ru", "tele2.ru",
-		"gstatic.com", // connectivity checks often stay local path
 	}
 	cfg := map[string]any{
 		"log": map[string]any{"level": "info", "timestamp": true},
@@ -186,12 +183,9 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 				map[string]any{"type": "local", "tag": "local"},
 			},
 			"rules": []any{
-				map[string]any{
-					"domain_suffix": ruSuffixes,
-					"server":        "ru-dns",
-				},
+				map[string]any{"domain_suffix": ruSuffixes, "server": "ru-dns"},
 			},
-			"final": "quad9", "strategy": "ipv4_only",
+			"final": "quad9",
 		},
 		"inbounds": inbounds,
 		"outbounds": []any{
@@ -199,6 +193,7 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 				"type": "vless", "tag": "uplink",
 				"server": b.CoreIP, "server_port": b.CoreVless,
 				"uuid": b.UplinkUUID, "flow": "xtls-rprx-vision",
+				"domain_resolver": "quad9",
 				"tls": map[string]any{
 					"enabled": true, "server_name": b.CoreSNI,
 					"utls":    map[string]any{"enabled": true, "fingerprint": "firefox"},
@@ -209,23 +204,22 @@ func WriteRelaySingBox(b *RelayBundle, privKey, shortID string) error {
 					},
 				},
 			},
-			map[string]any{"type": "direct", "tag": "direct", "domain_strategy": "ipv4_only"},
+			map[string]any{"type": "direct", "tag": "direct"},
 			map[string]any{"type": "block", "tag": "block"},
 		},
 		"route": map[string]any{
 			"rules": []any{
 				map[string]any{"action": "sniff"},
 				map[string]any{"protocol": "dns", "action": "hijack-dns"},
-				// no IPv6 path (many RU mobile stacks are v4-only / broken v6)
 				map[string]any{"ip_version": 6, "outbound": "block"},
 				map[string]any{"inbound": []string{"exit-in"}, "outbound": "direct"},
 				map[string]any{"ip_is_private": true, "outbound": "direct"},
 				map[string]any{"domain_suffix": ruSuffixes, "outbound": "direct"},
 				map[string]any{"inbound": []string{"relay-in"}, "outbound": "uplink"},
 			},
-			"final": "uplink",
-			"default_domain_resolver": "quad9",
-			"auto_detect_interface":   true,
+			"final":                    "uplink",
+			"default_domain_resolver":  "quad9",
+			"auto_detect_interface":    true,
 		},
 	}
 	_ = os.MkdirAll(filepath.Dir(singboxConf), 0o755)

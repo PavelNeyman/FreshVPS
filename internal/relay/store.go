@@ -27,7 +27,11 @@ type Device struct {
 	MemUsedMB  int64     `json:"mem_used_mb"`
 	MemTotalMB int64     `json:"mem_total_mb"`
 	Load1      float64   `json:"load1"`
-	PendingCmds []string  `json:"pending_cmds,omitempty"` // reboot | upgrade | metrics
+	PendingCmds []string  `json:"pending_cmds,omitempty"`
+	LastCmd     string    `json:"last_cmd,omitempty"`
+	LastCmdAt   time.Time `json:"last_cmd_at,omitempty"`
+	LastCmdOK   bool      `json:"last_cmd_ok,omitempty"`
+	LastCmdLog  string    `json:"last_cmd_log,omitempty"`
 	LastSeen   time.Time `json:"last_seen"`
 	CreatedAt  time.Time `json:"created_at"`
 }
@@ -147,6 +151,9 @@ type HeartbeatIn struct {
 	MemUsedMB  int64   `json:"mem_used_mb"`
 	MemTotalMB int64   `json:"mem_total_mb"`
 	Load1      float64 `json:"load1"`
+	CmdDone    string  `json:"cmd_done,omitempty"`
+	CmdOK      bool    `json:"cmd_ok,omitempty"`
+	CmdLog     string  `json:"cmd_log,omitempty"`
 }
 
 func Heartbeat(token string, in HeartbeatIn) (*Device, int, error) {
@@ -173,6 +180,12 @@ func Heartbeat(token string, in HeartbeatIn) (*Device, int, error) {
 		r.Devices[i].MemUsedMB = in.MemUsedMB
 		r.Devices[i].MemTotalMB = in.MemTotalMB
 		r.Devices[i].Load1 = in.Load1
+		if in.CmdDone != "" {
+			r.Devices[i].LastCmd = in.CmdDone
+			r.Devices[i].LastCmdOK = in.CmdOK
+			r.Devices[i].LastCmdLog = in.CmdLog
+			r.Devices[i].LastCmdAt = time.Now().UTC()
+		}
 		r.Devices[i].LastSeen = time.Now().UTC()
 		_ = save(r)
 		d := r.Devices[i]

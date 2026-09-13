@@ -384,6 +384,7 @@ func formatRelayListHTML() string {
 
 
 
+
 // nodeCard is the single view-model for TG node screens (core, relay, edge).
 type nodeCard struct {
 	ID       string
@@ -395,7 +396,7 @@ type nodeCard struct {
 	MemUsed  int64
 	MemTotal int64
 	Load     float64
-	Lines    []string // extra rows under metrics (services, pending, last cmd)
+	Lines    []string // optional extra lines (already HTML)
 }
 
 func nodeRole(id string) string {
@@ -448,7 +449,34 @@ func sampleHostMetrics() (cpu float64, memUsed, memTotal int64, load1 float64) {
 	return
 }
 
-// formatNodeCardHTML is the single template for every node type.
+func padRight(s string, n int) string {
+	if len(s) >= n {
+		return s
+	}
+	return s + strings.Repeat(" ", n-len(s))
+}
+
+func table2(rows [][2]string) string {
+	w := 0
+	for _, r := range rows {
+		if len(r[0]) > w {
+			w = len(r[0])
+		}
+	}
+	if w < 8 {
+		w = 8
+	}
+	var b strings.Builder
+	for _, r := range rows {
+		b.WriteString(padRight(r[0], w))
+		b.WriteString("  ")
+		b.WriteString(r[1])
+		b.WriteByte(10)
+	}
+	return b.String()
+}
+
+// formatNodeCardHTML — one template for all roles (pre tables).
 func formatNodeCardHTML(c nodeCard) string {
 	nl := string([]byte{10})
 	host := c.Host
@@ -463,19 +491,28 @@ func formatNodeCardHTML(c nodeCard) string {
 	if st == "" {
 		st = "—"
 	}
-	var b strings.Builder
-	b.WriteString("🖥 <b>" + esc(host) + "</b>" + nl)
-	b.WriteString("├ role: <code>" + esc(role) + "</code>" + nl)
-	b.WriteString("├ id: <code>" + esc(c.ID) + "</code>" + nl)
-	if c.IP != "" {
-		b.WriteString("├ ip: <code>" + esc(c.IP) + "</code>" + nl)
+	idShort := c.ID
+	if len(idShort) > 20 {
+		idShort = idShort[:8] + "…" + idShort[len(idShort)-6:]
 	}
-	b.WriteString("├ status: <code>" + esc(st) + "</code>" + nl)
-	b.WriteString(fmt.Sprintf("├ cpu: <code>%.1f%%</code>"+nl, c.CPU))
-	b.WriteString(fmt.Sprintf("├ mem: <code>%d / %d MB</code>"+nl, c.MemUsed, c.MemTotal))
-	b.WriteString(fmt.Sprintf("└ load: <code>%.2f</code>"+nl, c.Load))
+	t1 := table2([][2]string{
+		{"host", host},
+		{"role", role},
+		{"id", idShort},
+		{"ip", c.IP},
+		{"status", st},
+	})
+	t2 := table2([][2]string{
+		{"cpu", fmt.Sprintf("%.1f%%", c.CPU)},
+		{"mem", fmt.Sprintf("%d / %d MB", c.MemUsed, c.MemTotal)},
+		{"load", fmt.Sprintf("%.2f", c.Load)},
+	})
+	var b strings.Builder
+	b.WriteString("🖥 <b>" + esc(host) + "</b>" + nl + nl)
+	b.WriteString("<b>identity</b>" + nl + "<pre>" + esc(t1) + "</pre>")
+	b.WriteString("<b>resources</b>" + nl + "<pre>" + esc(t2) + "</pre>")
 	if len(c.Lines) > 0 {
-		b.WriteString(nl)
+		b.WriteString("<b>extra</b>" + nl)
 		for _, line := range c.Lines {
 			b.WriteString(line + nl)
 		}
@@ -508,11 +545,12 @@ func loadNodeCard(id string) nodeCard {
 				c.Status = strings.TrimSpace(strings.TrimPrefix(dl, "status:"))
 			}
 			var sb string
-			if _, err := fmt.Sscanf(dl, "sb= %s cpu= %f mem= %d / %d load= %f", &sb, &c.CPU, &c.MemUsed, &c.MemTotal, &c.Load); err == nil {
-				continue
+			_, _ = fmt.Sscanf(dl, "sb= %s cpu= %f mem= %d / %d load= %f", &sb, &c.CPU, &c.MemUsed, &c.MemTotal, &c.Load)
+			if strings.HasPrefix(dl, "pending:") {
+				c.Lines = append(c.Lines, "⏳ <code>"+esc(dl)+"</code>")
 			}
-			if strings.HasPrefix(dl, "pending:") || strings.HasPrefix(dl, "last_cmd:") {
-				c.Lines = append(c.Lines, "• <code>"+esc(dl)+"</code>")
+			if strings.HasPrefix(dl, "last_cmd:") {
+				c.Lines = append(c.Lines, "✅ <code>"+esc(dl)+"</code>")
 			}
 		}
 		if c.Status == "" {
@@ -520,24 +558,27 @@ func loadNodeCard(id string) nodeCard {
 		}
 		return c
 	}
-	// core (and other local roles): live host metrics + units
 	c.CPU, c.MemUsed, c.MemTotal, c.Load = sampleHostMetrics()
 	if c.Status == "" {
 		c.Status = "online"
 	}
+	var svcRows [][2]string
 	for _, u := range []string{"sing-box", "netductor-api", "netductor-telegram-bot"} {
 		out, _ := exec.Command("systemctl", "is-active", u).CombinedOutput()
-		icon := "🔴"
-		if strings.TrimSpace(string(out)) == "active" {
-			icon = "🟢"
+		st := strings.TrimSpace(string(out))
+		if st == "active" {
+			st = "🟢 active"
+		} else {
+			st = "🔴 " + st
 		}
-		c.Lines = append(c.Lines, icon+" <code>"+esc(u)+"</code>")
+		svcRows = append(svcRows, [2]string{u, st})
 	}
+	c.Lines = append(c.Lines, "<pre>"+esc(table2(svcRows))+"</pre>")
 	if lb, err := os.ReadFile("/var/lib/netductor/core-upgrade.log"); err == nil {
 		s := strings.TrimSpace(string(lb))
 		if s != "" && s != "started" {
-			if len(s) > 400 {
-				s = s[len(s)-400:]
+			if len(s) > 350 {
+				s = s[len(s)-350:]
 			}
 			c.Lines = append(c.Lines, "📋 <b>last upgrade</b>", "<pre>"+esc(s)+"</pre>")
 		}
@@ -556,17 +597,16 @@ func formatCmdQueuedHTML(kind, nodeID, raw string) string {
 	if host == "" {
 		host = nodeID
 	}
-	title := "🔄 <b>Upgrade</b>"
+	title := "🔄 Upgrade"
 	if kind == "reboot" {
-		title = "♻️ <b>Reboot</b>"
+		title = "♻️ Reboot"
 	}
-	var b strings.Builder
-	b.WriteString(title + nl)
-	b.WriteString("├ node: <code>" + esc(host) + "</code>" + nl)
-	b.WriteString("├ role: <code>" + esc(c.Role) + "</code>" + nl)
-	b.WriteString("├ status: <code>queued</code>" + nl)
-	b.WriteString("└ " + T("cmd_wait_hint"))
-	return b.String()
+	t := table2([][2]string{
+		{"node", host},
+		{"role", c.Role},
+		{"status", "queued"},
+	})
+	return title + nl + nl + "<pre>" + esc(t) + "</pre>" + "<i>" + T("cmd_wait_hint") + "</i>"
 }
 
 func enqueueNodeCmd(id, cmd string) string {

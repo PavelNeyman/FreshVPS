@@ -383,6 +383,21 @@ func formatRelayListHTML() string {
 
 
 
+
+// nodeCard is the single view-model for TG node screens (core, relay, edge).
+type nodeCard struct {
+	ID       string
+	Host     string
+	Role     string
+	IP       string
+	Status   string
+	CPU      float64
+	MemUsed  int64
+	MemTotal int64
+	Load     float64
+	Lines    []string // extra rows under metrics (services, pending, last cmd)
+}
+
 func nodeRole(id string) string {
 	for _, l := range strings.Split(runND("nodes", "list"), "\n") {
 		if !strings.Contains(l, "id="+id) {
@@ -405,130 +420,6 @@ func parseNodeFields(line string) map[string]string {
 		}
 	}
 	return m
-}
-
-func formatNodeDetailHTML(id string) string {
-	nl := string([]byte{10})
-	out := runND("nodes", "list")
-	var line, role string
-	for _, l := range strings.Split(out, "\n") {
-		if strings.Contains(l, "id="+id) {
-			line = l
-			role = parseNodeFields(l)["role"]
-			break
-		}
-	}
-	f := parseNodeFields(line)
-	host := f["host"]
-	if host == "" {
-		host = id
-	}
-	st := f["status"]
-	if st == "" {
-		st = "—"
-	}
-	ip := f["ip"]
-	if role == "" {
-		role = nodeRole(id)
-	}
-
-	var cpu float64
-	var memU, memT int64
-	var load1 float64
-	var extra strings.Builder
-
-	isRelay := role == "relay" || strings.HasPrefix(id, "relay-")
-	if isRelay {
-		detail := runND("relay", "device", id)
-		// parse: sb= true cpu= 0.5 mem= 282 / 901 load= 0.01
-		for _, part := range strings.Fields(detail) {
-			_ = part
-		}
-		// crude parse from detail lines
-		for _, dl := range strings.Split(detail, "\n") {
-			dl = strings.TrimSpace(dl)
-			if strings.HasPrefix(dl, "status:") {
-				st = strings.TrimSpace(strings.TrimPrefix(dl, "status:"))
-			}
-			if strings.Contains(dl, "cpu=") || strings.Contains(dl, "mem=") {
-				fmt.Sscanf(strings.ReplaceAll(dl, " ", ""), "sb=%*s cpu=%f mem=%d/%d load=%f", &cpu, &memU, &memT, &load1)
-				// try looser
-				var sb string
-				fmt.Sscanf(dl, "sb= %s cpu= %f mem= %d / %d load= %f", &sb, &cpu, &memU, &memT, &load1)
-			}
-			if strings.HasPrefix(dl, "pending:") || strings.HasPrefix(dl, "last_cmd:") {
-				extra.WriteString("• " + esc(dl) + nl)
-			}
-			if !strings.HasPrefix(dl, "status:") && !strings.Contains(dl, "cpu=") && !strings.HasPrefix(dl, "sb=") && dl != "" && !strings.HasPrefix(dl, "pending") && !strings.HasPrefix(dl, "last_cmd") {
-				// log tail lines
-				if len(dl) > 0 && (strings.Contains(dl, "DONE") || strings.Contains(dl, "ERR") || strings.Contains(dl, "Setting up") || strings.Contains(dl, "upgrade")) {
-					extra.WriteString("<code>" + esc(dl) + "</code>" + nl)
-				}
-			}
-		}
-	} else {
-		cpu, memU, memT, load1 = sampleHostMetrics()
-		st = "online"
-		for _, u := range []string{"sing-box", "netductor-api", "netductor-telegram-bot"} {
-			out, _ := exec.Command("systemctl", "is-active", u).CombinedOutput()
-			icon := "🔴"
-			if strings.TrimSpace(string(out)) == "active" {
-				icon = "🟢"
-			}
-			extra.WriteString(icon + " <code>" + esc(u) + "</code>" + nl)
-		}
-		if lb, err := os.ReadFile("/var/lib/netductor/core-upgrade.log"); err == nil && len(lb) > 0 {
-			s := strings.TrimSpace(string(lb))
-			if s != "" && s != "started" {
-				if len(s) > 500 {
-					s = s[len(s)-500:]
-				}
-				extra.WriteString(nl + "📋 <b>last upgrade</b>" + nl + "<pre>" + esc(s) + "</pre>")
-			}
-		}
-	}
-
-	var b strings.Builder
-	b.WriteString("🖥 <b>" + esc(host) + "</b>" + nl)
-	b.WriteString("├ role: <code>" + esc(role) + "</code>" + nl)
-	b.WriteString("├ id: <code>" + esc(id) + "</code>" + nl)
-	if ip != "" {
-		b.WriteString("├ ip: <code>" + esc(ip) + "</code>" + nl)
-	}
-	b.WriteString("├ status: <code>" + esc(st) + "</code>" + nl)
-	b.WriteString(fmt.Sprintf("├ cpu: <code>%.1f%%</code>"+nl, cpu))
-	b.WriteString(fmt.Sprintf("├ mem: <code>%d / %d MB</code>"+nl, memU, memT))
-	b.WriteString(fmt.Sprintf("└ load: <code>%.2f</code>"+nl, load1))
-	if extra.Len() > 0 {
-		b.WriteString(nl + extra.String())
-	}
-	return strings.TrimRight(b.String(), nl)
-}
-
-func formatCmdQueuedHTML(kind, nodeID, raw string) string {
-	nl := string([]byte{10})
-	role := nodeRole(nodeID)
-	host := nodeID
-	for _, l := range strings.Split(runND("nodes", "list"), "\n") {
-		if strings.Contains(l, "id="+nodeID) {
-			f := parseNodeFields(l)
-			if f["host"] != "" {
-				host = f["host"]
-			}
-			break
-		}
-	}
-	title := "🔄 <b>Upgrade</b>"
-	if kind == "reboot" {
-		title = "♻️ <b>Reboot</b>"
-	}
-	var b strings.Builder
-	b.WriteString(title + nl)
-	b.WriteString("├ node: <code>" + esc(host) + "</code>" + nl)
-	b.WriteString("├ role: <code>" + esc(role) + "</code>" + nl)
-	b.WriteString("├ status: <code>queued</code>" + nl)
-	b.WriteString("└ " + T("cmd_wait_hint"))
-	return b.String()
 }
 
 func sampleHostMetrics() (cpu float64, memUsed, memTotal int64, load1 float64) {
@@ -555,6 +446,127 @@ func sampleHostMetrics() (cpu float64, memUsed, memTotal int64, load1 float64) {
 		cpu = 100
 	}
 	return
+}
+
+// formatNodeCardHTML is the single template for every node type.
+func formatNodeCardHTML(c nodeCard) string {
+	nl := string([]byte{10})
+	host := c.Host
+	if host == "" {
+		host = c.ID
+	}
+	role := c.Role
+	if role == "" {
+		role = "—"
+	}
+	st := c.Status
+	if st == "" {
+		st = "—"
+	}
+	var b strings.Builder
+	b.WriteString("🖥 <b>" + esc(host) + "</b>" + nl)
+	b.WriteString("├ role: <code>" + esc(role) + "</code>" + nl)
+	b.WriteString("├ id: <code>" + esc(c.ID) + "</code>" + nl)
+	if c.IP != "" {
+		b.WriteString("├ ip: <code>" + esc(c.IP) + "</code>" + nl)
+	}
+	b.WriteString("├ status: <code>" + esc(st) + "</code>" + nl)
+	b.WriteString(fmt.Sprintf("├ cpu: <code>%.1f%%</code>"+nl, c.CPU))
+	b.WriteString(fmt.Sprintf("├ mem: <code>%d / %d MB</code>"+nl, c.MemUsed, c.MemTotal))
+	b.WriteString(fmt.Sprintf("└ load: <code>%.2f</code>"+nl, c.Load))
+	if len(c.Lines) > 0 {
+		b.WriteString(nl)
+		for _, line := range c.Lines {
+			b.WriteString(line + nl)
+		}
+	}
+	return strings.TrimRight(b.String(), nl)
+}
+
+func loadNodeCard(id string) nodeCard {
+	c := nodeCard{ID: id}
+	for _, l := range strings.Split(runND("nodes", "list"), "\n") {
+		if !strings.Contains(l, "id="+id) {
+			continue
+		}
+		f := parseNodeFields(l)
+		c.Host = f["host"]
+		c.Role = f["role"]
+		c.IP = f["ip"]
+		c.Status = f["status"]
+		break
+	}
+	if c.Role == "" {
+		c.Role = nodeRole(id)
+	}
+	isRelay := c.Role == "relay" || strings.HasPrefix(id, "relay-")
+	if isRelay {
+		detail := runND("relay", "device", id)
+		for _, dl := range strings.Split(detail, "\n") {
+			dl = strings.TrimSpace(dl)
+			if strings.HasPrefix(dl, "status:") {
+				c.Status = strings.TrimSpace(strings.TrimPrefix(dl, "status:"))
+			}
+			var sb string
+			if _, err := fmt.Sscanf(dl, "sb= %s cpu= %f mem= %d / %d load= %f", &sb, &c.CPU, &c.MemUsed, &c.MemTotal, &c.Load); err == nil {
+				continue
+			}
+			if strings.HasPrefix(dl, "pending:") || strings.HasPrefix(dl, "last_cmd:") {
+				c.Lines = append(c.Lines, "• <code>"+esc(dl)+"</code>")
+			}
+		}
+		if c.Status == "" {
+			c.Status = "online"
+		}
+		return c
+	}
+	// core (and other local roles): live host metrics + units
+	c.CPU, c.MemUsed, c.MemTotal, c.Load = sampleHostMetrics()
+	if c.Status == "" {
+		c.Status = "online"
+	}
+	for _, u := range []string{"sing-box", "netductor-api", "netductor-telegram-bot"} {
+		out, _ := exec.Command("systemctl", "is-active", u).CombinedOutput()
+		icon := "🔴"
+		if strings.TrimSpace(string(out)) == "active" {
+			icon = "🟢"
+		}
+		c.Lines = append(c.Lines, icon+" <code>"+esc(u)+"</code>")
+	}
+	if lb, err := os.ReadFile("/var/lib/netductor/core-upgrade.log"); err == nil {
+		s := strings.TrimSpace(string(lb))
+		if s != "" && s != "started" {
+			if len(s) > 400 {
+				s = s[len(s)-400:]
+			}
+			c.Lines = append(c.Lines, "📋 <b>last upgrade</b>", "<pre>"+esc(s)+"</pre>")
+		}
+	}
+	return c
+}
+
+func formatNodeDetailHTML(id string) string {
+	return formatNodeCardHTML(loadNodeCard(id))
+}
+
+func formatCmdQueuedHTML(kind, nodeID, raw string) string {
+	nl := string([]byte{10})
+	c := loadNodeCard(nodeID)
+	host := c.Host
+	if host == "" {
+		host = nodeID
+	}
+	title := "🔄 <b>Upgrade</b>"
+	if kind == "reboot" {
+		title = "♻️ <b>Reboot</b>"
+	}
+	var b strings.Builder
+	b.WriteString(title + nl)
+	b.WriteString("├ node: <code>" + esc(host) + "</code>" + nl)
+	b.WriteString("├ role: <code>" + esc(c.Role) + "</code>" + nl)
+	b.WriteString("├ status: <code>queued</code>" + nl)
+	b.WriteString("└ " + T("cmd_wait_hint"))
+	return b.String()
 }
 
 func enqueueNodeCmd(id, cmd string) string {

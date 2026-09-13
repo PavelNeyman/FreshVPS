@@ -165,12 +165,19 @@ func formatNodesListHTML() string {
 }
 
 func nodeCardKeyboard(id string) map[string]any {
-	// callback_data max 64 bytes
+	pending := strings.Contains(runND("relay", "device", id), "pending:")
 	rows := [][]map[string]any{
-		{btn(T("node_metrics"), "m:nd:m:"+id, "primary"), btn(T("node_upgrade"), "m:nd:u:"+id, "")},
-		{btn(T("node_reboot"), "m:nd:r:"+id, "danger")},
-		{btn(T("nodes"), "m:cat:nodes", "primary"), btn(T("main_menu"), "m:menu", "")},
+		{btn(T("node_metrics"), "m:nd:m:"+id, "primary")},
 	}
+	if !pending {
+		rows = append(rows, []map[string]any{
+			btn(T("node_upgrade"), "m:nd:u:"+id, ""),
+			btn(T("node_reboot"), "m:nd:r:"+id, "danger"),
+		})
+	} else {
+		rows = append(rows, []map[string]any{btn("⏳ …", "m:nd:m:"+id, "")})
+	}
+	rows = append(rows, []map[string]any{btn(T("nodes"), "m:cat:nodes", "primary"), btn(T("main_menu"), "m:menu", "")})
 	return map[string]any{"inline_keyboard": rows}
 }
 
